@@ -1,0 +1,13 @@
+[Unit]
+Description=Browser Psych Lab joint backup
+After=browser-psych-lab.service
+[Service]
+Type=oneshot
+User=psychlab
+Group=psychlab
+WorkingDirectory=/opt/browser-psych-lab/current
+EnvironmentFile=/etc/browser-psych-lab.env
+Environment=BACKUP_PASSWORD_FILE=/etc/browser-psych-lab-backup-password
+ExecStart=/opt/node/bin/node scripts/backup.mjs
+UMask=0077
+NoNewPrivileges=true

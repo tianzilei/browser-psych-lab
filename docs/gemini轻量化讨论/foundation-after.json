@@ -1,0 +1,43 @@
+{
+  "scope": "TEST_ONLY; 20 concurrent readiness GETs per wave; no participant writes or image preload",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0"
+  },
+  "assets": [
+    {
+      "name": "index-Coeh8nQm.css",
+      "bytes": 753,
+      "gzipBytes": 444
+    },
+    {
+      "name": "index-DXV3xCOB.js",
+      "bytes": 7348,
+      "gzipBytes": 3274
+    },
+    {
+      "name": "survey-demo-BwcCtBvT.js",
+      "bytes": 1678576,
+      "gzipBytes": 378759
+    },
+    {
+      "name": "survey-demo-y7b0EnHt.css",
+      "bytes": 519371,
+      "gzipBytes": 49978
+    }
+  ],
+  "initialAssetBytes": 8101,
+  "initialGzipBytes": 3718,
+  "initialAssets": [
+    "index-Coeh8nQm.css",
+    "index-DXV3xCOB.js"
+  ],
+  "requests": 200,
+  "concurrency": 20,
+  "failures": 0,
+  "elapsedMs": 45.07,
+  "p50Ms": 1.56,
+  "p95Ms": 11.33,
+  "p99Ms": 11.56
+}

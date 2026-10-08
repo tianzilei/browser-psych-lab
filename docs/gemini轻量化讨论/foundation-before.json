@@ -1,0 +1,27 @@
+{
+  "scope": "TEST_ONLY; 20 concurrent readiness GETs per wave; no participant writes or image preload",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0"
+  },
+  "assets": [
+    {
+      "name": "index-CHDDR8T2.css",
+      "bytes": 519908,
+      "gzipBytes": 50215
+    },
+    {
+      "name": "index-DYDOhSiT.js",
+      "bytes": 1684026,
+      "gzipBytes": 381074
+    }
+  ],
+  "requests": 200,
+  "concurrency": 20,
+  "failures": 0,
+  "elapsedMs": 50.92,
+  "p50Ms": 1.65,
+  "p95Ms": 12.89,
+  "p99Ms": 13.02
+}

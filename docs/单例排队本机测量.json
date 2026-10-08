@@ -1,0 +1,659 @@
+{
+  "schema": "mixed-load-v2",
+  "mode": "TEST_ONLY",
+  "scope": "loopback HTTP; offered waves 1/5/10/20 with whole-session admission and 1s synthetic polling; synthetic software records, real SQLite/decoder/resources/replay/export/backup; no mobile or physical timing claim",
+  "session_concurrency": 1,
+  "maximum_observed_active_sessions": 1,
+  "admission_queue": {
+    "active": 0,
+    "queued": 0,
+    "limit": 1,
+    "capacity": 64,
+    "over_limit": 0,
+    "pinned": 0
+  },
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "cpu": "Apple M4",
+    "logical_cpus": 10,
+    "total_memory_bytes": 17179869184
+  },
+  "waves": [
+    {
+      "concurrency": 1,
+      "sessions": [
+        "COMPLETED"
+      ],
+      "elapsed_ms": 119.87533400000007,
+      "requests": 17,
+      "p50_ms": 4.847792000000027,
+      "p95_ms": 47.545208,
+      "p99_ms": 47.545208
+    },
+    {
+      "concurrency": 5,
+      "sessions": [
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED"
+      ],
+      "elapsed_ms": 4204.849125,
+      "requests": 95,
+      "p50_ms": 5.959125000000313,
+      "p95_ms": 46.11608300000012,
+      "p99_ms": 59.94787499999984
+    },
+    {
+      "concurrency": 10,
+      "sessions": [
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "TERMINATED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED"
+      ],
+      "elapsed_ms": 9280.518042,
+      "requests": 215,
+      "p50_ms": 6.097999999999956,
+      "p95_ms": 40.08929100000023,
+      "p99_ms": 56.47766600000068
+    },
+    {
+      "concurrency": 20,
+      "sessions": [
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "TERMINATED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "TERMINATED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED",
+        "COMPLETED"
+      ],
+      "elapsed_ms": 19471.941083000005,
+      "requests": 534,
+      "p50_ms": 5.91466699999728,
+      "p95_ms": 78.09037499999977,
+      "p99_ms": 92.9817920000005
+    }
+  ],
+  "background_jobs": [
+    {
+      "kind": "export",
+      "result": {
+        "schema": "export-v1",
+        "snapshot_id": "d80b86b1-3f93-4faf-b260-73ad4b146ee4",
+        "study_id": "1b557b28-e3b4-442a-87da-d467baa2a9b4",
+        "actual_read_at": "2026-10-08T14:46:42.531Z",
+        "algorithm": "single-read-view-v1",
+        "source_hash": "b1b2d26bb852c9bf9077987aa773b8026139ccda654ca1705ea9fa6b4aef5226",
+        "tables": {
+          "studies": 1,
+          "versions": 1,
+          "assets": 1,
+          "sessions": 36,
+          "slots": 17,
+          "writers": 17,
+          "permits": 17,
+          "events": 326,
+          "raw": 326,
+          "seals": 32,
+          "diagnostics": 1,
+          "marks": 0,
+          "projections": 0,
+          "dispositions": 858,
+          "question_states": 36,
+          "trial_results": 17,
+          "audit": 4
+        },
+        "rows": 1690,
+        "bytes": 1240282,
+        "csv_hash": "028941f4568764d65148e474b7788621d3f8bc4103f13df7797aacf8beec6381",
+        "raw_encoding": "exact UTF-8 in raw_utf8 cells",
+        "all_session_states": true,
+        "dictionary": {
+          "event_schema": "lab-events-v1",
+          "runner": "canvas-v1",
+          "question_states": {
+            "ANSWERED": "sealed valid answer",
+            "UNANSWERED": "sealed visible optional empty answer",
+            "SKIPPED": "verified branch hidden",
+            "UNCONFIRMED": "no sealed final snapshot for current page",
+            "NOT_REACHED": "page position not reached"
+          },
+          "software_quality": "SOFTWARE_ONLY; physical display/input timing unverified",
+          "human_marks": "append-only annotations; never rewrite raw or system diagnosis"
+        }
+      }
+    },
+    {
+      "kind": "backup",
+      "result": {
+        "job_id": "1e3a1dcb-521f-4321-8b70-2db831a8621e",
+        "files": 64,
+        "manifest_hash": "3d9f72c1c3c305f7b13794f6cbe42d7fcdcdff917a426e3b806eb222bc4a81f1",
+        "independent": false,
+        "independent_target": null
+      }
+    }
+  ],
+  "retryable_responses": 2,
+  "response_statuses": {
+    "200": 867,
+    "503": 2
+  },
+  "final_states": {
+    "value": {
+      "sessions": [
+        {
+          "session_id": "de678afc-ffc3-4f8e-85af-8dfe0a1949c8",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802385,
+          "diagnostics": 0,
+          "last_received": 1791470821698
+        },
+        {
+          "session_id": "7639446b-b4ea-41a9-8c52-b56866bfc170",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802381,
+          "diagnostics": 0,
+          "last_received": 1791470820663
+        },
+        {
+          "session_id": "6677a64d-2ed3-4398-92bb-c4b287be1208",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802377,
+          "diagnostics": 0,
+          "last_received": 1791470819658
+        },
+        {
+          "session_id": "493dd4f2-ad6e-4c8d-b09e-86e130103dbb",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802373,
+          "diagnostics": 0,
+          "last_received": 1791470818643
+        },
+        {
+          "session_id": "69131cef-4b41-4cd5-8edd-cd17630a7798",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802369,
+          "diagnostics": 0,
+          "last_received": 1791470817619
+        },
+        {
+          "session_id": "96f5b2ab-84ff-4057-86bc-78fd96849180",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802365,
+          "diagnostics": 0,
+          "last_received": 1791470816616
+        },
+        {
+          "session_id": "1c345854-cd46-4cb6-8015-c6a7996b0a6a",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "TERMINATED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 0,
+          "created_at": 1791470802361,
+          "diagnostics": 1,
+          "last_received": 1791470815601
+        },
+        {
+          "session_id": "9993dd63-4f4c-4a41-b900-05d0042a2945",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802353,
+          "diagnostics": 0,
+          "last_received": 1791470814587
+        },
+        {
+          "session_id": "eaaa5cc8-91d2-4687-86c3-21409f9e11ce",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802344,
+          "diagnostics": 0,
+          "last_received": 1791470813563
+        },
+        {
+          "session_id": "3a67bf02-2612-402c-a85d-edf2ca4be7dc",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802340,
+          "diagnostics": 0,
+          "last_received": 1791470812573
+        },
+        {
+          "session_id": "392ddc77-7578-44df-af5f-a2b6c051b3f8",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802336,
+          "diagnostics": 0,
+          "last_received": 1791470811548
+        },
+        {
+          "session_id": "d0203078-6cd1-4ee7-ad42-5c40fbc2ee78",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802332,
+          "diagnostics": 0,
+          "last_received": 1791470810555
+        },
+        {
+          "session_id": "a5805ae6-4166-4ae8-af18-2ea28a5164e8",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802328,
+          "diagnostics": 0,
+          "last_received": 1791470809535
+        },
+        {
+          "session_id": "3185f229-5295-46e2-9164-02b6caba0c4f",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "TERMINATED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 0,
+          "created_at": 1791470802324,
+          "diagnostics": 1,
+          "last_received": 1791470808528
+        },
+        {
+          "session_id": "253404b4-23ae-4357-afdd-27a5c58db6eb",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802320,
+          "diagnostics": 0,
+          "last_received": 1791470807510
+        },
+        {
+          "session_id": "2727c7cc-d2cf-4a33-8f28-9c4adf611ba8",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802316,
+          "diagnostics": 0,
+          "last_received": 1791470806480
+        },
+        {
+          "session_id": "7a659092-6f2f-4001-b075-165d15ec7a7d",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802312,
+          "diagnostics": 0,
+          "last_received": 1791470805486
+        },
+        {
+          "session_id": "42b41cc6-6a2b-4d58-b6e1-b464d69a4a40",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802308,
+          "diagnostics": 0,
+          "last_received": 1791470804487
+        },
+        {
+          "session_id": "c1fac1a0-15af-4d26-82d2-e3ac4b0d3bdc",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802304,
+          "diagnostics": 0,
+          "last_received": 1791470803475
+        },
+        {
+          "session_id": "3832c81c-34e9-4995-83ab-19d7a3e9e5c2",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470802300,
+          "diagnostics": 0,
+          "last_received": 1791470802530
+        },
+        {
+          "session_id": "c331522b-9c32-40ae-876d-419d1d34e14f",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793055,
+          "diagnostics": 0,
+          "last_received": 1791470802230
+        },
+        {
+          "session_id": "1b228d3c-0fda-4dae-9bab-20abc836614f",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793051,
+          "diagnostics": 0,
+          "last_received": 1791470801214
+        },
+        {
+          "session_id": "3b0456b7-8c32-40e9-869f-464a83e628c6",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793047,
+          "diagnostics": 0,
+          "last_received": 1791470800211
+        },
+        {
+          "session_id": "481756b7-6b01-4960-902d-983b7f82e519",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "TERMINATED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 0,
+          "created_at": 1791470793043,
+          "diagnostics": 1,
+          "last_received": 1791470799199
+        },
+        {
+          "session_id": "3d96104f-6a12-44eb-9230-8060081ba6da",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793039,
+          "diagnostics": 0,
+          "last_received": 1791470798191
+        },
+        {
+          "session_id": "9cc8f18a-ec2d-4c39-b4f9-1607c262f65f",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793035,
+          "diagnostics": 0,
+          "last_received": 1791470797174
+        },
+        {
+          "session_id": "a9106de4-cf7a-4423-90fa-5ed824cf369c",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793031,
+          "diagnostics": 0,
+          "last_received": 1791470796155
+        },
+        {
+          "session_id": "c7d1f922-5214-47e3-aafd-f030c17f7c53",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793027,
+          "diagnostics": 0,
+          "last_received": 1791470795145
+        },
+        {
+          "session_id": "ecea0887-79d1-4e64-a8a2-221dae5cb42a",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793023,
+          "diagnostics": 0,
+          "last_received": 1791470794139
+        },
+        {
+          "session_id": "5aded247-3f88-46cf-b6ad-496ea5a13077",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470793020,
+          "diagnostics": 0,
+          "last_received": 1791470793149
+        },
+        {
+          "session_id": "beb33084-0999-4bdf-adf5-fa830d6df276",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470788831,
+          "diagnostics": 0,
+          "last_received": 1791470792947
+        },
+        {
+          "session_id": "e79abbe0-011e-4fd0-b775-1ff028b9c59a",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470788827,
+          "diagnostics": 0,
+          "last_received": 1791470791937
+        },
+        {
+          "session_id": "eb4cf2c0-59ad-4d72-93de-e0ce4d7cbf47",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470788822,
+          "diagnostics": 0,
+          "last_received": 1791470790924
+        },
+        {
+          "session_id": "d3d942d9-4d73-4921-9649-5357a679f5e4",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470788819,
+          "diagnostics": 0,
+          "last_received": 1791470789906
+        },
+        {
+          "session_id": "d18ac0c6-7928-4767-b6c0-7c87793571dd",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470788815,
+          "diagnostics": 0,
+          "last_received": 1791470788901
+        },
+        {
+          "session_id": "b36b9a8e-2fed-48b1-83c3-6dfa0b7a5682",
+          "version_id": "446019d4-e65b-40dd-8385-120b081e13e2",
+          "state": "COMPLETED",
+          "writer_epoch": 1,
+          "admission_status": "ENDED",
+          "page_index": 1,
+          "group_index": 1,
+          "created_at": 1791470788695,
+          "diagnostics": 0,
+          "last_received": 1791470788753
+        }
+      ]
+    }
+  },
+  "csv_snapshot": {
+    "schema": "export-v1",
+    "snapshot_id": "0e1bd72d-8f88-4fb8-8e7c-9df9eacc160c",
+    "study_id": "1b557b28-e3b4-442a-87da-d467baa2a9b4",
+    "actual_read_at": "2026-10-08T14:47:01.806Z",
+    "algorithm": "single-read-view-v1",
+    "source_hash": "5a37eb0cd2b0adc2c025712051f4903dce6aaea394f2a8d4d288f3a395e0d961",
+    "tables": {
+      "studies": 1,
+      "versions": 1,
+      "assets": 1,
+      "sessions": 36,
+      "slots": 36,
+      "writers": 36,
+      "permits": 36,
+      "events": 690,
+      "raw": 690,
+      "seals": 69,
+      "diagnostics": 3,
+      "marks": 0,
+      "projections": 0,
+      "dispositions": 1848,
+      "question_states": 36,
+      "trial_results": 36,
+      "audit": 4
+    },
+    "rows": 3523,
+    "bytes": 2593894,
+    "csv_hash": "467a4b01ddbeb17c657a45c171aea579ea49d21486c4e93d8633e8198639c272",
+    "raw_encoding": "exact UTF-8 in raw_utf8 cells",
+    "all_session_states": true,
+    "dictionary": {
+      "event_schema": "lab-events-v1",
+      "runner": "canvas-v1",
+      "question_states": {
+        "ANSWERED": "sealed valid answer",
+        "UNANSWERED": "sealed visible optional empty answer",
+        "SKIPPED": "verified branch hidden",
+        "UNCONFIRMED": "no sealed final snapshot for current page",
+        "NOT_REACHED": "page position not reached"
+      },
+      "software_quality": "SOFTWARE_ONLY; physical display/input timing unverified",
+      "human_marks": "append-only annotations; never rewrite raw or system diagnosis"
+    }
+  },
+  "backup": {
+    "job_id": "332a6504-ade4-4114-8be4-fd371b79df3d",
+    "files": 64,
+    "manifest_hash": "9e769acec831c5ee991813720b2d6ce22550f83f293687a0c5f6671547f6d245",
+    "independent": false,
+    "independent_target": null
+  },
+  "wal_bytes": 4272472,
+  "warnings": [],
+  "elapsed_ms": 34753
+}

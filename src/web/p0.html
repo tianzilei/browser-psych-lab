@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>可靠保存测试 · Browser Psych Lab</title></head>
+<body><main>
+  <header><p class="eyebrow">BROWSER PSYCH LAB · TEST_ONLY</p><h1>可靠保存测试问卷</h1>
+    <p>此问卷用于开发验证。答案会保存在本机浏览器和测试数据库。</p></header>
+  <section><p id="status" role="status" aria-live="polite">正在恢复保存状态…</p>
+    <form id="questionnaire" hidden>
+      <fieldset><legend>当前问卷是否正常显示？</legend>
+        <label><input type="radio" name="answer" value="正常显示" required />正常显示</label>
+        <label><input type="radio" name="answer" value="需要检查" required />需要检查</label>
+      </fieldset><button type="submit">提交并保存</button>
+    </form>
+    <button id="retry" type="button" hidden>重试保存与核对</button>
+    <button id="unknown-close" type="button" hidden>确认旧运行已中断并终止</button>
+    <p id="evidence" aria-live="polite"></p>
+  </section><p><a href="/">返回开发检查</a></p>
+</main><script type="module" src="/p0.ts"></script></body></html>

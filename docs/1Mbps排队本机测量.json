@@ -1,0 +1,357 @@
+{
+  "schema": "shaped-preparation-v2",
+  "mode": "TEST_ONLY",
+  "scope": "loopback HTTP aggregate response bodies capped at 125000 B/s; whole-session admission with 1s synthetic polling and explicit TEST_ONLY termination after preparation; headers/TLS/real ECS excluded; no trial timing or formal capacity claim",
+  "configured_mbps": 1,
+  "session_concurrency": 2,
+  "maximum_observed_active_sessions": 2,
+  "admission_queue": {
+    "active": 0,
+    "queued": 0,
+    "limit": 2,
+    "capacity": 64,
+    "over_limit": 0,
+    "pinned": 0
+  },
+  "session_admitted": [
+    {
+      "index": 0,
+      "position": 0,
+      "status": "ACTIVE"
+    },
+    {
+      "index": 1,
+      "position": 0,
+      "status": "ACTIVE"
+    },
+    {
+      "index": 2,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 3,
+      "position": 2,
+      "status": "QUEUED"
+    },
+    {
+      "index": 4,
+      "position": 3,
+      "status": "QUEUED"
+    },
+    {
+      "index": 5,
+      "position": 4,
+      "status": "QUEUED"
+    },
+    {
+      "index": 6,
+      "position": 5,
+      "status": "QUEUED"
+    },
+    {
+      "index": 7,
+      "position": 6,
+      "status": "QUEUED"
+    },
+    {
+      "index": 8,
+      "position": 7,
+      "status": "QUEUED"
+    },
+    {
+      "index": 9,
+      "position": 8,
+      "status": "QUEUED"
+    },
+    {
+      "index": 10,
+      "position": 9,
+      "status": "QUEUED"
+    },
+    {
+      "index": 11,
+      "position": 10,
+      "status": "QUEUED"
+    },
+    {
+      "index": 12,
+      "position": 11,
+      "status": "QUEUED"
+    },
+    {
+      "index": 13,
+      "position": 12,
+      "status": "QUEUED"
+    },
+    {
+      "index": 14,
+      "position": 13,
+      "status": "QUEUED"
+    },
+    {
+      "index": 15,
+      "position": 14,
+      "status": "QUEUED"
+    },
+    {
+      "index": 16,
+      "position": 15,
+      "status": "QUEUED"
+    },
+    {
+      "index": 17,
+      "position": 16,
+      "status": "QUEUED"
+    },
+    {
+      "index": 18,
+      "position": 17,
+      "status": "QUEUED"
+    },
+    {
+      "index": 19,
+      "position": 18,
+      "status": "QUEUED"
+    }
+  ],
+  "participants": 20,
+  "image_bytes": 197301,
+  "source_hash": "38230f8e07feb380eb7aea9bf942f744ae1539d3547956cc2b980732209aa900",
+  "maximum_simultaneous_asset_streams": 1,
+  "admitted": [
+    {
+      "index": 1,
+      "position": 0,
+      "status": "READY"
+    },
+    {
+      "index": 0,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 2,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 3,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 4,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 5,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 6,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 7,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 8,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 9,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 10,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 11,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 12,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 13,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 14,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 15,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 16,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 17,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 18,
+      "position": 1,
+      "status": "QUEUED"
+    },
+    {
+      "index": 19,
+      "position": 1,
+      "status": "QUEUED"
+    }
+  ],
+  "finished": [
+    1,
+    0,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "results": [
+    {
+      "index": 0,
+      "wait_ms": 2307.303042,
+      "complete_ms": 3998.7899999999995
+    },
+    {
+      "index": 1,
+      "wait_ms": 160.6992499999999,
+      "complete_ms": 1847.6225
+    },
+    {
+      "index": 2,
+      "wait_ms": 4458.5482090000005,
+      "complete_ms": 6143.040833999999
+    },
+    {
+      "index": 3,
+      "wait_ms": 7132.011959000001,
+      "complete_ms": 8839.67225
+    },
+    {
+      "index": 4,
+      "wait_ms": 9844.75875,
+      "complete_ms": 11527.885709
+    },
+    {
+      "index": 5,
+      "wait_ms": 11984.519625,
+      "complete_ms": 13655.788875
+    },
+    {
+      "index": 6,
+      "wait_ms": 14646.866667,
+      "complete_ms": 16338.232291999999
+    },
+    {
+      "index": 7,
+      "wait_ms": 17336.980375,
+      "complete_ms": 19013.049334
+    },
+    {
+      "index": 8,
+      "wait_ms": 19869.694084,
+      "complete_ms": 21542.078875
+    },
+    {
+      "index": 9,
+      "wait_ms": 22005.946167,
+      "complete_ms": 23679.463334
+    },
+    {
+      "index": 10,
+      "wait_ms": 24121.929667,
+      "complete_ms": 25793.563209
+    },
+    {
+      "index": 11,
+      "wait_ms": 26641.376792,
+      "complete_ms": 28300.884584
+    },
+    {
+      "index": 12,
+      "wait_ms": 28753.281541999997,
+      "complete_ms": 30426.081625
+    },
+    {
+      "index": 13,
+      "wait_ms": 31416.80475,
+      "complete_ms": 33084.608167000006
+    },
+    {
+      "index": 14,
+      "wait_ms": 34076.520167,
+      "complete_ms": 35752.378709000004
+    },
+    {
+      "index": 15,
+      "wait_ms": 36194.170375,
+      "complete_ms": 37876.038959000005
+    },
+    {
+      "index": 16,
+      "wait_ms": 38306.776750000005,
+      "complete_ms": 39980.957
+    },
+    {
+      "index": 17,
+      "wait_ms": 40971.386459,
+      "complete_ms": 42629.065167
+    },
+    {
+      "index": 18,
+      "wait_ms": 43618.227667,
+      "complete_ms": 45288.640250000004
+    },
+    {
+      "index": 19,
+      "wait_ms": 45734.206750000005,
+      "complete_ms": 47390.34275
+    }
+  ],
+  "elapsed_ms": 47405.577792000004,
+  "shaped_body_bytes": 4114277,
+  "queue": {
+    "active": 0,
+    "queued": 0,
+    "streams": 0,
+    "limit": 1,
+    "capacity": 64
+  }
+}

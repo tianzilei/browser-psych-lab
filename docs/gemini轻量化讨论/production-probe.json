@@ -1,0 +1,28 @@
+{
+  "scope": "TEST_ONLY; isolated npm ci --omit=dev --offline; built server and public page only",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0"
+  },
+  "directServerDependencies": {
+    "@fastify/static": "10.1.5",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.5"
+  },
+  "absentBuildOnlyDependencies": [
+    "vite",
+    "tsx",
+    "typescript",
+    "@playwright/test",
+    "idb",
+    "survey-core",
+    "survey-js-ui"
+  ],
+  "sqlite": "SQLite 3.53.4",
+  "readiness": 200,
+  "publicHTML": 200,
+  "publicBundle": 200,
+  "contentEncoding": "br",
+  "cacheControl": "public, max-age=31536000, immutable"
+}

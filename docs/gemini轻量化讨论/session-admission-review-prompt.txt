@@ -1,0 +1,63 @@
+继续本项目细节审查，用户最新要求整个参加者会话同时1-2例，其余FIFO等候，1Mbps图片流仍1。只看并发/恢复/数据合同的真实漏洞，最多500中文字，不外部搜索，结尾 SESSION_ADMISSION_REVIEW_COMPLETE。
+实现说明：SESSION_CONCURRENCY只能1或2默认2；lab_session_queue是追加操作表，不改lab_sessions原state/raw/frozen/seals。所有操作在唯一DBwriter的SQLite immediate事务执行。participant.admission join/touch/leave需session Cookie授权。claim/reserve/permit/seal/finalize/preparation/asset在事务内admission.join；若不ACTIVE返回Rejection并在事务提交后抛SESSION_WAITING(409)，所以排队插入不回滚且waiting不能开启任务。ingest/receipts/terminate/reconcile仍允许保留/补传旧字节，创建等待会话没有writer故不能伪造合法新事件。group seal维护重放之前先做admission.check。完成/明确终止调用ended回收；QUEUED或ACTIVE无ISSUED时5min失联过期；queued poll3/10s、active60s续租，DB UPDATE合并最多1/min。heartbeat续当前writer的5min lease。新前端等待时不render题目不claim；刷新复用session/原ordinal但rotate nonce；主动cancel exactnonce leave；pagehide只停续租，5min TTL兜底，不自动丢位置。开始图片组前stop全部monitor并等待在途heartbeat结束，再reserve/permit，计时组零HTTP；ISSUED从此pin名额不依赖租约/页面可见/进程存活。新API基于server剩余租期+performance.now检查，避免电脑墙钟偏差。队列随SQLite备份复制，恢复仍关闭gate/保留ISSUED。构造器把旧已ISSUED会话补入ACTIVE；若旧并行/降配超过新limit，先保留既有permit并阻止继续放行。图片PreparationQueue仍原内存FIFO/1流/真实close回收。
+代码：
+import type Database from 'better-sqlite3';
+import {randomUUID} from 'node:crypto';
+import {ContractError} from '../shared/contract.js';
+import type {SessionAdmissionStatus} from '../shared/lab-contract.js';
+interface Entry {ordinal:number;session_id:string;ticket_id:string;status:SessionAdmissionStatus['status'];lease_until:number}
+export const SESSION_LEASE_MS=5*60000;
+// Operational FIFO state is durable. An ISSUED permit pins a slot regardless of
+// elapsed time, including offline runs and unconfirmed process interruption.
+export class SessionAdmission {
+  constructor(private db:Database.Database,readonly limit=2,private now=Date.now){
+    if(!Number.isInteger(limit)||limit<1||limit>2)throw new Error('INVALID_SESSION_CONCURRENCY');
+    db.transaction(()=>{
+      for(const row of db.prepare("SELECT s.session_id FROM lab_sessions s WHERE s.state NOT IN ('COMPLETED','TERMINATED') AND EXISTS(SELECT 1 FROM lab_permits p WHERE p.session_id=s.session_id AND p.state='ISSUED') ORDER BY s.rowid").all() as {session_id:string}[]){
+        db.prepare("INSERT INTO lab_session_queue(session_id,ticket_id,status,lease_until) VALUES (?,?,'ACTIVE',?) ON CONFLICT(session_id) DO UPDATE SET status='ACTIVE'").run(row.session_id,randomUUID(),this.now()+SESSION_LEASE_MS);
+      }
+    }).immediate();
+  }
+  private entry(sid:string){return this.db.prepare('SELECT * FROM lab_session_queue WHERE session_id=?').get(sid) as Entry|undefined;}
+  private terminal(sid:string){const row=this.db.prepare('SELECT state FROM lab_sessions WHERE session_id=?').get(sid) as {state:string};return ['COMPLETED','TERMINATED'].includes(row.state);}
+  private pinned(sid:string){return !!this.db.prepare("SELECT 1 FROM lab_permits WHERE session_id=? AND state='ISSUED'").get(sid);}
+  private sweep(){
+    this.db.prepare("UPDATE lab_session_queue SET status='ENDED' WHERE status IN ('ACTIVE','QUEUED') AND session_id IN (SELECT session_id FROM lab_sessions WHERE state IN ('COMPLETED','TERMINATED'))").run();
+    this.db.prepare("UPDATE lab_session_queue SET status='EXPIRED' WHERE status IN ('ACTIVE','QUEUED') AND lease_until<=? AND NOT EXISTS(SELECT 1 FROM lab_permits p WHERE p.session_id=lab_session_queue.session_id AND p.state='ISSUED')").run(this.now());
+    const active=(this.db.prepare("SELECT count(*) AS n FROM lab_session_queue WHERE status='ACTIVE'").get() as {n:number}).n;
+    const next=this.db.prepare("SELECT session_id FROM lab_session_queue WHERE status='QUEUED' ORDER BY ordinal LIMIT ?").all(Math.max(0,this.limit-active)) as {session_id:string}[];
+    for(const row of next)this.db.prepare("UPDATE lab_session_queue SET status='ACTIVE',lease_until=? WHERE session_id=?").run(this.now()+SESSION_LEASE_MS,row.session_id);
+  }
+  private describe(row:Entry|undefined):SessionAdmissionStatus{
+    const position=row?.status==='QUEUED'?(this.db.prepare("SELECT count(*) AS n FROM lab_session_queue WHERE status='QUEUED' AND ordinal<=?").get(row.ordinal) as {n:number}).n:0;
+    return {status:row?.status??'LEFT',ticket_id:row?.ticket_id??null,position,limit:this.limit,poll_ms:row?.status==='ACTIVE'?60000:position===1?3000:10000,lease_until:row?.lease_until??0,lease_remaining_ms:Math.max(0,(row?.lease_until??0)-this.now()),pinned:row?this.pinned(row.session_id):false};
+  }
+  view(sid:string){return this.describe(this.entry(sid));}
+  join(sid:string,nonce?:string){
+    this.sweep();if(this.terminal(sid))return {...this.view(sid),status:'ENDED' as const};
+    let row=this.entry(sid);const ticket=nonce??row?.ticket_id??randomUUID();
+    if(!row||!['ACTIVE','QUEUED'].includes(row.status)){
+      if((this.db.prepare("SELECT count(*) AS n FROM lab_session_queue WHERE status IN ('ACTIVE','QUEUED')").get() as {n:number}).n>=64)throw new ContractError('SESSION_QUEUE_FULL',503);
+      this.db.prepare('DELETE FROM lab_session_queue WHERE session_id=?').run(sid);
+      this.db.prepare("INSERT INTO lab_session_queue(session_id,ticket_id,status,lease_until) VALUES (?,?,'QUEUED',?)").run(sid,ticket,this.now()+SESSION_LEASE_MS);
+    }else if(row.ticket_id!==ticket)this.db.prepare('UPDATE lab_session_queue SET ticket_id=? WHERE session_id=?').run(ticket,sid);
+    this.renew(sid);this.sweep();row=this.entry(sid);return this.describe(row);
+  }
+  private renew(sid:string){
+    // Polling normally reads only; at most one lease UPDATE per minute.
+    this.db.prepare("UPDATE lab_session_queue SET lease_until=? WHERE session_id=? AND status IN ('ACTIVE','QUEUED') AND lease_until<=?").run(this.now()+SESSION_LEASE_MS,sid,this.now()+SESSION_LEASE_MS-60000);
+  }
+  touch(sid:string,nonce:string){
+    this.sweep();const row=this.entry(sid);if(!row||row.ticket_id!==nonce)throw new ContractError('SESSION_QUEUE_FENCED',409);
+    this.renew(sid);return this.describe(this.entry(sid));
+  }
+  leave(sid:string,nonce:string){
+    const row=this.entry(sid);if(row?.ticket_id!==nonce)return {status:'LEFT' as const};
+    if(this.pinned(sid))throw new ContractError('RUN_LOCKED',409);
+    this.db.prepare("UPDATE lab_session_queue SET status='LEFT',lease_until=0 WHERE session_id=?").run(sid);this.sweep();return {status:'LEFT' as const};
+  }
+  ended(sid:string){this.db.prepare("UPDATE lab_session_queue SET status='ENDED',lease_until=0 WHERE session_id=?").run(sid);this.sweep();}
+  stats(){this.sweep();const rows=this.db.prepare("SELECT status,count(*) AS n FROM lab_session_queue WHERE status IN ('ACTIVE','QUEUED') GROUP BY status").all() as {status:string;n:number}[];
+    const active=rows.find(r=>r.status==='ACTIVE')?.n??0;return {active,queued:rows.find(r=>r.status==='QUEUED')?.n??0,limit:this.limit,capacity:64,over_limit:Math.max(0,active-this.limit),pinned:(this.db.prepare("SELECT count(*) AS n FROM lab_session_queue q WHERE q.status='ACTIVE' AND EXISTS(SELECT 1 FROM lab_permits p WHERE p.session_id=q.session_id AND p.state='ISSUED')").get() as {n:number}).n};}
+}
+

@@ -1,0 +1,28 @@
+[Unit]
+Description=Browser Psych Lab
+After=network.target
+[Service]
+Type=simple
+User=psychlab
+Group=psychlab
+WorkingDirectory=/opt/browser-psych-lab/current
+EnvironmentFile=/etc/browser-psych-lab.env
+ExecStart=/opt/node/bin/node dist/server/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+# Leave CPU capacity for nginx, SQLite fsync and kernel I/O on a 2 vCPU host.
+Environment=UV_THREADPOOL_SIZE=2
+CPUWeight=100
+IOWeight=100
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/browser-psych-lab /mnt/psychlab-backup
+LimitNOFILE=4096
+MemoryMax=1536M
+TasksMax=64
+[Install]
+WantedBy=multi-user.target

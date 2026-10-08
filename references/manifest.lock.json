@@ -1,0 +1,153 @@
+{
+  "lockedAt": "2026-10-08",
+  "purpose": "Read-only source references. No upstream install/build scripts are executed.",
+  "repositories": [
+    {
+      "name": "survey-library",
+      "url": "https://github.com/surveyjs/survey-library.git",
+      "commit": "be9813ce647e050476667535b6648d31f1081680",
+      "version": "3.2.0",
+      "usage": "runtime-source-reference",
+      "sourceIdentity": "GitHub release tag v3.2.0; npm gitHead differs and is not assumed equivalent",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "spdx": "MIT",
+          "sha256": "6d3c6a3645bb121b1f6157b3c4ae266ad888b9245f07e6ac8e992083350957f7",
+          "evidence": "licenses/survey-library-LICENSE.txt"
+        }
+      ]
+    },
+    {
+      "name": "idb",
+      "url": "https://github.com/jakearchibald/idb.git",
+      "commit": "654c746bef13f9fe7f5871e03ac58015cebace5a",
+      "version": "8.0.4",
+      "usage": "runtime-source-reference",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "spdx": "ISC",
+          "sha256": "873a2f333fda393ec3464f4579209b019d98e97c3bf498b10e85f630162fd708",
+          "evidence": "licenses/idb-LICENSE.txt"
+        }
+      ]
+    },
+    {
+      "name": "fastify",
+      "url": "https://github.com/fastify/fastify.git",
+      "commit": "ba235fdcd9a83a4c7ccf793f7b2596a8f65389b6",
+      "version": "5.12.5",
+      "usage": "runtime-source-reference",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "spdx": "MIT",
+          "sha256": "23c91863859171455a536380991b4160fee4e19e2d8dc353ecf7143cc4e53ca2",
+          "evidence": "licenses/fastify-LICENSE.txt"
+        }
+      ]
+    },
+    {
+      "name": "jspsych",
+      "url": "https://github.com/jspsych/jsPsych.git",
+      "commit": "3e24c16c04dc3d2c6406c219126a9c9dc4737627",
+      "version": "commit-snapshot",
+      "usage": "reference-only",
+      "licenses": [
+        {
+          "path": "license.txt",
+          "spdx": "MIT",
+          "sha256": "412c203cb08996fa95525ad0a98a79985f844a7d23b9bef31a6eb2b864600fc9",
+          "evidence": "licenses/jspsych-license.txt.txt"
+        }
+      ]
+    },
+    {
+      "name": "lab.js",
+      "url": "https://github.com/FelixHenninger/lab.js.git",
+      "commit": "b8206ad7e558476a7222adc91c0bc184329832d9",
+      "version": "commit-snapshot",
+      "usage": "reference-only",
+      "licenses": [
+        {
+          "path": "license.md",
+          "spdx": "component-specific",
+          "sha256": "77a550781cf849092fe6e0c91cf994457c390673fc2d838e2b1281e97cbe9477",
+          "evidence": "licenses/lab.js-license.md.txt"
+        },
+        {
+          "path": "packages/library/license",
+          "spdx": "Apache-2.0",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "evidence": "licenses/lab.js-packages-library-license.txt"
+        },
+        {
+          "path": "packages/builder/license",
+          "spdx": "AGPL-3.0",
+          "sha256": "fb9ce8b6dfc4f65ccb572b54cc4b7b0bc2cc1189f62fd1357ee3b044b2c77fd8",
+          "evidence": "licenses/lab.js-packages-builder-license.txt"
+        }
+      ]
+    },
+    {
+      "name": "jatos",
+      "url": "https://github.com/JATOS/JATOS.git",
+      "commit": "de1654b91a4b42e16dd4953da466ef27b659b642",
+      "version": "commit-snapshot",
+      "usage": "reference-only",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "spdx": "Apache-2.0",
+          "sha256": "d0c754452a180078a503fd0d10282ca69385c2a36e38a9ba6269a7ad8db126be",
+          "evidence": "licenses/jatos-LICENSE.txt"
+        }
+      ]
+    },
+    {
+      "name": "formio",
+      "url": "https://github.com/formio/formio.js.git",
+      "commit": "455e2d5e895190e9d2c42e2b4b892c3a0cfd979a",
+      "version": "commit-snapshot",
+      "usage": "reference-only",
+      "licenses": [
+        {
+          "path": "LICENSE.txt",
+          "spdx": "MIT",
+          "sha256": "920f7e0ce18b2816a8dff8bd788a43ef6d0701ed01a6334856c9de4a593ed8b7",
+          "evidence": "licenses/formio-LICENSE.txt.txt"
+        }
+      ]
+    },
+    {
+      "name": "better-sqlite3",
+      "url": "https://github.com/WiseLibs/better-sqlite3.git",
+      "commit": "dbc2ea1165fef1f599b9be12faea33fa5e9d7ffb",
+      "version": "13.0.3",
+      "usage": "runtime-source-reference",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "spdx": "MIT",
+          "sha256": "09856b52897c91ab67e7456ef43067019f31dfd3b87fda72e655736b1ebdee55",
+          "evidence": "licenses/better-sqlite3-LICENSE.txt"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "prng/xoshiro128starstar.c",
+      "url": "https://prng.di.unimi.it/xoshiro128starstar.c",
+      "sha256": "2e3e540e15e1b1edf6144509ba3a71bc4611e3676d52e03d567a0f230a141a67",
+      "license": "public-domain dedication and permissive grant in source header"
+    },
+    {
+      "path": "prng/f2x.c",
+      "url": "https://prng.di.unimi.it/f2x.c",
+      "sha256": "62e9b22bd882c6dade29a57cabcd079abf83522218415e3e9a95a4e6086dac99",
+      "license": "public-domain dedication and permissive grant in source header"
+    }
+  ]
+}

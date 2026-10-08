@@ -1,0 +1,54 @@
+{
+  "name": "browser-psych-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.21.0 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.19.0",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "references:fetch": "node scripts/references.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "tsx watch src/server/main.ts",
+    "dev:web": "vite --config vite.config.ts",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json",
+    "build": "tsc -p tsconfig.server.json && vite build --config vite.config.ts && node scripts/precompress.mjs && node scripts/release.mjs",
+    "auth:setup": "node --import tsx scripts/auth-setup.mjs",
+    "start": "node dist/server/main.js",
+    "smoke": "node scripts/smoke.mjs",
+    "profile:foundation": "node scripts/profile-foundation.mjs",
+    "test:browser": "playwright test",
+    "test:unit": "node --import tsx --test tests/unit/*.test.mjs",
+    "check": "npm run typecheck && npm run build && npm run smoke && npm run test:unit && npm run test:browser",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node dist/server/restore.js",
+    "profile:mixed": "node --import tsx scripts/profile-mixed.mjs",
+    "profile:bandwidth": "node --import tsx scripts/profile-bandwidth.mjs"
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.5",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.5",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.19.1",
+    "idb": "8.0.4",
+    "survey-core": "3.2.0",
+    "survey-js-ui": "3.2.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vite": "8.3.3"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true,
+    "fsevents": false
+  }
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=Browser Psych Lab daily joint backup
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target
