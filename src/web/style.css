@@ -10,10 +10,11 @@ section { background: white; border: 1px solid #dce5dc; border-radius: 14px; pad
 ul { padding-left: 20px; line-height: 2; }
 li[data-status="failed"] { color: #ad332f; }
 canvas { max-width: 100%; border-radius: 8px; }
+#canvas { height: auto; }
 button { font: inherit; background: #20523e; color: white; border: 0; border-radius: 7px; padding: 10px 16px; cursor: pointer; }
 button:disabled { opacity: .6; cursor: wait; }
 button:focus-visible { outline: 3px solid #92b59f; outline-offset: 3px; }
-fieldset { border: 1px solid #dce5dc; margin-bottom: 20px; padding: 16px; }
+fieldset { min-width: 0; border: 1px solid #dce5dc; margin-bottom: 20px; padding: 16px; }
 label { display: block; padding: 10px 0; }
 input[type="radio"] { margin-right: 10px; }
 [hidden] { display: none !important; }
@@ -33,6 +34,7 @@ pre { max-height:600px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywh
 .response-buttons { display:flex; gap:12px; width:100%; max-width:720px; touch-action:none; }
 .response-buttons button { flex:1; min-height:56px; user-select:none; touch-action:none; }
 #stimulus { border-radius:0; max-width:none; }
+#evidence { word-break: break-all; max-height: 12rem; overflow-y: auto; user-select: text; }
 body:has(#stimulus) main { margin:16px auto; padding:0 16px; }
 body:has(#stimulus) #status { height:60px; overflow:hidden; }
 .running { overflow:hidden; touch-action:none; overscroll-behavior:none; }
