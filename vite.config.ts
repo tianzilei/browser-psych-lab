@@ -15,7 +15,9 @@ export default defineConfig({
     target: 'es2022',
     rolldownOptions: { input: {
       index: fileURLToPath(new URL('./src/web/index.html', import.meta.url)),
+      diagnostics: fileURLToPath(new URL('./src/web/diagnostics.html', import.meta.url)),
       admin: fileURLToPath(new URL('./src/web/admin.html', import.meta.url)),
+      simulate: fileURLToPath(new URL('./src/web/simulate.html', import.meta.url)),
       participate: fileURLToPath(new URL('./src/web/participate.html', import.meta.url)),
       run: fileURLToPath(new URL('./src/web/run.html', import.meta.url)),
       p0: fileURLToPath(new URL('./src/web/p0.html', import.meta.url)),

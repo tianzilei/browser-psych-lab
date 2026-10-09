@@ -1,6 +1,6 @@
 import { parentPort,workerData } from 'node:worker_threads';
 import Database from 'better-sqlite3';
-import sharp from 'sharp';
+import {imageInfo,unpackImages} from './image-package.js';
 import { mkdir,unlink,copyFile,readdir,lstat,chmod,readFile } from 'node:fs/promises';
 import { join,dirname } from 'node:path';
 import { randomUUID,createHash } from 'node:crypto';
@@ -13,7 +13,6 @@ import { parseLabEvent,type GroupPlan,type RunRecord } from '../shared/lab-contr
 import { id,object } from '../shared/contract.js';
 
 const config=workerData as {path:string;root:string;job:string;kind:string;config:Record<string,unknown>};
-sharp.cache(false);sharp.concurrency(1);
 const phase=(phase:string,data?:unknown)=>parentPort!.postMessage({phase,data});
 async function copyChecked(source:string,target:string){const bytes=await openPrivate(source);try{await bytes.close();await copyFile(source,target,constants.COPYFILE_EXCL);const file=await openPrivate(target);try{await file.sync();}finally{await file.close();}}finally{await bytes.close().catch(()=>{});}return fileHash(target);}
 async function copyTree(source:string,target:string,files:{path:string;hash:string}[],prefix:string){
@@ -31,16 +30,31 @@ async function run(){
     if(['BACKUP','EXPORT'].includes(String(config.config.original_kind)))await inspect(join(config.root,config.config.original_kind==='BACKUP'?'research-backups':'research-exports',config.job),'job');
     if(original.asset_id){const asset=id(original.asset_id);try{const path=await assetPath(config.root,asset),st=await lstat(path);inventory.push({path:`asset/${asset}`,hash:await fileHash(path),bytes:st.size});}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
       const tempdir=join(config.root,'research-assets','.tmp');try{for(const name of await readdir(tempdir))if(name.startsWith(`${asset}-`)){const st=await lstat(join(tempdir,name));inventory.push({path:`temporary/${name}`,hash:await fileHash(join(tempdir,name)),bytes:st.size});}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
+    if(original.package_id){const packageId=id(original.package_id),directory=join(config.root,'research-assets','packages',packageId);await inspect(directory,'package');
+      let manifest:unknown[]=[];try{manifest=JSON.parse(await readFile(join(directory,'manifest.json'),'utf8')) as unknown[];}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+      if(!Array.isArray(manifest)||manifest.length>100)throw new Error('INVALID_PACKAGE_RECOVERY_MANIFEST');
+      for(const item of manifest){const asset=id(object(item).asset_id);try{const path=await assetPath(config.root,asset),st=await lstat(path);inventory.push({path:`asset/${asset}`,hash:await fileHash(path),bytes:st.size});}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
+      const temporary=join(config.root,'research-assets','.tmp');try{for(const name of await readdir(temporary))if(name.startsWith(`${packageId}-`))inventory.push({path:`temporary/${name}`,hash:await fileHash(join(temporary,name)),bytes:(await lstat(join(temporary,name))).size});}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    }
     return {verified:true,report:config.config.report,inventory,disposition:'preserved-for-explicit-maintenance',verified_at:new Date().toISOString()};
   }
   if(config.kind==='UPLOAD'){
     const temp=String(config.config.temp),asset=id(config.config.asset_id);const st=await lstat(temp);
     if(!st.isFile()||st.isSymbolicLink()||st.size>8*1024*1024)throw new Error('INVALID_UPLOAD_FILE');
-    const image=sharp(temp,{limitInputPixels:4_000_000,failOn:'warning'});const meta=await image.metadata();
-    if(!['png','jpeg','webp'].includes(meta.format??'')||(meta.pages??1)!==1||meta.delay||!meta.width||!meta.height||(meta.orientation??1)!==1)throw new Error('STATIC_IMAGE_REQUIRED');
-    phase('DECODING');await image.timeout({seconds:10}).raw().toBuffer();
+    const meta=imageInfo(await readFile(temp));
     const hash=await publishExclusive(temp,await assetPath(config.root,asset));
-    return {asset_id:asset,info:{hash,bytes:st.size,width:meta.width,height:meta.height,format:meta.format,decoder:`sharp-${sharp.versions.sharp}`}};
+    return {asset_id:asset,info:{hash,bytes:st.size,...meta}};
+  }
+  if(config.kind==='PACKAGE'){
+    const temp=String(config.config.temp),packageId=id(config.config.package_id);
+    const packed=await readFile(temp);phase('VALIDATING_HEADERS');let images:ReturnType<typeof unpackImages>;
+    try{images=unpackImages(packed);}catch(error){await unlink(temp);await syncDirectory(dirname(temp));throw Object.assign(new Error(error instanceof Error?error.message:'INVALID_ZIP'),{validation_rejected:true});}
+    const dir=await privateRoot(join(config.root,'research-assets','packages',packageId)),result=images.map(image=>({asset_id:randomUUID(),path:image.path,hash:digest(image.bytes),bytes:image.bytes.length,...image.info}));
+    // Write the inventory before publishing anything, so interrupted work is recoverable.
+    await writeDurable(join(dir,'manifest.json'),stableJSON(result));
+    for(const [index,image] of images.entries()){const asset=result[index]!.asset_id,staged=join(dir,asset);await writeDurable(staged,image.bytes);await publishExclusive(staged,await assetPath(config.root,asset));}
+    await unlink(temp);await syncDirectory(dirname(temp));
+    return {study_id:config.config.study_id,name:config.config.name,hash:digest(packed),images:result};
   }
   if(config.kind==='DELETE'){
     const path=await assetPath(config.root,id(config.config.asset_id));
@@ -109,14 +123,15 @@ async function run(){
           sessions:'SELECT session_id,study_id,version_id,admission_id,state,writer_id,writer_epoch,lease_until,page_index,group_index,answers,path,allocation_id,completion,created_at FROM lab_sessions WHERE study_id=?',
           slots:'SELECT a.* FROM lab_slots a JOIN lab_versions v USING(version_id) WHERE v.study_id=?',
         };
-        for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
+        queries.questionnaire_sources='SELECT * FROM lab_questionnaire_sources WHERE study_id=?';queries.packages='SELECT * FROM lab_packages WHERE study_id=?';queries.package_images='SELECT * FROM lab_package_images WHERE study_id=?';
+        for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
         queries.dispositions='SELECT d.* FROM lab_dispositions d JOIN lab_raw r USING(receipt_id) JOIN lab_sessions s USING(session_id) WHERE s.study_id=?';
         for(const [table,query]of Object.entries(queries)){tables[table]=0;
           for(const row of db.prepare(query).iterate(sid) as Iterable<Record<string,unknown>>){if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');
-            if(Buffer.isBuffer(row.raw))row.raw_utf8=(row.raw as Buffer).toString('utf8');delete row.raw;const encoded=stableJSON(row);source.update(`${table}\0${encoded}\n`);emit(`${cell(table)},${cell(encoded)}\r\n`);tables[table]++;}
+            if(Buffer.isBuffer(row.raw)){row.raw_utf8=(row.raw as Buffer).toString('utf8');delete row.raw;}const encoded=stableJSON(row);source.update(`${table}\0${encoded}\n`);emit(`${cell(table)},${cell(encoded)}\r\n`);tables[table]++;}
         }
         // Derived trial rows are recomputed from the same read view, including interrupted histories.
-        for(const session of db.prepare('SELECT s.session_id,s.page_index,s.path,v.protocol FROM lab_sessions s JOIN lab_versions v USING(version_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;page_index:number;path:string;protocol:string}>){
+        for(const session of db.prepare('SELECT s.session_id,s.version_id,s.page_index,s.path,v.protocol FROM lab_sessions s JOIN lab_versions v USING(version_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;version_id:string;page_index:number;path:string;protocol:string}>){
           const protocol=JSON.parse(session.protocol) as Protocol,path=JSON.parse(session.path) as string[],answers:Record<string,Answer>={},states:Record<string,unknown>={};
           for(const [index,page]of protocol.pages.entries()){
             if(path.includes(page.id)){const event=db.prepare("SELECT envelope FROM lab_events WHERE session_id=? AND scope=? AND kind='PAGE_SNAPSHOT' AND disposition='ACCEPTED' ORDER BY sequence DESC LIMIT 1").get(session.session_id,page.id) as {envelope:string}|undefined;if(!event)throw new Error('EXPORTED_PAGE_EVIDENCE_MISSING');const snapshot=pageSnapshot(page,answers,object(parseLabEvent(event.envelope).payload.answers) as Record<string,Answer>);for(const [q,state]of Object.entries(snapshot)){states[q]={page_id:page.id,...state};answers[q]=state.answer;}}
@@ -124,6 +139,14 @@ async function run(){
             else for(const q of page.questions)states[q.id]={page_id:page.id,state:index===session.page_index?'UNCONFIRMED':'NOT_REACHED',answer:null};
           }
           const json=stableJSON({session_id:session.session_id,states});emit(`${cell('question_states')},${cell(json)}\r\n`);source.update(`question_states\0${json}\n`);rows++;tables.question_states=(tables.question_states??0)+1;
+          for(const page of protocol.pages)for(const q of page.questions)if(q.type==='scales'){
+            const parent=object(states[q.id]),answer=parent.answer&&typeof parent.answer==='object'?object(parent.answer):{};
+            for(const axis of q.axes!){const value=typeof answer[axis.id]==='number'?answer[axis.id] as number:null;
+              const state=value!==null?'ANSWERED':['ANSWERED','UNANSWERED'].includes(String(parent.state))?'UNANSWERED':parent.state;
+              const row={session_id:session.session_id,version_id:session.version_id,page_id:page.id,question_id:q.id,axis_id:axis.id,axis_title:axis.title,min:axis.min,max:axis.max,value,label:value===null?null:axis.labels[value-axis.min],state};
+              const encoded=stableJSON(row);if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');emit(`${cell('axis_answers')},${cell(encoded)}\r\n`);source.update(`axis_answers\0${encoded}\n`);tables.axis_answers=(tables.axis_answers??0)+1;
+            }
+          }
         }
         for(const permit of db.prepare('SELECT p.* FROM lab_permits p JOIN lab_sessions s USING(session_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;scope:string;plan:string;state:string;writer_epoch:number}>){
           const replay=new RunReplay(JSON.parse(permit.plan));let replayError:string|null=null;let previous:{event_id:string;hash:string}|null=null;let sequence=0;const sourceDispositions:Record<string,number>={};
@@ -135,11 +158,11 @@ async function run(){
         emit(`${cell('asset_refs')},${cell(stableJSON(refs))}\r\n`);source.update(stableJSON(refs));db.exec('COMMIT');
         fsyncSync(fd);
         const manifest={schema:'export-v1',snapshot_id:snapshot,study_id:sid,actual_read_at:actualReadAt,algorithm:'single-read-view-v1',source_hash:source.digest('hex'),tables,rows,bytes,csv_hash:await fileHash(output),raw_encoding:'exact UTF-8 in raw_utf8 cells',all_session_states:true,
-          dictionary:{event_schema:'lab-events-v1',runner:'canvas-v1',question_states:{ANSWERED:'sealed valid answer',UNANSWERED:'sealed visible optional empty answer',SKIPPED:'verified branch hidden',UNCONFIRMED:'no sealed final snapshot for current page',NOT_REACHED:'page position not reached'},software_quality:'SOFTWARE_ONLY; physical display/input timing unverified',human_marks:'append-only annotations; never rewrite raw or system diagnosis'}};
+          dictionary:{consents:'Explicit agreement to frozen consent document; SHA-256 of stableJSON(consent); accepted_at is server Unix milliseconds; join sessions/version protocol for exact text',event_schema:'lab-events-v1',runner:'canvas-v1',axis_answers:'One row per axis; integer value and configured label; null means unanswered; skipped/unconfirmed/not-reached states retained',question_states:{ANSWERED:'sealed valid answer',UNANSWERED:'sealed visible optional empty answer',SKIPPED:'verified branch hidden',UNCONFIRMED:'no sealed final snapshot for current page',NOT_REACHED:'page position not reached'},software_quality:'SOFTWARE_ONLY; physical display/input timing unverified',human_marks:'append-only annotations; never rewrite raw or system diagnosis'}};
         await writeDurable(join(target,'manifest.json'),stableJSON(manifest));await syncDirectory(target);return manifest;
       }finally{closeSync(fd);if(db.inTransaction)db.exec('ROLLBACK');}
     }
     throw new Error('UNSUPPORTED_MAINTENANCE_JOB');
   }finally{db.close();}
 }
-try{const result=await run();parentPort!.postMessage({result});}catch(error){parentPort!.postMessage({error:error instanceof Error?error.message:'MAINTENANCE_FAILED'});}finally{parentPort!.close();}
+try{const result=await run();parentPort!.postMessage({result});}catch(error){parentPort!.postMessage({error:error instanceof Error?error.message:'MAINTENANCE_FAILED',validation_rejected:(error as {validation_rejected?:boolean})?.validation_rejected===true});}finally{parentPort!.close();}

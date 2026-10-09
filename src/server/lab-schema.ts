@@ -1,12 +1,21 @@
 export const LAB_SQL = `
 CREATE TABLE IF NOT EXISTS lab_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
 INSERT OR IGNORE INTO lab_meta VALUES ('schema','1'),('resource_barrier',''),('collection_gate','CLOSED');
-CREATE TABLE IF NOT EXISTS lab_admin_tokens(token_hash TEXT PRIMARY KEY,role TEXT NOT NULL CHECK(role IN ('researcher','maintainer')),
- csrf TEXT NOT NULL,expires_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_admin_tokens(token_hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS lab_studies(study_id TEXT PRIMARY KEY,title TEXT NOT NULL,draft TEXT NOT NULL,
  revision INTEGER NOT NULL,admission TEXT NOT NULL CHECK(admission IN ('OPEN','PAUSED')),created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS lab_versions(version_id TEXT PRIMARY KEY,study_id TEXT NOT NULL REFERENCES lab_studies,
  hash TEXT NOT NULL,protocol TEXT NOT NULL,runner_hash TEXT NOT NULL,runner_version TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_questionnaire_sources(study_id TEXT PRIMARY KEY REFERENCES lab_studies,source TEXT NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_archived_studies(study_id TEXT PRIMARY KEY REFERENCES lab_studies,archived_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_packages(study_id TEXT NOT NULL REFERENCES lab_studies,name TEXT NOT NULL,hash TEXT NOT NULL,job_id TEXT NOT NULL,PRIMARY KEY(study_id,name)) STRICT;
+CREATE TABLE IF NOT EXISTS lab_package_images(study_id TEXT NOT NULL,name TEXT NOT NULL,path TEXT NOT NULL,asset_id TEXT NOT NULL REFERENCES lab_assets,PRIMARY KEY(study_id,name,path),FOREIGN KEY(study_id,name) REFERENCES lab_packages(study_id,name)) STRICT;
+CREATE TABLE IF NOT EXISTS lab_covariates(session_id TEXT NOT NULL REFERENCES lab_sessions,sample_id TEXT NOT NULL,hash TEXT NOT NULL,raw TEXT NOT NULL,source TEXT NOT NULL,received_at INTEGER NOT NULL,PRIMARY KEY(session_id,sample_id)) STRICT;
+CREATE TABLE IF NOT EXISTS lab_consents(session_id TEXT PRIMARY KEY REFERENCES lab_sessions,document_hash TEXT NOT NULL,accepted_at INTEGER NOT NULL) STRICT;
+CREATE TRIGGER IF NOT EXISTS lab_consents_update BEFORE UPDATE ON lab_consents BEGIN SELECT RAISE(ABORT,'immutable consent'); END;
+CREATE TRIGGER IF NOT EXISTS lab_consents_delete BEFORE DELETE ON lab_consents BEGIN SELECT RAISE(ABORT,'immutable consent'); END;
+CREATE TRIGGER IF NOT EXISTS lab_covariates_update BEFORE UPDATE ON lab_covariates BEGIN SELECT RAISE(ABORT,'immutable covariates'); END;
+CREATE TRIGGER IF NOT EXISTS lab_covariates_delete BEFORE DELETE ON lab_covariates BEGIN SELECT RAISE(ABORT,'immutable covariates'); END;
 CREATE TABLE IF NOT EXISTS lab_assets(asset_id TEXT PRIMARY KEY,study_id TEXT NOT NULL REFERENCES lab_studies,name TEXT NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('UPLOADING','READY','FAILED','DELETING','PURGED')),hash TEXT,bytes INTEGER,width INTEGER,height INTEGER,format TEXT,
  upload_id TEXT UNIQUE NOT NULL,created_at INTEGER NOT NULL) STRICT;

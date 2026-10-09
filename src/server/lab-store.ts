@@ -9,6 +9,7 @@ import { ContractError, eventRef, hash, id, object, integer, parseManifest, mani
 import { parseProtocol, sampleProtocol, stableJSON, evaluate, pageSnapshot, RUNNER_VERSION,
   type Protocol, type FrozenProtocol, type AssetInfo, type Answer } from '../shared/protocol.js';
 import { parseLabEvent, type LabEvent, type LabSession, type GroupPlan } from '../shared/lab-contract.js';
+import {compileQuestionnaire,parseQuestionnaireText,packageName} from '../shared/questionnaire-json.js';
 interface SessionRow { session_id: string; study_id: string; version_id: string; credential_hash: string; admission_id: string;
  state: LabSession['state']; writer_id: string | null; writer_epoch: number; lease_until: number; page_index: number; group_index: number;
  answers: string; path: string; allocation_id: string | null; completion: string | null }
@@ -20,6 +21,12 @@ export class LabStore {
   constructor(readonly db: Database.Database, readonly runnerHash = digest('TEST_ONLY'), private now = Date.now,sessionConcurrency=2) {
     db.exec(LAB_SQL);
     if (this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='schema'")?.value !== '1') throw new Error('UNSUPPORTED_LAB_SCHEMA');
+    // Upgrade role-based installations atomically; credential expiry uses milliseconds.
+    if(this.all<{name:string}>('PRAGMA table_info(lab_admin_tokens)').some(column=>column.name==='role'))db.transaction(()=>{
+      db.exec('CREATE TABLE lab_admin_tokens_new(token_hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL) STRICT');
+      this.run('INSERT INTO lab_admin_tokens_new SELECT token_hash,csrf,expires_at FROM lab_admin_tokens WHERE expires_at>=?',now());
+      db.exec('DROP TABLE lab_admin_tokens; ALTER TABLE lab_admin_tokens_new RENAME TO lab_admin_tokens');
+    }).immediate();
     this.admission=new SessionAdmission(db,sessionConcurrency,now);
   }
   get<T>(sql: string, ...args: unknown[]): T | undefined { return this.db.prepare(sql).get(...args) as T | undefined; }
@@ -31,10 +38,9 @@ export class LabStore {
   private diagnostic(sid: string, scope: string | null, code: string, detail: unknown) {
     this.run('INSERT INTO lab_diagnostics VALUES (?,?,?,?,?,?)',randomUUID(),sid,scope,code,JSON.stringify(detail),this.now());
   }
-  private admin(c: Command, maintainer = false) {
-    const token = this.get<{role:string;csrf:string;expires_at:number}>('SELECT * FROM lab_admin_tokens WHERE token_hash=?', c.credential_hash ?? '');
+  private admin(c: Command) {
+    const token = this.get<{csrf:string;expires_at:number}>('SELECT csrf,expires_at FROM lab_admin_tokens WHERE token_hash=?', c.credential_hash ?? '');
     if (!token || token.expires_at < this.now()) throw new ContractError('LOGIN_REQUIRED',401);
-    if (maintainer && token.role !== 'maintainer') throw new ContractError('MAINTAINER_REQUIRED',403);
     if (c.data.csrf !== token.csrf && !['admin.me','study.list','study.get','asset.list','session.list','session.detail','job.list','job.get','environment.list'].includes(c.operation.slice(4)))
       throw new ContractError('CSRF_REJECTED',403);
     return { actor: c.credential_hash!, ...token };
@@ -50,7 +56,7 @@ export class LabStore {
     if (s.writer_id !== id(d.writer_id) || s.writer_epoch !== integer(d.writer_epoch,1)) throw new ContractError('WRITER_FENCED',409);
   }
   private request(subject: string, op: string, d: Record<string,unknown>, fn: ()=>unknown): unknown {
-    const rid = id(d.request_id); const logical={...d};delete logical.proof_job_id;const h = digest(stableJSON(logical));
+    const rid = id(d.request_id); const logical={...d};delete logical.proof_job_id;if(op==='participant.create')delete logical.server_covariates;const h = digest(stableJSON(logical));
     const old = this.get<{hash:string;response:string|null}>('SELECT * FROM lab_requests WHERE subject=? AND operation=? AND request_id=?',subject,op,rid);
     if (old) {
       if (old.hash !== h) { this.audit(subject,'IDEMPOTENCY_CONFLICT',rid,{op,existing:old.hash,incoming:h}); return new Rejection(new ContractError('IDEMPOTENCY_CONFLICT',409)); }
@@ -160,33 +166,63 @@ export class LabStore {
   private dispatch(c: Command): unknown {
     const op=c.operation.slice(4); const d=object(c.data);
     if(op==='admin.issue') {
-      if(!['researcher','maintainer'].includes(String(d.role))) throw new ContractError('INVALID_ROLE');
       this.run('DELETE FROM lab_admin_tokens WHERE expires_at<?',this.now());
-      this.run('INSERT INTO lab_admin_tokens VALUES (?,?,?,?)',hash(d.token_hash),d.role,id(d.csrf),this.now()+8*3600000);
-      this.audit(String(d.token_hash),'LOGIN',String(d.role),{}); return {role:d.role,csrf:d.csrf};
+      this.run('INSERT INTO lab_admin_tokens VALUES (?,?,?)',hash(d.token_hash),id(d.csrf),this.now()+8*3600000);
+      this.audit(String(d.token_hash),'LOGIN','admin',{}); return {authenticated:true,csrf:d.csrf};
     }
     if(op==='version.public') return this.frozen(id(d.version_id));
+    if(op==='version.metadata'){const f=this.frozen(id(d.version_id));return {title:f.protocol.title,background:f.protocol.layout.background,orientation:f.protocol.layout.orientation??null};}
+    if(op==='version.consent'){const {consent}=this.frozen(id(d.version_id)).protocol;return consent?{document:consent,document_hash:digest(stableJSON(consent))}:null;}
     if(op==='participant.create') return this.request(`admission-${id(d.version_id)}`,op,d,()=>{
       const frozen=this.frozen(id(d.version_id));
+      const consentHash=frozen.protocol.consent?digest(stableJSON(frozen.protocol.consent)):null;
+      if(consentHash){const c=d.consent===undefined?{}:object(d.consent);if(c.accepted!==true||c.document_hash!==consentHash||Object.keys(c).some(k=>!['accepted','document_hash'].includes(k)))throw new ContractError('CONSENT_REQUIRED',403);}
+      else if(d.consent!==undefined)throw new ContractError('UNEXPECTED_CONSENT');
       if(this.get<{admission:string}>('SELECT admission FROM lab_studies WHERE study_id=?',frozen.study_id)!.admission!=='OPEN') throw new ContractError('ADMISSION_PAUSED',409);
       if(frozen.protocol.mode==='COLLECTION' && this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='collection_gate'")!.value!=='OPEN') throw new ContractError('COLLECTION_GATE_CLOSED',409);
       if(frozen.protocol.mode==='COLLECTION'&&this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='collection_environment'")?.value!==frozen.protocol.budget.environment_id)throw new ContractError('COLLECTION_ENVIRONMENT_MISMATCH',409);
       const sid=randomUUID(); this.run("INSERT INTO lab_sessions(session_id,study_id,version_id,admission_id,credential_hash,state,created_at) VALUES (?,?,?,?,?,'CREATED',?)",sid,frozen.study_id,frozen.version_id,randomUUID(),hash(d.credential_hash),this.now());
+      if(consentHash)this.run('INSERT INTO lab_consents VALUES (?,?,?)',sid,consentHash,this.now());
+      if(d.server_covariates){const raw=stableJSON(object(d.server_covariates));this.run('INSERT INTO lab_covariates VALUES (?,?,?,?,?,?)',sid,'server-open',digest(raw),raw,'server-observed',this.now());}
       return this.view(sid);
     });
     if(op.startsWith('participant.')) return this.participant(op,c,d);
     if(op.startsWith('internal.')) return this.internal(op,d);
-    const admin=this.admin(c,['asset.delete','environment.put','gate.open','gate.close','job.recover','maintenance.rebuild'].includes(op)||(op==='job.begin'&&d.kind==='BACKUP'));
+    const admin=this.admin(c);
     const actor=admin.actor;
     switch(op) {
-      case 'admin.me': return {role:admin.role,csrf:admin.csrf};
+      case 'admin.me': return {authenticated:true,csrf:admin.csrf};
       case 'admin.logout': this.run('DELETE FROM lab_admin_tokens WHERE token_hash=?',actor); return {status:'LOGGED_OUT'};
-      case 'study.list': return {studies:this.all('SELECT s.study_id,s.title,s.revision,s.admission,s.created_at,(SELECT version_id FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS version_id FROM lab_studies s ORDER BY rowid DESC LIMIT 100')};
+      case 'study.list': return {studies:this.all('SELECT s.study_id,s.title,s.revision,s.admission,s.created_at,(SELECT version_id FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS version_id FROM lab_studies s WHERE NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) ORDER BY rowid DESC LIMIT 100')};
       case 'study.create': return this.request(actor,op,d,()=>{const sid=randomUUID();const p=sampleProtocol(); this.run("INSERT INTO lab_studies VALUES (?,?,?,1,'PAUSED',?)",sid,p.title,stableJSON(p),this.now());this.audit(actor,op,sid,{});return {study_id:sid,revision:1,draft:p};});
       case 'study.get': {
         const s=this.get<{study_id:string;title:string;draft:string;revision:number;admission:string}>('SELECT * FROM lab_studies WHERE study_id=?',id(d.study_id));
-        if(!s) throw new ContractError('STUDY_NOT_FOUND',404);return {...s,draft:JSON.parse(s.draft),versions:this.all('SELECT version_id,hash,runner_hash,created_at FROM lab_versions WHERE study_id=? ORDER BY rowid DESC',s.study_id)};
+        if(!s) throw new ContractError('STUDY_NOT_FOUND',404);return {...s,draft:JSON.parse(s.draft),source:this.get<{source:string}>('SELECT source FROM lab_questionnaire_sources WHERE study_id=?',s.study_id)?.source??null,versions:this.all('SELECT version_id,hash,runner_hash,created_at FROM lab_versions WHERE study_id=? ORDER BY rowid DESC',s.study_id)};
       }
+      case 'study.import':return this.request(actor,op,d,()=>{
+        this.barrier();const sid=id(d.study_id),s=this.get<{revision:number}>('SELECT revision FROM lab_studies WHERE study_id=?',sid);
+        if(!s||s.revision!==d.revision||this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',sid))throw new ContractError('DRAFT_REVISION_CONFLICT',409);
+        if(typeof d.source!=='string')throw new ContractError('JSON_REQUIRED');
+        const p=compileQuestionnaire(parseQuestionnaireText(d.source),ref=>{
+          const a=this.get<{asset_id:string}>("SELECT p.asset_id FROM lab_package_images p JOIN lab_assets a USING(asset_id) WHERE p.study_id=? AND p.name=? AND p.path=? AND a.state='READY'",sid,ref.package,ref.path);
+          if(!a)throw new ContractError('IMAGE_PACKAGE_REFERENCE_MISSING',409,ref);return a.asset_id;
+        });
+        this.validateAssets(sid,p);
+        if(p.mode==='COLLECTION'&&(p.budget.environment_id==='TEST_ONLY'||!this.get('SELECT 1 FROM lab_environments WHERE environment_id=?',p.budget.environment_id)))throw new ContractError('ENVIRONMENT_NOT_VERIFIED',409);
+        this.run('UPDATE lab_studies SET title=?,draft=?,revision=revision+1 WHERE study_id=?',p.title,stableJSON(p),sid);
+        this.run('INSERT INTO lab_questionnaire_sources VALUES (?,?) ON CONFLICT(study_id) DO UPDATE SET source=excluded.source',sid,d.source);
+        this.run("DELETE FROM lab_asset_refs WHERE kind='DRAFT' AND owner=?",sid);
+        const assets=new Set(p.groups.flatMap(g=>g.trials.map(t=>t.asset_id))),vid=randomUUID(),h=digest(stableJSON(p));
+        this.run('INSERT INTO lab_versions VALUES (?,?,?,?,?,?,?)',vid,sid,h,stableJSON(p),this.runnerHash,RUNNER_VERSION,this.now());
+        for(const asset of assets){this.run("INSERT INTO lab_asset_refs VALUES (?,'DRAFT',?)",asset,sid);this.run("INSERT INTO lab_asset_refs VALUES (?,'VERSION',?)",asset,vid);}
+        this.audit(actor,op,sid,{version_id:vid,hash:h,revision:s.revision+1});return {revision:s.revision+1,frozen:this.frozen(vid)};
+      });
+      case 'study.delete':return this.request(actor,op,d,()=>{const sid=id(d.study_id);if(!this.get('SELECT 1 FROM lab_studies WHERE study_id=?',sid))throw new ContractError('STUDY_NOT_FOUND',404);this.run('INSERT OR IGNORE INTO lab_archived_studies VALUES (?,?)',sid,this.now());this.run("UPDATE lab_studies SET admission='PAUSED' WHERE study_id=?",sid);this.audit(actor,op,sid,{data_retained:true});return {status:'DELETED',data_retained:true};});
+      case 'package.begin':return this.request(actor,op,d,()=>{this.barrier();const sid=id(d.study_id),name=packageName(d.name);
+        if(!this.get('SELECT 1 FROM lab_studies WHERE study_id=?',sid)||this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',sid))throw new ContractError('STUDY_NOT_FOUND',404);
+        if(this.get('SELECT 1 FROM lab_packages WHERE study_id=? AND name=?',sid,name))throw new ContractError('PACKAGE_NAME_EXISTS',409);
+        return this.beginJob(id(d.job_id),'PACKAGE',sid,{study_id:sid,name,package_id:id(d.job_id)},actor);
+      });
       case 'study.save': return this.request(actor,op,d,()=>{
         this.barrier();const sid=id(d.study_id); const p=parseProtocol(d.protocol); const revision=integer(d.revision,1);
         this.validateAssets(sid,p);const update=this.run('UPDATE lab_studies SET title=?,draft=?,revision=revision+1 WHERE study_id=? AND revision=?',p.title,stableJSON(p),sid,revision);
@@ -199,6 +235,8 @@ export class LabStore {
         this.barrier();const s=this.get<{draft:string;revision:number}>('SELECT * FROM lab_studies WHERE study_id=?',id(d.study_id));
         if(!s || s.revision!==d.revision) throw new ContractError('DRAFT_REVISION_CONFLICT',409);
         const p=parseProtocol(JSON.parse(s.draft));this.validateAssets(id(d.study_id),p);
+        for(const page of p.pages)for(const q of page.questions)if(q.type==='text'&&q.input_purpose!=='personal')throw new ContractError('PERSONAL_INPUT_ONLY',409,{question:q.id});
+        for(const page of p.pages)for(const q of page.questions)if(q.type==='scale'&&(!q.min_label?.trim()||!q.max_label?.trim()))throw new ContractError('SCALE_ENDPOINTS_REQUIRED',409,{question:q.id});
         if(p.mode==='COLLECTION' && (p.budget.environment_id==='TEST_ONLY'||!this.get('SELECT 1 FROM lab_environments WHERE environment_id=?',p.budget.environment_id))) throw new ContractError('ENVIRONMENT_NOT_VERIFIED',409);
         const vid=randomUUID();const h=digest(stableJSON(p)); this.run('INSERT INTO lab_versions VALUES (?,?,?,?,?,?,?)',vid,d.study_id,h,stableJSON(p),this.runnerHash,RUNNER_VERSION,this.now());
         for(const asset of new Set(p.groups.flatMap(g=>g.trials.map(t=>t.asset_id))))this.run("INSERT INTO lab_asset_refs VALUES (?,'VERSION',?)",asset,vid);
@@ -206,6 +244,7 @@ export class LabStore {
       });
       case 'study.admission': return this.request(actor,op,d,()=>{
         if(typeof d.paused!=='boolean') throw new ContractError('INVALID_ADMISSION_STATE');
+        if(this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',id(d.study_id)))throw new ContractError('STUDY_DELETED',409);
         this.run('UPDATE lab_studies SET admission=? WHERE study_id=?',d.paused?'PAUSED':'OPEN',id(d.study_id));this.audit(actor,op,String(d.study_id),{paused:d.paused});return {status:d.paused?'PAUSED':'OPEN'};
       });
       case 'asset.list': return {assets:this.all('SELECT asset_id,name,state,hash,bytes,width,height,format FROM lab_assets WHERE study_id=? ORDER BY rowid DESC LIMIT 200',id(d.study_id))};
@@ -228,7 +267,7 @@ export class LabStore {
         const sid=id(d.session_id);if(!this.get('SELECT 1 FROM lab_sessions WHERE session_id=?',sid))throw new ContractError('SESSION_NOT_FOUND',404);
         return {...this.view(sid),marks:this.all('SELECT * FROM lab_marks WHERE session_id=? ORDER BY created_at',sid),
           receipts:this.all('SELECT e.event_id,e.hash,e.scope,e.sequence,e.disposition,e.version,e.reason,r.receipt_id,r.received_at FROM lab_events e JOIN lab_raw r USING(session_id,event_id,hash) WHERE e.session_id=? ORDER BY e.scope,e.sequence LIMIT 5000',sid),
-          diagnostic_evidence:this.all('SELECT code,scope,detail,created_at FROM lab_diagnostics WHERE session_id=? ORDER BY rowid',sid)};
+          diagnostic_evidence:this.all('SELECT code,scope,detail,created_at FROM lab_diagnostics WHERE session_id=? ORDER BY rowid',sid),covariates:this.all('SELECT * FROM lab_covariates WHERE session_id=? ORDER BY received_at',sid)};
       }
       case 'session.mark': return this.request(actor,op,d,()=>{
         const mark=id(d.mark_id),revision=integer(d.revision,1); const prior=this.get<{n:number}>('SELECT coalesce(max(revision),0) AS n FROM lab_marks WHERE mark_id=?',mark)!.n;
@@ -250,8 +289,8 @@ export class LabStore {
       });
       case 'gate.close':return this.request(actor,op,d,()=>{this.run("UPDATE lab_meta SET value='CLOSED' WHERE key='collection_gate'");this.audit(actor,op,'collection',{});return {status:'CLOSED'};});
       case 'job.list': return {jobs:this.all('SELECT * FROM lab_jobs ORDER BY created_at DESC LIMIT 100')};
-      case 'job.get': {const job=this.get<{kind:string}>('SELECT * FROM lab_jobs WHERE job_id=?',id(d.job_id));if(job?.kind==='BACKUP'&&admin.role!=='maintainer')throw new ContractError('MAINTAINER_REQUIRED',403);return job??{};}
-      case 'job.begin': return this.request(actor,op,d,()=>{if(d.kind==='REBUILD'){this.admin(c,true);const study=id(d.study_id);if(this.get<{admission:string}>('SELECT admission FROM lab_studies WHERE study_id=?',study)?.admission!=='PAUSED'||this.get("SELECT 1 FROM lab_permits p JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND p.state='ISSUED'",study))throw new ContractError('REBUILD_REQUIRES_PAUSED_AND_IDLE',409);}return this.beginJob(id(d.job_id),String(d.kind),d.study_id? id(d.study_id):null,object(d.config??{}),actor);});
+      case 'job.get': return this.get('SELECT * FROM lab_jobs WHERE job_id=?',id(d.job_id))??{};
+      case 'job.begin': return this.request(actor,op,d,()=>{if(d.kind==='REBUILD'){const study=id(d.study_id);if(this.get<{admission:string}>('SELECT admission FROM lab_studies WHERE study_id=?',study)?.admission!=='PAUSED'||this.get("SELECT 1 FROM lab_permits p JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND p.state='ISSUED'",study))throw new ContractError('REBUILD_REQUIRES_PAUSED_AND_IDLE',409);}return this.beginJob(id(d.job_id),String(d.kind),d.study_id? id(d.study_id):null,object(d.config??{}),actor);});
       case 'job.recover': return this.request(actor,op,d,()=>{
         const job=this.get<{state:string}>('SELECT state FROM lab_jobs WHERE job_id=?',id(d.job_id));
         if(!job||job.state!=='RECOVERY_REQUIRED'||typeof d.report!=='string'||!d.report.trim())throw new ContractError('RECOVERY_REPORT_REQUIRED');
@@ -301,6 +340,14 @@ export class LabStore {
   }
   private participant(op: string,c: Command,d: Record<string,unknown>): unknown {
     const s=this.session(c),sid=s.session_id;
+    if(op==='participant.covariates')return this.request(sid,op,d,()=>{
+      if(typeof d.raw!=='string'||Buffer.byteLength(d.raw)>32*1024)throw new ContractError('INVALID_COVARIATES');
+      const parsed=object(JSON.parse(d.raw));if(parsed.schema!=='environment-v1')throw new ContractError('INVALID_COVARIATES');
+      const sample=id(d.sample_id),h=digest(d.raw),old=this.get<{hash:string}>('SELECT hash FROM lab_covariates WHERE session_id=? AND sample_id=?',sid,sample);
+      if(old&&old.hash!==h)throw new ContractError('COVARIATES_CONFLICT',409);
+      if(!old){if(this.get<{n:number}>('SELECT count(*) AS n FROM lab_covariates WHERE session_id=?',sid)!.n>=50)throw new ContractError('COVARIATES_BUDGET_EXCEEDED');this.run('INSERT INTO lab_covariates VALUES (?,?,?,?,?,?)',sid,sample,h,d.raw,'client-reported',this.now());}
+      return {sample_id:sample,hash:h,status:'PERSISTED'};
+    });
     if(op==='participant.view')return this.view(sid);
     if(op==='participant.preparation.release')return {session_id:sid};
     if(op==='participant.ingest')return this.ingest(s,d);
@@ -430,7 +477,7 @@ export class LabStore {
     this.run('INSERT INTO lab_seals VALUES (?,?,?,?,?)',s.session_id,manifest.scope,seal.seal_id,h,JSON.stringify(seal));return seal;
   }
   beginJob(job:string,kind:string,study:string|null,config:Record<string,unknown>,actor='SYSTEM') {
-    if(!['UPLOAD','DELETE','EXPORT','BACKUP','REPLAY','REBUILD'].includes(kind))throw new ContractError('INVALID_JOB_KIND');
+    if(!['UPLOAD','PACKAGE','DELETE','EXPORT','BACKUP','REPLAY','REBUILD'].includes(kind))throw new ContractError('INVALID_JOB_KIND');
     if(this.get("SELECT 1 FROM lab_jobs WHERE state IN ('RUNNING','RECOVERY_REQUIRED')"))throw new ContractError('MAINTENANCE_BUSY',503);
     this.run("INSERT INTO lab_jobs VALUES (?,?,?,'RUNNING','REGISTERED',?,NULL,NULL,?,?)",job,kind,study,stableJSON(config),this.now(),this.now());
     if(kind==='BACKUP'){this.barrier();this.run("UPDATE lab_meta SET value=? WHERE key='resource_barrier'",job);}
@@ -438,6 +485,12 @@ export class LabStore {
   }
   private internal(op:string,d:Record<string,unknown>):unknown {
     switch(op){
+      case 'internal.package.ready':{
+        this.barrier();const sid=id(d.study_id),name=packageName(d.name);if(!Array.isArray(d.images)||!d.images.length||d.images.length>100)throw new ContractError('INVALID_PACKAGE');
+        this.run('INSERT INTO lab_packages VALUES (?,?,?,?)',sid,name,hash(d.hash),id(d.job_id));
+        for(const v of d.images){const a=object(v),asset=id(a.asset_id);this.run("INSERT INTO lab_assets VALUES (?,?,?,'READY',?,?,?,?,?,?,?)",asset,sid,`${name}/${a.path}`,hash(a.hash),integer(a.bytes,1),integer(a.width,1),integer(a.height,1),String(a.format),asset,this.now());this.run('INSERT INTO lab_package_images VALUES (?,?,?,?)',sid,name,a.path,asset);this.run("INSERT INTO lab_asset_refs VALUES (?,'PACKAGE',?)",asset,id(d.job_id));}
+        return {status:'READY'};
+      }
       case 'internal.job.begin':return this.beginJob(id(d.job_id),String(d.kind),d.study_id?id(d.study_id):null,object(d.config??{}));
       case 'internal.job.phase':this.run('UPDATE lab_jobs SET phase=?,updated_at=? WHERE job_id=? AND state=\'RUNNING\'',id(d.phase),this.now(),id(d.job_id));return {status:'ok'};
       case 'internal.job.finish':{

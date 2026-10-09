@@ -1,0 +1,2 @@
+继续优化当前浏览器心理问卷平台。新增 JSON 配置 consent:{title,text} 知情同意页，灰/深纯色，必须竖/横方向符合后显示；长文按钮翻段无横纵滚动，末段明确“我已阅读并同意”或“不同意并退出”。同意前不创建参与会话，不采集浏览器协变量；服务器校验固定版本同意文档 hash 并记录 server accepted_at，CSV 导出 consent 记录。旧冻结问卷没有 consent 时保持历史 hash 和兼容。请审查交互及数据方案，不撰写正式伦理文书。
+此外用户要求本机 0.0.0.0 局域网手机浏览测试；现有代码依赖 crypto.subtle/randomUUID/navigator.locks，LAN HTTP 非 secureContext 不可用。我打算测试服务器绑定0.0.0.0并使用本地自签 HTTPS（SAN含192.168.0.2/127.0.0.1/localhost），提供 HTTP 同端或另一端口跳转 HTTPS，私有证书仅.local。不加入弱化的加密/互斥 fallback。请给出可行的最简手机测试流程、证书提示限制以及设计改进。不要改变正式实验的单写入和原始事件 hash 协议。结尾标记 CONSENT_LAN_REVIEW_COMPLETE。

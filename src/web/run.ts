@@ -1,4 +1,8 @@
-import './style.css';
+import './participant.css';
+import './runner.css';
+import {applyParticipantBackground} from './participant-theme.js';
+import {lockParticipantViewport} from './viewport.js';
+lockParticipantViewport();
 import {el,button,uid,request} from './dom.js';
 import {ParticipantAPI} from './participant-api.js';
 import {prepareImages,refreshProbe,storageProbe} from './prepare.js';
@@ -15,7 +19,7 @@ const returnToPage=()=>{location.href=`/participate.html?version=${version}`;};
 function failure(error:unknown){status.textContent=error instanceof Error?error.message:'准备失败。';content.replaceChildren(button('返回保存与核对',returnToPage));}
 function geometry(canvas:HTMLCanvasElement,buttons:HTMLButtonElement[]):NonNullable<GroupPlan['geometry']>{const rect=(e:HTMLElement)=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};};return {viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},canvas:rect(canvas),buttons:buttons.map(b=>({choice:b.textContent!,...rect(b)}))};}
 async function prepare(){
-  api=await ParticipantAPI.open(version,writer);await api.refresh();if(api.session.state==='COMPLETED'||api.session.state==='TERMINATED'||api.session.permit?.state==='ISSUED'){returnToPage();return;}
+  api=await ParticipantAPI.open(version,writer);await api.refresh();applyParticipantBackground(api.session.frozen.protocol.layout.background);if(api.session.state==='COMPLETED'||api.session.state==='TERMINATED'||api.session.permit?.state==='ISSUED'){returnToPage();return;}
   const preparing=new AbortController(),pageHidden=()=>preparing.abort(new Error('准备页面已关闭。'));
   window.addEventListener('pagehide',pageHidden,{once:true});
   content.replaceChildren(button('退出等待',()=>cancelAdmission(preparing)));
@@ -40,18 +44,18 @@ async function prepare(){
   preparing.signal.throwIfAborted();
   const measured=await refreshProbe(p),storage=await storageProbe(group,p);if(storage.commit_ms>p.budget.commit_ms)throw new Error('本地事务耗时超过此版本预算，无法开始该组。');
   const canvas=el('canvas'),buttons=group.choices.map(c=>el('button',c));canvas.id='stimulus';const controls=el('div',undefined,'response-buttons');controls.append(...buttons);
-  const stage=el('div',undefined,'runner-stage');stage.append(canvas,controls);content.replaceChildren(stage);
+  const stage=el('div',undefined,'runner-stage'),slot=el('div',undefined,'canvas-slot'),footer=el('div',undefined,'runner-start');slot.append(canvas);stage.append(slot,controls,footer);content.replaceChildren(stage);controls.style.setProperty('--response-columns',String(Math.min(buttons.length,Math.max(2,Math.floor(controls.clientWidth/80)))));for(const b of buttons)b.disabled=true;
   const layout=innerWidth>innerHeight?'landscape':'portrait',min=layout==='portrait'?p.layout.portrait_min_width:p.layout.landscape_min_width;
-  const width=Math.floor(Math.min(innerWidth-32,720,(innerHeight-(layout==='landscape'?180:230))*p.layout.aspect));if(width<min)throw new Error('屏幕可用区域不足，请在开始前调整方向。');
+  const width=Math.floor(Math.min(slot.clientWidth,720,slot.clientHeight*p.layout.aspect));if(width<min)throw new Error('屏幕可用区域不足，请在开始前调整方向。');
   canvas.style.width=`${width}px`;canvas.style.height=`${width/p.layout.aspect}px`;canvas.width=Math.round(width*devicePixelRatio);canvas.height=Math.round(width/p.layout.aspect*devicePixelRatio);
   const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)throw new Error('Canvas 不可用。');ctx.fillStyle=p.layout.background;ctx.fillRect(0,0,canvas.width,canvas.height);
   const ready=geometry(canvas,buttons);status.textContent=`${p.mode==='TEST_ONLY'?'测试数据 · ':''}资源已校验。请保持页面可见与设备方向，开始后连续完成本组。`;
   const start=button('开始本组',async()=>{try{
-    api!.admission?.check();await api!.stopAdmission();start.remove();if(document.visibilityState!=='visible')throw new Error('页面当前不可见。');const actual=geometry(canvas,buttons);if(JSON.stringify(actual)!==JSON.stringify(ready))throw new Error('准备后布局已变化，请重新准备。');
+    api!.admission?.check();await api!.stopAdmission();start.style.visibility='hidden';if(document.visibilityState!=='visible')throw new Error('页面当前不可见。');const actual=geometry(canvas,buttons);if(JSON.stringify(actual)!==JSON.stringify(ready))throw new Error('准备后布局已变化，请重新准备。');
     const next=await reserve();if(next.variant_id!==reservation.variant_id)throw new Error('预留方案已变化，请重新准备。');reservation=next;
     const permit=await request<NonNullable<LabSession['permit']>>(api!.path('permit'),{request_id:uid(),...api!.fence(),reservation_id:reservation.reservation_id,readiness:{...measured,...storage,download:images.download,layout,geometry:ready,assets:images.hashes,decoded_bytes:images.decoded_bytes,protocol_hash:api!.session.frozen.hash}});
-    await api!.refresh();await run(permit.plan,canvas,buttons,images.byAsset,ctx);
-  }catch(error){releaseImages?.();releaseImages=null;if(api?.session.permit?.state==='ISSUED')await api.terminate('PREPARATION_INTERRUPTED',{message:String(error)}).catch(()=>{});failure(error);}});content.prepend(start);
+    await api!.refresh();for(const b of buttons)b.disabled=false;await run(permit.plan,canvas,buttons,images.byAsset,ctx);
+  }catch(error){releaseImages?.();releaseImages=null;if(api?.session.permit?.state==='ISSUED')await api.terminate('PREPARATION_INTERRUPTED',{message:String(error)}).catch(()=>{});failure(error);}});footer.append(start);
 }
 async function run(plan:GroupPlan,canvas:HTMLCanvasElement,buttons:HTMLButtonElement[],images:Map<string,ImageBitmap>,ctx:CanvasRenderingContext2D){
   const a=api!,origin=performance.now(),now=()=>performance.now()-origin,replay=new RunReplay(plan),s=replay.scheduler;
@@ -78,9 +82,9 @@ async function run(plan:GroupPlan,canvas:HTMLCanvasElement,buttons:HTMLButtonEle
   }catch(error){void stop(error);}}
   const change=()=>{if(document.visibilityState!=='visible'||JSON.stringify(geometry(canvas,buttons))!==JSON.stringify(plan.geometry))void stop('VISIBILITY_OR_GEOMETRY_CHANGED');};
   for(const type of ['pointerdown','pointerup','pointercancel'])window.addEventListener(type,input as EventListener);
-  window.addEventListener('resize',change);document.addEventListener('visibilitychange',change);
+  window.addEventListener('resize',change);document.addEventListener('visibilitychange',change);const visualChange=()=>void stop('VISUAL_VIEWPORT_CHANGED');window.visualViewport?.addEventListener('resize',visualChange);window.visualViewport?.addEventListener('scroll',visualChange);
   const unload=()=>{if(active){s.interrupt(false);void record({type:'ABORT',at:now(),reason:'PAGE_HIDDEN_OR_CLOSED'});}};window.addEventListener('pagehide',unload);
-  function remove(keepInputs=false){document.body.classList.remove('running');if(!keepInputs)for(const type of ['pointerdown','pointerup','pointercancel'])window.removeEventListener(type,input as EventListener);window.removeEventListener('resize',change);document.removeEventListener('visibilitychange',change);window.removeEventListener('pagehide',unload);}
+  function remove(keepInputs=false){document.body.classList.remove('running');if(!keepInputs)for(const type of ['pointerdown','pointerup','pointercancel'])window.removeEventListener(type,input as EventListener);window.removeEventListener('resize',change);document.removeEventListener('visibilitychange',change);window.removeEventListener('pagehide',unload);window.visualViewport?.removeEventListener('resize',visualChange);window.visualViewport?.removeEventListener('scroll',visualChange);}
   async function finish(){closing=true;active=false;remove(true);try{emit({type:'CLOSING',at:now(),unresolved:[...replay.obligations].some(root=>s.candidates.some(c=>c.root_id===root&&s.executions.get(c.instance_id)==='UNSTARTED'))});replay.finish();await a.ledger.drain();await a.ledger.closeScope(plan.scope,[...a.session.path,plan.group_id]);status.textContent='本组结束，正在保存与核对…';await a.seal(plan.scope);remove();await a.sync();releaseImages?.();releaseImages=null;returnToPage();}catch(error){
     if(stopped)return;const pending=(await a.ledger.state()).pending[plan.scope];if(pending){status.textContent='本组已结束，保存与封存待重试。';releaseImages?.();releaseImages=null;content.replaceChildren(button('重试保存与核对',async()=>{try{await a.seal(plan.scope);remove();await a.sync();returnToPage();}catch(e){status.textContent=String(e);}}));}else{closing=false;await stop(error);}}}
   function tick(raf:number){if(stopped||closing)return;const t=now();try{

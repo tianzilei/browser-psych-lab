@@ -1,0 +1,72 @@
+{
+  "schema": "questionnaire-v1",
+  "title": "移动图片任务模拟",
+  "background": "#e5e5e5",
+  "orientation": "portrait",
+  "pages": [
+    {
+      "id": "survey",
+      "instruction": "请选择最符合你的答案。",
+      "questions": [
+        {
+          "id": "experience",
+          "type": "scale",
+          "title": "这次操作是否方便？",
+          "labels": [
+            "非常不方便",
+            "不方便",
+            "一般",
+            "方便",
+            "非常方便"
+          ]
+        },
+        {
+          "id": "device",
+          "type": "single",
+          "title": "你正在使用哪种设备？",
+          "required": true,
+          "choices": [
+            "手机",
+            "平板",
+            "电脑"
+          ]
+        },
+        {
+          "id": "nickname",
+          "type": "text",
+          "title": "模拟昵称（选填）",
+          "required": false,
+          "input_purpose": "personal",
+          "max_length": 20
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "shapes",
+      "title": "图形识别",
+      "choices": [
+        "左边",
+        "右边"
+      ],
+      "repeats": 0,
+      "trials": [
+        {
+          "root_id": "card",
+          "image": {
+            "package": "mobile-stimuli.zip",
+            "path": "images/mobile-card.png"
+          },
+          "image_ms": 3000,
+          "isi_ms": 400,
+          "correct": "左边"
+        }
+      ]
+    }
+  ],
+  "consent": {
+    "title": "知情同意书（模拟测试）",
+    "text": "这是用于检查问卷样式和交互的模拟测试，请只填写虚构的个人信息。\n\n同意后系统会保存模拟答案、操作记录、浏览器及设备协变量。你可以拒绝参加，或关闭页面退出；已经提交的测试记录会保留在本机测试数据库中。\n\n如果愿意继续，请点击“我已阅读并同意”。"
+  }
+}

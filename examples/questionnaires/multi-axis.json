@@ -1,0 +1,77 @@
+{
+  "schema": "questionnaire-v1",
+  "title": "多坐标作答示例",
+  "background": "#e5e5e5",
+  "orientation": "portrait",
+  "ending": {
+    "title": "感谢参与",
+    "text": "你的答案已保存。现在可以关闭页面。"
+  },
+  "pages": [
+    {
+      "id": "experience",
+      "instruction": "每个坐标轴分别选择最符合你的感受的位置。",
+      "questions": [
+        {
+          "id": "feelings",
+          "type": "scales",
+          "title": "请评价当前体验。",
+          "axes": [
+            {
+              "id": "ease",
+              "title": "操作便利",
+              "labels": [
+                "很不方便",
+                "不方便",
+                "一般",
+                "方便",
+                "很方便"
+              ]
+            },
+            {
+              "id": "clarity",
+              "title": "内容清晰",
+              "labels": [
+                "很不清晰",
+                "不清晰",
+                "一般",
+                "清晰",
+                "很清晰"
+              ]
+            },
+            {
+              "id": "comfort",
+              "title": "视觉舒适",
+              "labels": [
+                "很不舒适",
+                "不舒适",
+                "一般",
+                "舒适",
+                "很舒适"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "follow",
+          "type": "single",
+          "title": "是否愿意再次使用？",
+          "choices": [
+            "愿意",
+            "不愿意"
+          ],
+          "condition": {
+            "op": "eq",
+            "question": "feelings",
+            "axis": "ease",
+            "value": 5
+          }
+        }
+      ]
+    }
+  ],
+  "consent": {
+    "title": "知情同意书（模拟测试）",
+    "text": "这是用于检查问卷样式和交互的模拟测试，请只填写虚构的个人信息。\n\n同意后系统会保存模拟答案、操作记录、浏览器及设备协变量。你可以拒绝参加，或关闭页面退出；已经提交的测试记录会保留在本机测试数据库中。\n\n如果愿意继续，请点击“我已阅读并同意”。"
+  }
+}

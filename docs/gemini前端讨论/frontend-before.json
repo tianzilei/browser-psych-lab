@@ -1,0 +1,197 @@
+{
+  "scope": "Local production manifest closure; HTML + JS + CSS; gzipSync with defaults; no images, API responses or cache assumptions",
+  "node": "v24.21.0",
+  "initial": {
+    "bytes": 37051,
+    "gzipBytes": 15917,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/dom-Cz1_ICLX.js",
+        "bytes": 2154,
+        "gzipBytes": 1170
+      },
+      {
+        "path": "assets/local-store-BVCYjeAZ.js",
+        "bytes": 3485,
+        "gzipBytes": 1462
+      },
+      {
+        "path": "assets/participant-api-0qZG-sUI.js",
+        "bytes": 10012,
+        "gzipBytes": 3518
+      },
+      {
+        "path": "assets/participate-rMQ9x0wn.js",
+        "bytes": 4470,
+        "gzipBytes": 2221
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-ntSKv1wz.js",
+        "bytes": 6341,
+        "gzipBytes": 2615
+      },
+      {
+        "path": "assets/style-BoQPtRZv.css",
+        "bytes": 2667,
+        "gzipBytes": 1101
+      },
+      {
+        "path": "assets/style-lw3-5xo8.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "participate.html",
+        "bytes": 1202,
+        "gzipBytes": 583
+      }
+    ]
+  },
+  "questionnaire": {
+    "bytes": 2235611,
+    "gzipBytes": 444959,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/dom-Cz1_ICLX.js",
+        "bytes": 2154,
+        "gzipBytes": 1170
+      },
+      {
+        "path": "assets/local-store-BVCYjeAZ.js",
+        "bytes": 3485,
+        "gzipBytes": 1462
+      },
+      {
+        "path": "assets/participant-api-0qZG-sUI.js",
+        "bytes": 10012,
+        "gzipBytes": 3518
+      },
+      {
+        "path": "assets/participate-rMQ9x0wn.js",
+        "bytes": 4470,
+        "gzipBytes": 2221
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-ntSKv1wz.js",
+        "bytes": 6341,
+        "gzipBytes": 2615
+      },
+      {
+        "path": "assets/style-BoQPtRZv.css",
+        "bytes": 2667,
+        "gzipBytes": 1101
+      },
+      {
+        "path": "assets/style-lw3-5xo8.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/survey-core-y7b0EnHt.css",
+        "bytes": 519371,
+        "gzipBytes": 49978
+      },
+      {
+        "path": "assets/survey-core.min-BEZHSVQ8.js",
+        "bytes": 1678256,
+        "gzipBytes": 378479
+      },
+      {
+        "path": "assets/survey-page-BMesDT6c.js",
+        "bytes": 933,
+        "gzipBytes": 585
+      },
+      {
+        "path": "participate.html",
+        "bytes": 1202,
+        "gzipBytes": 583
+      }
+    ]
+  },
+  "runner": {
+    "bytes": 62809,
+    "gzipBytes": 24247,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/dom-Cz1_ICLX.js",
+        "bytes": 2154,
+        "gzipBytes": 1170
+      },
+      {
+        "path": "assets/local-store-BVCYjeAZ.js",
+        "bytes": 3485,
+        "gzipBytes": 1462
+      },
+      {
+        "path": "assets/participant-api-0qZG-sUI.js",
+        "bytes": 10012,
+        "gzipBytes": 3518
+      },
+      {
+        "path": "assets/protocol-ntSKv1wz.js",
+        "bytes": 6341,
+        "gzipBytes": 2615
+      },
+      {
+        "path": "assets/run-DQMEcPbs.js",
+        "bytes": 31773,
+        "gzipBytes": 11395
+      },
+      {
+        "path": "assets/style-BoQPtRZv.css",
+        "bytes": 2667,
+        "gzipBytes": 1101
+      },
+      {
+        "path": "assets/style-lw3-5xo8.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "run.html",
+        "bytes": 1055,
+        "gzipBytes": 488
+      }
+    ]
+  }
+}

@@ -24,7 +24,7 @@ test('frozen legacy GET remains private and shares capacity; new runner cannot o
   const path=join(root,'db.sqlite');let writer=new DatabaseWriter(path,{workerData:{runnerHash:oldHash}}),maintenance,app;
   await writer.start();t.after(async()=>{await app?.close();await maintenance?.close();await writer.close();await rm(root,{recursive:true,force:true});});
   const call=(op,data={},extra={})=>writer.request({operation:`lab/${op}`,data,...extra});
-  const token=digest('TEST_ONLY-operator'),csrf=randomUUID();await call('admin.issue',{token_hash:token,role:'maintainer',csrf});
+  const token=digest('TEST_ONLY-operator'),csrf=randomUUID();await call('admin.issue',{token_hash:token,csrf});
   const admin=(op,data={})=>call(op,{...data,csrf},{credential_hash:token});
   const study=await admin('study.create',{request_id:randomUUID()}),asset=await admin('asset.begin',{request_id:randomUUID(),study_id:study.study_id,name:'fixture.png'});
   const png=await sharp({create:{width:24,height:24,channels:3,background:'#123456'}}).png().toBuffer();await writeDurable(await assetPath(root,asset.asset_id),png);

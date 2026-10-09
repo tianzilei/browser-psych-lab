@@ -3,11 +3,12 @@ import {LAB_SCHEMA, type Answer} from '../shared/protocol.js';
 import {type LabEvent,type LabSession} from '../shared/lab-contract.js';
 import {type WireEvent,type EventRef,type Manifest,type Receipt,type Seal,manifestText} from '../shared/contract.js';
 import {sha256} from './local-store.js';
+import type {ConsentReceipt} from './consent-gate.js';
 interface EventRow extends WireEvent {session_id:string;scope:string;sequence:number;receipt:Receipt|null}
 export interface PendingSeal {request_id:string;manifest:Manifest;seal:Seal|null}
 export interface SessionMeta {version_id:string;request_id:string;credential:string;session:LabSession|null;
   heads:Record<string,{sequence:number;previous:EventRef|null}>;pending:Record<string,PendingSeal>;finalize_id:string;page_values:Record<string,Record<string,Answer>>;
-  reconciliations?:Record<string,{request_id:string;manifest:Manifest;unknown:string[]}>;termination?:{request_id:string;reason:string;evidence:unknown}}
+  reconciliations?:Record<string,{request_id:string;manifest:Manifest;unknown:string[]}>;termination?:{request_id:string;reason:string;evidence:unknown};consent?:ConsentReceipt;environment?:{request_id:string;sample_id:string;raw:string;received:boolean}}
 interface LedgerSchema extends DBSchema {events:{key:string;value:EventRow;indexes:{session:string;scope:string}};
  outbox:{key:string;value:EventRow;indexes:{session:string}};meta:{key:string;value:SessionMeta}}
 export class Ledger {
@@ -19,6 +20,8 @@ export class Ledger {
   async state(){let m=await this.db.get('meta',this.version);if(!m){m={version_id:this.version,request_id:crypto.randomUUID(),credential:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join(''),session:null,heads:{},pending:{},finalize_id:crypto.randomUUID(),page_values:{}};await this.db.add('meta',m,this.version);}return m;}
   private serialized<T>(fn:()=>Promise<T>):Promise<T>{if(this.queued>=64){this.failure=new Error('LOCAL_QUEUE_BUDGET_EXCEEDED');return Promise.reject(this.failure);}this.queued++;const next=this.chain.then(fn).finally(()=>{this.queued--;});this.chain=next.catch(error=>{this.failure=error;});return next;}
   session(session:LabSession){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;m.session=session;await tx.store.put(m,this.version);await tx.done;});}
+  consent(receipt:ConsentReceipt){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;m.consent=receipt;await tx.store.put(m,this.version);await tx.done;});}
+  environment(raw?:string){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;if(raw!==undefined)m.environment??={request_id:crypto.randomUUID(),sample_id:crypto.randomUUID(),raw,received:false};else if(m.environment)m.environment.received=true;await tx.store.put(m,this.version);await tx.done;});}
   append(scope:string,kind:LabEvent['kind'],payload:Record<string,unknown>,pendingPath?:string[],pageValues?:Record<string,Answer>){return this.serialized(async()=>{
     const m=await this.state(),s=m.session;if(!s)throw new Error('NO_LOCAL_SESSION');if(m.pending[scope]&&kind!=='INPUT_DIAGNOSTIC')throw new Error('SCOPE_ALREADY_PENDING');
     const head=m.heads[scope]??{sequence:0,previous:null};if(head.sequence>=5000)throw new Error('LOCAL_SCOPE_EVENT_BUDGET_EXCEEDED');const e:LabEvent={event_schema_version:LAB_SCHEMA,event_id:crypto.randomUUID(),session_id:s.session_id,version_id:s.frozen.version_id,protocol_hash:s.frozen.hash,

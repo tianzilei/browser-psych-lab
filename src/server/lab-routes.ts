@@ -16,7 +16,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   const preparation=new PreparationQueue(Number(process.env.PREPARATION_CONCURRENCY??1)),assetPolicy=new RunnerAssetPolicy(root);
   app.addHook('onClose',async()=>preparation.close());
   const limits=new RateLimits();let loginBusy=0;let receiving=0,receivingBytes=0;const charged=new Map<string,number>();
-  const secure=(process.env.PUBLIC_ORIGIN??'').startsWith('https:');
+  const secure=(request:FastifyRequest)=>request.protocol==='https'||(process.env.PUBLIC_ORIGIN??'').startsWith('https:');
   const cookie=(request:FastifyRequest,name:string)=>request.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1)??'';
   const release=(r:FastifyRequest)=>{const b=charged.get(r.id);if(b!==undefined){receiving--;receivingBytes-=b;charged.delete(r.id);}};
   app.addHook('onResponse',async request=>release(request));app.addHook('onRequestAbort',async request=>release(request));
@@ -27,7 +27,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     if(request.method!=='GET'){
       const expected=process.env.PUBLIC_ORIGIN||`${request.protocol}://${request.host}`;
       if(request.headers.origin!==expected)throw new ContractError('ORIGIN_REJECTED',403);
-      const upload=request.routeOptions.url?.endsWith('/upload');const declared=Number(request.headers['content-length']??(upload?8*1024*1024:1024*1024));
+      const upload=request.routeOptions.url?.endsWith('/upload')||request.routeOptions.url?.endsWith('/package');const declared=Number(request.headers['content-length']??(upload?8*1024*1024:1024*1024));
       const max=upload?8*1024*1024:1024*1024;if(!Number.isSafeInteger(declared)||declared<0||declared>max)throw new ContractError('REQUEST_TOO_LARGE',413);
       const bytes=declared*2+1024;if(receiving>=32||receivingBytes+bytes>20*1024*1024)throw new ContractError('RECEIVE_QUEUE_FULL',503);
       receiving++;receivingBytes+=bytes;charged.set(request.id,bytes);
@@ -44,22 +44,33 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   };
   app.post('/api/auth/login',{bodyLimit:2048},async(request,reply)=>{
     limits.take(`login-${request.ip}`,5,.1);if(loginBusy>=2)throw new ContractError('LOGIN_BUSY',503);
-    const d=object(request.body);if(typeof d.password!=='string'||!['researcher','maintainer'].includes(String(d.role)))throw new ContractError('INVALID_LOGIN');
-    const stored=d.role==='maintainer'?process.env.MAINTAINER_PASSWORD_HASH:process.env.ADMIN_PASSWORD_HASH;
+    const d=object(request.body);if(typeof d.password!=='string'||Object.keys(d).some(key=>key!=='password'))throw new ContractError('INVALID_LOGIN');
+    const stored=process.env.ADMIN_PASSWORD_HASH;
     if(!stored)throw new ContractError('LOGIN_NOT_CONFIGURED',503);loginBusy++;
     let valid:boolean;try{valid=await verifyPassword(d.password,stored);}finally{loginBusy--;}
     if(!valid)throw new ContractError('INVALID_LOGIN',401);const token=randomBytes(32).toString('hex'),csrf=randomUUID();
-    const result=await writer.request({operation:'lab/admin.issue',data:{token_hash:digest(token),csrf,role:d.role}});
-    reply.header('Set-Cookie',`lab_admin=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=28800${secure?'; Secure':''}`);return result;
+    const result=await writer.request({operation:'lab/admin.issue',data:{token_hash:digest(token),csrf}});
+    reply.header('Set-Cookie',`lab_admin=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=28800${secure(request)?'; Secure':''}`);return result;
   });
   app.get('/api/auth/me',async request=>admin(request,'admin.me'));
-  app.post('/api/auth/logout',async(request,reply)=>{const result=await admin(request,'admin.logout');reply.header('Set-Cookie',`lab_admin=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0${secure?'; Secure':''}`);return result;});
+  app.post('/api/auth/logout',async(request,reply)=>{const result=await admin(request,'admin.logout');reply.header('Set-Cookie',`lab_admin=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0${secure(request)?'; Secure':''}`);return result;});
   app.get('/api/lab/studies',async request=>admin(request,'study.list'));
   app.post('/api/lab/studies',async request=>admin(request,'study.create',object(request.body)));
   app.get('/api/lab/studies/:study',async request=>admin(request,'study.get',{study_id:id((request.params as {study:string}).study)}));
-  for(const op of ['save','publish','admission'])app.post(`/api/lab/studies/:study/${op}`,async request=>admin(request,`study.${op}`,{...object(request.body),study_id:id((request.params as {study:string}).study)}));
+  for(const op of ['save','publish','admission','import','delete'])app.post(`/api/lab/studies/:study/${op}`,async request=>admin(request,`study.${op}`,{...object(request.body),study_id:id((request.params as {study:string}).study)}));
   app.get('/api/lab/studies/:study/assets',async request=>admin(request,'asset.list',{study_id:id((request.params as {study:string}).study)}));
   app.addContentTypeParser(['image/png','image/jpeg','image/webp'],(request,payload,done)=>done(null,payload));
+  app.addContentTypeParser('application/zip',(request,payload,done)=>done(null,payload));
+  app.post('/api/lab/studies/:study/package',{bodyLimit:8*1024*1024},async request=>{
+    if(maintenance.busy)throw new ContractError('MAINTENANCE_BUSY',503);
+    const study=id((request.params as {study:string}).study),job=id(request.headers['x-request-id']),name=decodeURIComponent(String(request.headers['x-file-name']??''));
+    await admin(request,'package.begin',{request_id:job,job_id:job,study_id:study,name});
+    const original=await admin(request,'job.get',{job_id:job}) as {state:string;result:string};
+    if(original.state==='READY'){const result=JSON.parse(original.result) as {hash:string},temp=await receiveUpload(root,job,request.body as Readable);const matches=await fileHash(temp.path)===result.hash;await unlink(temp.path);if(!matches)throw new ContractError('UPLOAD_IDEMPOTENCY_CONFLICT',409);return {job_id:job,result};}
+    if(original.state!=='RUNNING')throw new ContractError('UPLOAD_RECOVERY_REQUIRED',409);
+    try{const temp=await receiveUpload(root,job,request.body as Readable);return await maintenance.run('PACKAGE',{study_id:study,name,temp:temp.path,package_id:job},job);}
+    catch(error){await writer.request({operation:'lab/internal.job.finish',data:{job_id:job,state:'RECOVERY_REQUIRED',error:String(error)}}).catch(()=>{});throw error;}
+  });
   app.post('/api/lab/studies/:study/upload',{bodyLimit:8*1024*1024},async request=>{
     if(maintenance.busy)throw new ContractError('MAINTENANCE_BUSY',503);
     const study=id((request.params as {study:string}).study);const requestId=id(request.headers['x-request-id']);
@@ -82,6 +93,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   app.get('/api/lab/sessions/:session',async request=>admin(request,'session.detail',{session_id:id((request.params as {session:string}).session)}));
   app.post('/api/lab/sessions/:session/marks',async request=>admin(request,'session.mark',{...object(request.body),session_id:id((request.params as {session:string}).session)}));
   app.get('/api/lab/jobs',async request=>admin(request,'job.list'));
+  app.get('/api/lab/jobs/:job',async request=>{const job=await admin(request,'job.get',{job_id:id((request.params as {job:string}).job)}) as {job_id?:string};if(!job.job_id)throw new ContractError('JOB_NOT_FOUND',404);return job;});
   app.get('/api/lab/operations',async request=>{await admin(request,'admin.me');const fs=await statfs(root);let wal=0;try{wal=(await lstat(`${maintenance.path}-wal`)).size;}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}const state=await writer.request({operation:'lab/internal.operations',data:{}});return {state,writer:writer.stats(),maintenance_busy:maintenance.busy,preparation:preparation.stats(),wal_bytes:wal,free_bytes:fs.bavail*fs.bsize,process:process.memoryUsage()};});
   app.post('/api/lab/jobs/:job/recover',async request=>{const d={...object(request.body),job_id:id((request.params as {job:string}).job)};const review=await admin(request,'job.recover',d) as {report:string};return maintenance.recover(d.job_id,review.report);});
   for(const kind of ['EXPORT','BACKUP','REBUILD'])app.post(`/api/lab/jobs/${kind.toLowerCase()}`,async request=>{
@@ -102,10 +114,12 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   app.post('/api/lab/collection-gate/close',async request=>admin(request,'gate.close',object(request.body)));
   app.post('/api/lab/collection-gate',async request=>admin(request,'gate.open',object(request.body)));
   app.get('/api/participate/versions/:version',async request=>writer.request({operation:'lab/version.public',data:{version_id:id((request.params as {version:string}).version)}}));
+  app.get('/api/participate/versions/:version/metadata',async request=>writer.request({operation:'lab/version.metadata',data:{version_id:id((request.params as {version:string}).version)}}));
+  app.get('/api/participate/versions/:version/consent',async request=>writer.request({operation:'lab/version.consent',data:{version_id:id((request.params as {version:string}).version)}}));
   app.post('/api/participate/sessions',async(request,reply)=>{
     const d=object(request.body);if(typeof d.credential!=='string'||!/^[a-f0-9]{64}$/.test(d.credential))throw new ContractError('INVALID_CREDENTIAL');
-    const result=await writer.request({operation:'lab/participant.create',data:{request_id:id(d.request_id),version_id:id(d.version_id),credential_hash:digest(d.credential)}}) as {session_id:string};
-    reply.header('Set-Cookie',`lab_${result.session_id}=${d.credential}; HttpOnly; SameSite=Strict; Path=/api/participate/sessions/${result.session_id}${secure?'; Secure':''}`);return result;
+    const result=await writer.request({operation:'lab/participant.create',data:{request_id:id(d.request_id),version_id:id(d.version_id),credential_hash:digest(d.credential),...(d.consent!==undefined?{consent:d.consent}:{}),server_covariates:{observed_at:new Date().toISOString(),ip:request.ip,user_agent:request.headers['user-agent']??null,accept_language:request.headers['accept-language']??null,accept_encoding:request.headers['accept-encoding']??null,client_hints:Object.fromEntries(Object.entries(request.headers).filter(([k])=>k.startsWith('sec-ch-ua')))}}}) as {session_id:string};
+    reply.header('Set-Cookie',`lab_${result.session_id}=${d.credential}; HttpOnly; SameSite=Strict; Path=/api/participate/sessions/${result.session_id}${secure(request)?'; Secure':''}`);return result;
   });
   app.get('/api/participate/sessions/:session',async request=>participant(request,'view'));
   app.post('/api/participate/sessions/:session/preparation',async request=>{
@@ -117,7 +131,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     throw new ContractError('INVALID_PREPARATION_ACTION');
   });
   app.post('/api/participate/sessions/:session/admission',async request=>participant(request,'admission',object(request.body)));
-  for(const op of ['claim','release','reserve','permit','ingest','receipts','seal','finalize','terminate','reconcile'])app.post(`/api/participate/sessions/:session/${op}`,{bodyLimit:1024*1024},async request=>{
+  for(const op of ['claim','release','reserve','permit','ingest','receipts','seal','finalize','terminate','reconcile','covariates'])app.post(`/api/participate/sessions/:session/${op}`,{bodyLimit:1024*1024},async request=>{
     const data=object(request.body);delete data.proof_job_id;
     if(op==='seal'&&String(object(data.manifest).scope).startsWith('g-')){
       const params=request.params as {session:string};await participant(request,'admission.check');

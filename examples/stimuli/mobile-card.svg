@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720">
+  <rect width="1080" height="720" fill="#e5e5e5"/>
+  <g fill="#202020" font-family="PingFang SC, Noto Sans CJK SC, sans-serif" text-anchor="middle">
+    <text x="540" y="114" font-size="88" font-weight="600">图形识别</text>
+    <circle cx="280" cy="335" r="106"/>
+    <rect x="694" y="229" width="212" height="212" rx="8"/>
+    <text x="280" y="548" font-size="80">左边</text>
+    <text x="800" y="548" font-size="80">右边</text>
+    <text x="540" y="668" font-size="64">请选择圆形所在的一侧</text>
+  </g>
+</svg>
