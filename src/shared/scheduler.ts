@@ -1,6 +1,6 @@
 import { PRNG_ALGORITHM, sampleBounded, Xoshiro128, type State } from './prng.js';
 
-export interface Root { root_id: string; image_ms: number; isi_ms: number }
+export interface Root { root_id: string; image_ms: number; isi_ms: number; feedback_ms?:number }
 export interface Candidate extends Root { instance_id: string; number: number }
 export interface Entry { candidate: Candidate; proposal_id: string | null; target: number }
 export type Execution = 'UNSTARTED' | 'STAGED' | 'ONSET_OBSERVED' | 'WINDOW_CLOSED'
@@ -39,7 +39,8 @@ export class Scheduler {
       || [budget.commit_ms, budget.activate_ms, budget.margin_ms].some(v => !Number.isFinite(v) || v < 0)
       || !Number.isInteger(budget.draw_budget) || budget.draw_budget < 1
       || roots.some(r => !r.root_id || !Number.isFinite(r.image_ms) || r.image_ms <= 0
-        || !Number.isFinite(r.isi_ms) || r.isi_ms < 0)) throw new Error('INVALID_TEST_PLAN');
+        || !Number.isFinite(r.isi_ms) || r.isi_ms < 0
+        || (r.feedback_ms!==undefined&&(!Number.isFinite(r.feedback_ms)||r.feedback_ms<0)))) throw new Error('INVALID_TEST_PLAN');
     if (cap > 0 && roots.some(r => r.isi_ms < budget.commit_ms + budget.activate_ms + budget.margin_ms))
       throw new Error('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
     this.rng = new Xoshiro128(state); this.base = start;
@@ -54,7 +55,7 @@ export class Scheduler {
   private retime(entries: Entry[]): Entry[] {
     let target = this.base;
     return entries.map(e => {
-      const item = { ...e, target }; target += e.candidate.image_ms + e.candidate.isi_ms; return item;
+      const item = { ...e, target }; target += e.candidate.image_ms + (e.candidate.feedback_ms??0) + e.candidate.isi_ms; return item;
     });
   }
   private stop(reason: string): never {
@@ -180,7 +181,7 @@ export class Scheduler {
     if (this.state !== 'RUNNING' || this.queue[0]?.candidate.instance_id !== instance
       || this.executions.get(instance) !== 'WINDOW_CLOSED') throw new Error('ILLEGAL_END');
     const entry = this.queue.shift()!;
-    this.base = entry.target + entry.candidate.image_ms + entry.candidate.isi_ms;
+    this.base = entry.target + entry.candidate.image_ms + (entry.candidate.feedback_ms??0) + entry.candidate.isi_ms;
     this.executions.set(instance, 'ENDED_OBSERVED');
   }
   correctRoot(root: string, now: number, op: string, evidence: string) {

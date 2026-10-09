@@ -1,0 +1,96 @@
+import {test,expect,type Page} from '@playwright/test';
+import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {openDatabase} from '../../src/server/database.js';
+import {LabStore} from '../../src/server/lab-store.js';
+import {digest} from '../../src/server/collection-store.js';
+import {compileQuestionnaire} from '../../src/shared/questionnaire-json.js';
+import {RunReplay} from '../../src/shared/run-replay.js';
+import {stableJSON} from '../../src/shared/protocol.js';
+
+async function start(page:Page){
+  const root=mkdtempSync(join(tmpdir(),'bpl-runner-')),db=openDatabase(join(root,'db.sqlite')),store=new LabStore(db,digest('runner'));
+  const token=digest('admin'),csrf=randomUUID();store.execute({operation:'lab/admin.issue',data:{token_hash:token,csrf}});
+  const admin=(operation:string,data:Record<string,unknown>={})=>store.execute({operation:`lab/${operation}`,credential_hash:token,data:{csrf,...data}}) as any;
+  const study=admin('study.create',{request_id:randomUUID()}),png=readFileSync('examples/stimuli/mobile-card.png'),asset=admin('asset.begin',{request_id:randomUUID(),study_id:study.study_id,name:'test.png'});
+  store.execute({operation:'lab/internal.asset.ready',data:{asset_id:asset.asset_id,info:{hash:digest(png),bytes:png.length,width:1080,height:720,format:'png'}}});
+  const p=compileQuestionnaire({schema:'questionnaire-v1',title:'Runner regression',orientation:'portrait',pages:[],budget:{commit_ms:40,long_frame_ms:1000},
+    timing_defaults:{stimulus_ms:1500,isi_ms:500,feedback_ms:300},groups:[{id:'task',title:'Task',choices:['Left','Right'],response_keys:{Right:'KeyJ',Left:'KeyF'},
+    feedback:{correct:'Correct',incorrect:'Incorrect',miss:'Miss',neutral:'Recorded'},repeats:0,
+    trials:[{root_id:'image',asset_id:asset.asset_id,correct:'Left'},{root_id:'text',text:'HELLO',correct:'Right'}]}]});
+  const saved=admin('study.save',{request_id:randomUUID(),revision:1,study_id:study.study_id,protocol:p});
+  const version=admin('study.publish',{request_id:randomUUID(),revision:saved.revision,study_id:study.study_id});
+  admin('study.admission',{request_id:randomUUID(),study_id:study.study_id,paused:false});
+  let sid:string,groupCalls=0;
+  const call=(op:string,data:Record<string,unknown>={})=>store.execute({operation:`lab/participant.${op}`,session_id:sid,credential_hash:digest('test'),data}) as any;
+  await page.addInitScript(version=>sessionStorage.setItem(`lab-writer-${version}`,'writer-a'),version.version_id);
+  await page.route('**/api/participate/**',async route=>{
+    const url=new URL(route.request().url()),path=url.pathname,body=route.request().postDataJSON()??{};
+    try{let result:any;
+      if(path.includes('/versions/')){
+        result=path.endsWith('/metadata')?{title:p.title,background:p.layout.background,orientation:'portrait'}:path.endsWith('/consent')?null:version;
+      }else if(path==='/api/participate/sessions'){
+        const created=store.execute({operation:'lab/participant.create',data:{request_id:body.request_id,version_id:version.version_id,credential_hash:digest('test')}}) as any;
+        sid=created.session_id;result=created;
+      }else{
+        const op=path.split('/')[5];
+        if(op==='assets'){await route.fulfill({body:png,contentType:'image/png'});return;}
+        if(op==='covariates')result={hash:digest(body.raw),status:'PERSISTED'};
+        else if(op==='preparation')result=body.action==='release'?{}:{status:'READY',ticket_id:body.ticket_id};
+        else if(op==='seal'){
+          const permit=call('view').permit,replay=new RunReplay(permit.plan);
+          const refs=db.prepare('SELECT event_id,hash,disposition,writer_epoch,kind FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,permit.scope);
+          for(const row of db.prepare('SELECT envelope FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,permit.scope) as any[]){const e=JSON.parse(row.envelope);if(e.kind==='GROUP_RECORD')replay.apply(e.payload.record);}
+          const results=replay.finish(),job=randomUUID();store.beginJob(job,'REPLAY',null,{});
+          store.execute({operation:'lab/internal.job.finish',data:{job_id:job,state:'READY',result:{session_id:sid,scope:permit.scope,source_hash:digest(stableJSON(refs)),valid:true,results}}});
+          result=call('seal',{...body,proof_job_id:job});
+        }else{if(op==='ingest')groupCalls++;result=call(op??'view',body);}
+      }
+      await route.fulfill({json:result});
+    }catch(error){await route.fulfill({status:400,json:{code:String(error)}});}
+  });
+  await page.route('**/participate.html?**',route=>route.fulfill({contentType:'text/html',body:'<p id="done">Group saved</p>'}));
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`/run.html?version=${version.version_id}`);
+  await expect(page.getByRole('button',{name:'开始本组'})).toBeVisible();
+  return {view:()=>call('view'),records:()=>db.prepare("SELECT envelope FROM lab_events WHERE session_id=? AND kind='GROUP_RECORD' ORDER BY sequence").all(sid).map((e:any)=>JSON.parse(e.envelope).payload.record),
+    requests:()=>groupCalls,close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+}
+
+test('image click visibly confirms first answer; right click, repeated key, and changed second answer are excluded',async({page})=>{
+  const f=await start(page);try{
+    await page.getByRole('button',{name:'开始本组'}).click();
+    await expect(page.locator('#status')).toContainText('本组已呈现 1 次');
+    const left=page.getByRole('button',{name:'Left',exact:true}),right=page.getByRole('button',{name:'Right',exact:true});
+    await left.click({button:'right'});await left.click({button:'middle'});await expect(left).toHaveAttribute('aria-pressed','false');
+    expect(await left.evaluate(e=>!e.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true})))).toBe(true);
+    await left.click();await expect(left).toHaveAttribute('aria-pressed','true');await expect(page.locator('#status')).toContainText('已记录：Left');
+    await right.click();await expect(left).toHaveAttribute('aria-pressed','true');await expect(right).toHaveAttribute('aria-pressed','false');
+    expect(f.requests()).toBe(0);
+    await expect(page.locator('#status')).toContainText('本组已呈现 2 次');
+    await page.keyboard.down('j');await page.keyboard.down('j');await page.keyboard.up('j');
+    await expect(right).toHaveAttribute('aria-pressed','true');await expect(page.locator('#done')).toBeVisible();
+    expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);
+    const inputs=f.records().filter((r:any)=>r.type==='INPUT');expect(inputs.filter((r:any)=>r.pointer_type==='keyboard'&&r.action==='down')).toHaveLength(1);
+    expect(f.records().filter((r:any)=>r.type==='WINDOW').map((r:any)=>r.answer)).toEqual(['Left','Right']);
+    for(const [i,r] of f.records().filter((r:any)=>r.type==='END').entries())expect(r.at).toBeGreaterThanOrEqual(f.view().permit.plan.start+(i+1)*2300);
+  }catch(error){console.log('Runner diagnostic',JSON.stringify(f.view().diagnostics),JSON.stringify(f.records()));throw error;}finally{f.close();}
+});
+
+test('mobile touch held through ISI never answers the next stimulus until release and a new press',async({browser})=>{
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true}),page=await context.newPage(),f=await start(page);
+  try{await page.getByRole('button',{name:'开始本组'}).tap();await expect(page.locator('#status')).toContainText('本组已呈现 1 次');
+    await page.getByRole('button',{name:'Left',exact:true}).tap();await expect(page.getByRole('button',{name:'Left',exact:true})).toHaveAttribute('aria-pressed','true');
+    // Watch every frame: ordinary assertion polling can miss a short interval.
+    await page.waitForFunction(()=>document.querySelector('#status')?.textContent==='已记录；请等待下一刺激。');
+    await page.evaluate(()=>{const r=document.querySelector('.response-buttons button')!.getBoundingClientRect();window.dispatchEvent(new PointerEvent('pointerdown',{pointerId:77,pointerType:'touch',button:0,clientX:r.x+10,clientY:r.y+10}));});
+    await expect(page.locator('#status')).toContainText('本组已呈现 2 次');
+    await page.evaluate(()=>{const r=document.querySelectorAll('.response-buttons button')[1]!.getBoundingClientRect();window.dispatchEvent(new PointerEvent('pointerdown',{pointerId:77,pointerType:'touch',button:0,clientX:r.x+10,clientY:r.y+10}));});
+    await expect(page.getByRole('button',{name:'Right',exact:true})).toHaveAttribute('aria-pressed','false');
+    await page.evaluate(()=>window.dispatchEvent(new PointerEvent('pointerup',{pointerId:77,pointerType:'touch',button:0})));
+    await page.getByRole('button',{name:'Right',exact:true}).tap();await expect(page.locator('#done')).toBeVisible();
+    expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(f.records().filter((r:any)=>r.type==='WINDOW').map((r:any)=>r.answer)).toEqual(['Left','Right']);
+  }finally{await context.close();f.close();}
+});

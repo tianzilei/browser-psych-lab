@@ -1,0 +1,84 @@
+[
+  {
+    "finding": "startup-budget",
+    "accepted_protocol": true,
+    "budget": 1020,
+    "start": 1000,
+    "error": "COMMIT_DEADLINE_UNSAFE"
+  },
+  {
+    "finding": "short-static-trial",
+    "accepted_protocol": true,
+    "next_target": 1016.6666666666666,
+    "frame_ms": 16.666666666666668,
+    "stage_at": 1000,
+    "budget": 60,
+    "error": "COMMIT_DEADLINE_UNSAFE"
+  },
+  {
+    "finding": "pointer-chord",
+    "trace": {
+      "events": [
+        {
+          "type": "pointermove",
+          "button": -1,
+          "buttons": 0
+        },
+        {
+          "type": "pointerdown",
+          "button": 0,
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "button": 2,
+          "buttons": 3
+        },
+        {
+          "type": "pointermove",
+          "button": 0,
+          "buttons": 2
+        },
+        {
+          "type": "pointerup",
+          "button": 2,
+          "buttons": 0
+        }
+      ],
+      "records": [
+        {
+          "type": "INPUT",
+          "at": 1008.1000000238419,
+          "input_time": 1007.7000000476837,
+          "pointer_id": 1,
+          "action": "down",
+          "valid": false,
+          "choice": "left",
+          "raw_timestamp": 111.39999997615814,
+          "time_origin": 1791543509225.1,
+          "pointer_type": "mouse",
+          "x": 50,
+          "y": 50,
+          "button": 0,
+          "clock_origin": -896.3000000715256
+        }
+      ]
+    },
+    "subsequent_press_accepted": false,
+    "validated_by": "RunReplay",
+    "held_after_next_release": 0
+  },
+  {
+    "finding": "stale-owner-pid-reuse",
+    "fault_injection": true,
+    "active_database_owner": false,
+    "error": "DATABASE_ALREADY_OWNED"
+  },
+  {
+    "finding": "preview-malformed-url-crash",
+    "isolated_real_handler": true,
+    "raw_http_target": "http://[",
+    "exit_code": 1,
+    "error": "ERR_INVALID_URL"
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "schema": "questionnaire-v1",
+  "title": "刺激时长与顺序示例",
+  "mode": "TEST_ONLY",
+  "background": "#e5e5e5",
+  "orientation": "portrait",
+  "pages": [{
+    "id": "instructions",
+    "title": "任务说明",
+    "instruction": "图片中请选择圆形所在的一侧；文字中请选择提示的一侧。点击下方按钮，或按 F 选择左边、按 J 选择右边。每题只记录第一次作答。作答后会显示选中状态，请等待下一题。",
+    "questions": []
+  }],
+  "timing_defaults": {
+    "stimulus_ms": "3+-0.5",
+    "isi_ms": {"base": 800, "jitter": 200},
+    "feedback_ms": 400
+  },
+  "groups": [{
+    "id": "stimuli",
+    "title": "图片与文字任务",
+    "choices": ["左边", "右边"],
+    "response_keys": {"左边": "KeyF", "右边": "KeyJ"},
+    "repeats": 0,
+    "ordering": {"mode": "balanced", "max_run": 2},
+    "feedback": {"correct": "正确", "incorrect": "错误", "miss": "未作答", "neutral": "已记录"},
+    "trials": [
+      {"root_id": "picture-1", "image": {"package": "mobile-stimuli.zip", "path": "images/mobile-card.png"}, "category": "picture", "correct": "左边"},
+      {"root_id": "word-1", "text": "请选择右边", "category": "word", "correct": "右边", "timing": {"stimulus_ms": 2000}},
+      {"root_id": "picture-2", "image": {"package": "mobile-stimuli.zip", "path": "images/mobile-card.png"}, "category": "picture", "correct": "左边"},
+      {"root_id": "word-2", "text": "请选择左边", "category": "word", "correct": "左边"},
+      {"root_id": "picture-3", "image": {"package": "mobile-stimuli.zip", "path": "images/mobile-card.png"}, "category": "picture", "correct": "左边", "timing": {"stimulus_ms": "2+-0.3", "isi_ms": 600}},
+      {"root_id": "word-3", "text": "请选择右边", "category": "word", "correct": "右边"}
+    ]
+  }],
+  "ending": {"title": "测试完成", "text": "答案已保存。"}
+}

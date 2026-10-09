@@ -16,7 +16,7 @@ export async function storageProbe(group:Group,protocol:Protocol){const name=`bp
   finally{db.close();await deleteDB(name);}
 }
 export async function prepareImages(session:LabSession,group:Group,status:(text:string)=>void,signal?:AbortSignal,headers:Record<string,string>={}){
-  const infos=group.trials.map(t=>session.frozen.assets.find(a=>a.asset_id===t.asset_id)!);if(infos.some(a=>!a))throw new Error('冻结资源清单不完整。');
+  const infos=group.trials.filter(t=>t.asset_id).map(t=>session.frozen.assets.find(a=>a.asset_id===t.asset_id)!);if(infos.some(a=>!a))throw new Error('冻结资源清单不完整。');
   const unique=[...new Map(infos.map(a=>[a.hash,a])).values()];const estimated=unique.reduce((n,a)=>n+a.width*a.height*4,0),originalBytes=unique.reduce((n,a)=>n+a.bytes,0);
   if(estimated>session.frozen.protocol.budget.max_decoded_bytes)throw new Error('图片解码预算不足。');
   const bitmaps=new Map<string,ImageBitmap>(),controller=new AbortController(),started=performance.now();

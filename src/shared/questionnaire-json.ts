@@ -15,7 +15,7 @@ export function parseQuestionnaireText(source:string):unknown {
 export function compileQuestionnaire(value:unknown,resolveImage:(ref:ImageReference)=>string=()=>{throw new ContractError('IMAGE_PACKAGE_REQUIRED');},strict=true):Protocol {
   const input=object(value);
   if(input.schema==='study-v1'){const p=parseProtocol(input);validateQuestionnaire(p,strict);return p;}
-  const allowed=['schema','title','mode','background','orientation','pages','groups','variants','layout','budget','consent','ending'];
+  const allowed=['schema','title','mode','background','orientation','pages','groups','variants','layout','budget','consent','ending','timing_defaults'];
   if(input.schema!=='questionnaire-v1'||Object.keys(input).some(k=>!allowed.includes(k)))throw new ContractError('UNKNOWN_QUESTIONNAIRE_FIELD');
   if(!['portrait','landscape'].includes(String(input.orientation)))throw new ContractError('ORIENTATION_REQUIRED');
   const base=sampleProtocol(),groups=input.groups??[];
@@ -46,7 +46,7 @@ export function compileQuestionnaire(value:unknown,resolveImage:(ref:ImageRefere
   if(layout.background!==undefined||layout.orientation!==undefined)throw new ContractError('AMBIGUOUS_LAYOUT');
   const p=parseProtocol({schema:'study-v1',title:input.title,mode:input.mode??'TEST_ONLY',pages:normalized,groups:compiled,
     variants:input.variants??[{id:'standard',weight:1,group_order:compiled.map(g=>id(g.id)),trial_order:Object.fromEntries(compiled.map(g=>[g.id,g.trials.map(t=>id(t.root_id))]))}],
-    layout:{...base.layout,...layout,background:input.background??'#e5e5e5',orientation:input.orientation},budget:{...base.budget,...(input.budget===undefined?{}:object(input.budget))},...(input.consent!==undefined?{consent:input.consent}:{}),...(input.ending!==undefined?{ending:input.ending}:{})});
+    layout:{...base.layout,...layout,background:input.background??'#e5e5e5',orientation:input.orientation},budget:{...base.budget,...(input.budget===undefined?{}:object(input.budget))},...(input.consent!==undefined?{consent:input.consent}:{}),...(input.ending!==undefined?{ending:input.ending}:{}),...(input.timing_defaults!==undefined?{timing_defaults:input.timing_defaults}:{})});
   validateQuestionnaire(p,strict);return p;
 }
 export function questionnaireTemplate(){return {schema:'questionnaire-v1',title:'移动端模拟问卷',background:'#e5e5e5',orientation:'portrait',consent:{title:'知情同意书（模拟测试）',text:'这是用于检查样式和交互的模拟问卷。请只填写虚构的个人信息。\n\n同意后系统会保存模拟答案、操作记录和浏览器、系统、屏幕、网络等可获取的设备信息。信息用于检查作答和保存功能。\n\n你可以选择不参加，或在作答过程中关闭页面退出。已经提交的测试记录会保留在本机测试数据库中。\n\n如同意以上说明，请点击“我已阅读并同意”。'},ending:{title:'感谢参与',text:'你的答案已保存。感谢你的时间，现在可以关闭页面。'},pages:[{id:'survey',instruction:'请选择最符合你的答案。',questions:[

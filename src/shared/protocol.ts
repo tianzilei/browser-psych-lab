@@ -1,4 +1,5 @@
 import { ContractError, id, object } from './contract.js';
+import {parseTiming,parseTimingDefaults,parseOrdering,orderTrials} from './trial-design.js';
 export const LAB_SCHEMA = 'lab-events-v1';
 export const RUNNER_VERSION = 'canvas-v1';
 // UTF-16 character budgets. Keep these unchanged for existing frozen protocols.
@@ -11,12 +12,18 @@ export interface ScaleAxis {id:string;title:string;min:number;max:number;min_lab
 export interface Question { id: string; type: 'single' | 'multi' | 'scale' | 'scales' | 'text'; title: string;
   required: boolean; axes?: ScaleAxis[]; choices?: string[]; min?: number; max?: number; min_label?: string; max_label?: string; labels?: string[]; max_length?: number; input_purpose?: 'personal'; condition?: Condition }
 export interface Page { id: string; title: string; instruction: string; condition?: Condition; questions: Question[] }
-export interface Trial { root_id: string; asset_id: string; image_ms: number; isi_ms: number; correct: string | null }
-export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[] }
+export interface TimingSpec {base: number; jitter: number}
+export interface TimingDefaults {stimulus_ms?: TimingSpec; isi_ms?: TimingSpec; feedback_ms?: TimingSpec}
+export interface Ordering {mode: 'fixed' | 'shuffle' | 'category' | 'balanced'; max_run?: number}
+export interface Feedback {correct: string; incorrect: string; miss: string; neutral: string}
+export interface Trial { root_id: string; asset_id?: string; text?: string; category?: string; image_ms: number; isi_ms: number; correct: string | null;
+  timing?: TimingDefaults; timing_general?: (keyof TimingDefaults)[]; feedback_ms?: number }
+export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[];
+  timing_defaults?: TimingDefaults; ordering?: Ordering; response_keys?: Record<string,string>; feedback?: Feedback }
 export interface Variant { id: string; weight: number; group_order: string[]; trial_order: Record<string, string[]> }
 export interface Protocol {
   schema: 'study-v1'; title: string; mode: 'TEST_ONLY' | 'COLLECTION'; pages: Page[]; groups: Group[];
-  consent?: {title:string;text:string};
+  consent?: {title:string;text:string}; timing_defaults?: TimingDefaults;
   ending?: {title:string;text:string};
   variants: Variant[]; layout: { aspect: number; portrait_min_width: number; landscape_min_width: number; background: string; orientation?: 'portrait' | 'landscape' };
   budget: { commit_ms: number; activate_ms: number; margin_ms: number; draw_budget: number;
@@ -84,7 +91,7 @@ export function evaluate(c: Condition | undefined, answers: Record<string, Answe
 }
 export function parseProtocol(value: unknown): Protocol {
   const p = object(value);
-  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending']);
+  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending', 'timing_defaults']);
   if (p.schema !== 'study-v1' || !['TEST_ONLY', 'COLLECTION'].includes(String(p.mode))) throw new ContractError('INVALID_PROTOCOL_SCHEMA');
   const prior = new Map<string,Question>(); const ids = new Set<string>();
   const unique = (v: unknown) => { const s = id(v); if (ids.has(s)) throw new ContractError('DUPLICATE_PROTOCOL_ID'); ids.add(s); return s; };
@@ -136,19 +143,46 @@ export function parseProtocol(value: unknown): Protocol {
     refresh_min_hz: number(b.refresh_min_hz, 20, 240), refresh_max_hz: number(b.refresh_max_hz, 20, 240),
     quantization: 'ceil-frame', environment_id: id(b.environment_id) };
   if (budget.refresh_min_hz > budget.refresh_max_hz) throw new ContractError('INVALID_REFRESH_RANGE');
+  const general=p.timing_defaults===undefined?undefined:parseTimingDefaults(p.timing_defaults);
   const groups: Group[] = list(p.groups, 20).map(value => {
-    const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials']);
+    const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials','timing_defaults','ordering','response_keys','feedback']);
     const choices = strings(g.choices, 2, 6); const repeats = number(g.repeats, 0, 2, true);
+    const defaults=general||g.timing_defaults!==undefined?{...general,...(g.timing_defaults===undefined?{}:parseTimingDefaults(g.timing_defaults))}:undefined;
     const trials: Trial[] = list(g.trials, 100).map(value => {
-      const t = object(value); fields(t, ['root_id', 'asset_id', 'image_ms', 'isi_ms', 'correct']);
-      const image_ms = number(t.image_ms, 1, 60000); const isi_ms = number(t.isi_ms, 0, 60000);
+      const t = object(value); fields(t, ['root_id', 'asset_id', 'image_ms', 'isi_ms', 'correct','text','category','timing','feedback_ms','timing_general']);
+      const timing=t.timing===undefined?{}:parseTimingDefaults(t.timing);
+      const inherited=t.timing_general===undefined?[]:list(t.timing_general,3).map(v=>{
+        if(!['stimulus_ms','isi_ms','feedback_ms'].includes(String(v)))throw new ContractError('INVALID_TIMING_SOURCE');return v as keyof TimingDefaults;});
+      for(const [phase,field] of [['stimulus_ms','image_ms'],['isi_ms','isi_ms'],['feedback_ms','feedback_ms']] as const){
+        if(inherited.includes(phase)){if(!defaults?.[phase]||timing[phase]||t[field]!==defaults[phase]!.base)throw new ContractError('INVALID_TIMING_SOURCE');continue;}
+        if(t[field]!==undefined){if(timing[phase]){if(t[field]!==timing[phase]!.base)throw new ContractError('AMBIGUOUS_TRIAL_TIMING');continue;}
+          if(defaults?.[phase]||typeof t[field]!=='number')timing[phase]=parseTiming(t[field]);}
+        else if(defaults?.[phase]&&!timing[phase])inherited.push(phase);
+      }
+      const stimulus=timing.stimulus_ms??defaults?.stimulus_ms,interval=timing.isi_ms??defaults?.isi_ms,feedbackTime=timing.feedback_ms??defaults?.feedback_ms;
+      const image_ms = number(stimulus?.base??t.image_ms, 1, 60000); const isi_ms = number(interval?.base??t.isi_ms, 0, 60000);
+      if(stimulus&&stimulus.base-stimulus.jitter<1)throw new ContractError('INVALID_STIMULUS_DURATION');
       if (t.correct !== null && !choices.includes(String(t.correct))) throw new ContractError('INVALID_CORRECT_ANSWER');
-      if (repeats && isi_ms < budget.commit_ms + budget.activate_ms + budget.margin_ms) throw new ContractError('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
-      return { root_id: unique(t.root_id), asset_id: id(t.asset_id), image_ms, isi_ms, correct: t.correct as string | null };
+      if (repeats && isi_ms-(interval?.jitter??0) < budget.commit_ms + budget.activate_ms + budget.margin_ms) throw new ContractError('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
+      if((t.text===undefined)===(t.asset_id===undefined))throw new ContractError('ONE_STIMULUS_REQUIRED');
+      const result:Trial={ root_id: unique(t.root_id), ...(t.text!==undefined?{text:text(t.text,200)}:{asset_id:id(t.asset_id)}), image_ms, isi_ms, correct: t.correct as string | null };
+      if(result.text!==undefined&&!result.text.trim())throw new ContractError('INVALID_TEXT_STIMULUS');
+      if(t.category!==undefined)result.category=id(t.category);
+      if(Object.keys(timing).length)result.timing=timing;
+      if(inherited.length)result.timing_general=inherited;
+      if(feedbackTime||t.feedback_ms!==undefined)result.feedback_ms=number(feedbackTime?.base??t.feedback_ms,0,60000);
+      return result;
     });
-    if (!trials.length || trials.reduce((n, t) => n + (t.image_ms + t.isi_ms) * (repeats + 1), 0) > budget.max_group_ms)
+    const maxTime=(t:Trial,phase:keyof TimingDefaults,base:number)=>{const spec=t.timing?.[phase]??defaults?.[phase];return spec?spec.base+spec.jitter:base;};
+    if (!trials.length || trials.reduce((n, t) => n + (maxTime(t,'stimulus_ms',t.image_ms)+maxTime(t,'isi_ms',t.isi_ms)+maxTime(t,'feedback_ms',t.feedback_ms??0)) * (repeats + 1), 0) > budget.max_group_ms)
       throw new ContractError('GROUP_TIME_BUDGET_EXCEEDED');
-    const group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
+    const group:Group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
+    if(defaults)group.timing_defaults=defaults;
+    if(g.ordering!==undefined){group.ordering=parseOrdering(g.ordering);orderTrials(trials,group.ordering,[1,2,3,4]);}
+    if(g.response_keys!==undefined){const keys=object(g.response_keys);if(Object.keys(keys).length!==choices.length||Object.keys(keys).some(k=>!choices.includes(k))
+      ||new Set(Object.values(keys)).size!==choices.length||Object.values(keys).some(k=>typeof k!=='string'||! /^(Key[A-Z]|Digit[0-9]|Arrow(Left|Right|Up|Down)|Space|Enter)$/.test(k)))throw new ContractError('INVALID_RESPONSE_KEYS');
+      group.response_keys=keys as Record<string,string>;}
+    if(g.feedback!==undefined){const f=object(g.feedback);fields(f,['correct','incorrect','miss','neutral']);group.feedback={correct:text(f.correct,100),incorrect:text(f.incorrect,100),miss:text(f.miss,100),neutral:text(f.neutral,100)};}
     if(new TextEncoder().encode(JSON.stringify(worstAuditPayload(group,budget.draw_budget))).length>120*1024)throw new ContractError('GROUP_AUDIT_SIZE_BUDGET_EXCEEDED');return group;
   });
   if (!pages.length && !groups.length) throw new ContractError('EMPTY_STUDY');
@@ -170,7 +204,7 @@ export function parseProtocol(value: unknown): Protocol {
   if (typeof l.background !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(l.background)) throw new ContractError('INVALID_BACKGROUND');
   let ending:Protocol['ending'];if(p.ending!==undefined){const e=object(p.ending);fields(e,['title','text']);ending={title:text(e.title,TEXT_LIMITS.title),text:text(e.text,TEXT_LIMITS.instruction)};if(!ending.title.trim()||!ending.text.trim())throw new ContractError('INVALID_ENDING');}
   let consent:Protocol['consent'];if(p.consent!==undefined){const c=object(p.consent);fields(c,['title','text']);consent={title:text(c.title,TEXT_LIMITS.title),text:text(c.text,TEXT_LIMITS.instruction)};if(!consent.title.trim()||!consent.text.trim())throw new ContractError('INVALID_CONSENT');}
-  return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),
+  return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),...(general?{timing_defaults:general}:{}),
     layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, 200, 2000, true),
       landscape_min_width: number(l.landscape_min_width, 200, 2000, true), background: l.background,
       ...(l.orientation!==undefined?{orientation:l.orientation as 'portrait'|'landscape'}:{}) }, budget };

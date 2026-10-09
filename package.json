@@ -23,6 +23,7 @@
     "profile:foundation": "node scripts/profile-foundation.mjs",
     "preview:questionnaire": "node scripts/preview-questionnaire.mjs",
     "test:browser": "playwright test",
+    "test:runner": "playwright test --config tests/runner-browser.config.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.mjs",
     "check": "npm run typecheck && npm run build && npm run smoke && npm run test:unit && npm run test:browser",
     "backup": "node scripts/backup.mjs",
