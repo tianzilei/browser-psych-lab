@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 const {passwordHash}=await import('../dist/server/auth.js');
 process.env.ADMIN_PASSWORD_HASH=await passwordHash('TEST_ONLY-browser-password');
-process.env.MAINTAINER_PASSWORD_HASH=await passwordHash('TEST_ONLY-maintainer-password');
 process.env.SESSION_CONCURRENCY='2';
 process.env.PREPARATION_CONCURRENCY='1';
 const directory = await mkdtemp(join(tmpdir(), 'bpl-browser-'));

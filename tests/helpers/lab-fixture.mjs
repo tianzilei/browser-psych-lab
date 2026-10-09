@@ -9,7 +9,7 @@ import {sampleProtocol} from '../../src/shared/protocol.ts';
 export function fixture(t,protocol=sampleProtocol(),options={}){
   const root=mkdtempSync(join(tmpdir(),'bpl-lab-')),path=join(root,'db.sqlite'),db=openDatabase(path);let now=1000;const store=new LabStore(db,digest('TEST_ONLY-runner'),()=>now,options.sessionConcurrency??2);
   t.after(()=>{try{db.close();}catch{}rmSync(root,{recursive:true,force:true});});
-  const token=digest('admin'),csrf=randomUUID();store.execute({operation:'lab/admin.issue',data:{token_hash:token,role:'maintainer',csrf}});
+  const token=digest('admin'),csrf=randomUUID();store.execute({operation:'lab/admin.issue',data:{token_hash:token,csrf}});
   const admin=(op,data={})=>store.execute({operation:`lab/${op}`,credential_hash:token,data:{csrf,...data}});
   const study=admin('study.create',{request_id:randomUUID()});
   const saved=admin('study.save',{request_id:randomUUID(),study_id:study.study_id,revision:1,protocol});

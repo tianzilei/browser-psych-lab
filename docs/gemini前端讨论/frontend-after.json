@@ -1,0 +1,192 @@
+{
+  "scope": "Local production manifest closure; HTML + JS + CSS; gzipSync with defaults; no images, API responses or cache assumptions",
+  "node": "v24.21.0",
+  "initial": {
+    "bytes": 36278,
+    "gzipBytes": 15641,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/local-store-BVCYjeAZ.js",
+        "bytes": 3485,
+        "gzipBytes": 1462
+      },
+      {
+        "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/participant-api-38_6EoZ8.js",
+        "bytes": 9981,
+        "gzipBytes": 3505
+      },
+      {
+        "path": "assets/participant-api-Dhq4t8RI.css",
+        "bytes": 1356,
+        "gzipBytes": 649
+      },
+      {
+        "path": "assets/participant-theme-DmxwJp0T.js",
+        "bytes": 384,
+        "gzipBytes": 282
+      },
+      {
+        "path": "assets/participate-CpfVsGsr.js",
+        "bytes": 4562,
+        "gzipBytes": 2241
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-CoTq5jj3.js",
+        "bytes": 8608,
+        "gzipBytes": 3713
+      },
+      {
+        "path": "participate.html",
+        "bytes": 1182,
+        "gzipBytes": 542
+      }
+    ]
+  },
+  "questionnaire": {
+    "bytes": 39563,
+    "gzipBytes": 17209,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/local-store-BVCYjeAZ.js",
+        "bytes": 3485,
+        "gzipBytes": 1462
+      },
+      {
+        "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/participant-api-38_6EoZ8.js",
+        "bytes": 9981,
+        "gzipBytes": 3505
+      },
+      {
+        "path": "assets/participant-api-Dhq4t8RI.css",
+        "bytes": 1356,
+        "gzipBytes": 649
+      },
+      {
+        "path": "assets/participant-theme-DmxwJp0T.js",
+        "bytes": 384,
+        "gzipBytes": 282
+      },
+      {
+        "path": "assets/participate-CpfVsGsr.js",
+        "bytes": 4562,
+        "gzipBytes": 2241
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-CoTq5jj3.js",
+        "bytes": 8608,
+        "gzipBytes": 3713
+      },
+      {
+        "path": "assets/survey-page-8SqdqjWs.js",
+        "bytes": 3285,
+        "gzipBytes": 1568
+      },
+      {
+        "path": "participate.html",
+        "bytes": 1182,
+        "gzipBytes": 542
+      }
+    ]
+  },
+  "runner": {
+    "bytes": 62720,
+    "gzipBytes": 24325,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/local-store-BVCYjeAZ.js",
+        "bytes": 3485,
+        "gzipBytes": 1462
+      },
+      {
+        "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/participant-api-38_6EoZ8.js",
+        "bytes": 9981,
+        "gzipBytes": 3505
+      },
+      {
+        "path": "assets/participant-api-Dhq4t8RI.css",
+        "bytes": 1356,
+        "gzipBytes": 649
+      },
+      {
+        "path": "assets/participant-theme-DmxwJp0T.js",
+        "bytes": 384,
+        "gzipBytes": 282
+      },
+      {
+        "path": "assets/protocol-CoTq5jj3.js",
+        "bytes": 8608,
+        "gzipBytes": 3713
+      },
+      {
+        "path": "assets/run-CYD60C1x.css",
+        "bytes": 594,
+        "gzipBytes": 317
+      },
+      {
+        "path": "assets/run-VQg-qtnQ.js",
+        "bytes": 31863,
+        "gzipBytes": 11416
+      },
+      {
+        "path": "run.html",
+        "bytes": 1127,
+        "gzipBytes": 483
+      }
+    ]
+  }
+}

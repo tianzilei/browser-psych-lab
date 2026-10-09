@@ -16,19 +16,22 @@ export class Maintenance {
     try{
       const result=await new Promise<unknown>((resolve,reject)=>{
         const timer=setTimeout(()=>{void worker.terminate();reject(new Error('MAINTENANCE_TIMEOUT'));},120000);
-        worker.on('message',(message:{phase?:string;data?:unknown;result?:unknown;error?:string})=>{
+        worker.on('message',(message:{phase?:string;data?:unknown;result?:unknown;error?:string;validation_rejected?:boolean})=>{
           if(message.phase){void this.call('job.phase',{job_id:job,phase:message.phase}).then(async()=>{
             if(message.phase==='PIN_REQUIRED'){await this.call('backup.pin',{job_id:job,assets:message.data});worker.postMessage({pinned:true});}
           }).catch(reject);return;}
-          clearTimeout(timer);if(message.error)reject(new Error(message.error));else resolve(message.result);
+          clearTimeout(timer);if(message.error)reject(Object.assign(new Error(message.error),{validation_rejected:message.validation_rejected===true}));else resolve(message.result);
         });worker.once('error',error=>{clearTimeout(timer);reject(error);});worker.once('exit',code=>{clearTimeout(timer);if(code!==0)reject(new Error('MAINTENANCE_WORKER_EXITED'));});
       });
       if(kind==='UPLOAD'){const r=result as {asset_id:string;info:unknown};await this.call('asset.ready',{asset_id:r.asset_id,info:r.info});}
+      if(kind==='PACKAGE')await this.call('package.ready',{...result as Record<string,unknown>,job_id:job});
       if(kind==='REBUILD')await this.call('projection.publish',{job_id:job,projections:(result as {projections:unknown}).projections});
       if(kind==='DELETE')await this.call('asset.purged',{asset_id:config.asset_id});
       await this.call('job.finish',{job_id:job,state:kind==='RECOVER'?'FAILED':'READY',result,release_verified:kind==='RECOVER'});completed=true;return {job_id:job,result};
     }catch(error){
-      await this.call('job.finish',{job_id:job,state:'RECOVERY_REQUIRED',error:error instanceof Error?error.message:'FAILED'}).catch(()=>{});throw error;
+      const rejected=kind==='PACKAGE'&&(error as {validation_rejected?:boolean}).validation_rejected===true;
+      await this.call('job.finish',{job_id:job,state:rejected?'FAILED':'RECOVERY_REQUIRED',release_verified:rejected,error:error instanceof Error?error.message:'FAILED'}).catch(()=>{});
+      if(rejected)throw new ContractError('INVALID_IMAGE_PACKAGE',400,{reason:error instanceof Error?error.message:'INVALID_ZIP'});throw error;
     }finally{
       // A replacement cannot start before actual worker exit, even after a timeout.
       await worker.terminate();this.worker=null;if(!completed&&kind==='UPLOAD')await this.call('asset.failed',{asset_id:config.asset_id}).catch(()=>{});

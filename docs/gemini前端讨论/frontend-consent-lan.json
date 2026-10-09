@@ -1,0 +1,257 @@
+{
+  "scope": "Local production manifest closure; HTML + JS + CSS; gzipSync with defaults; no images, API responses or cache assumptions",
+  "node": "v24.21.0",
+  "initial": {
+    "bytes": 54803,
+    "gzipBytes": 21638,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/ending-page-DpynvBZh.js",
+        "bytes": 1094,
+        "gzipBytes": 704
+      },
+      {
+        "path": "assets/local-store-DP6GhOkR.js",
+        "bytes": 3490,
+        "gzipBytes": 1464
+      },
+      {
+        "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/orientation-gate-CalHCA95.js",
+        "bytes": 3406,
+        "gzipBytes": 1320
+      },
+      {
+        "path": "assets/orientation-gate-Sc0N9uIM.css",
+        "bytes": 8128,
+        "gzipBytes": 2256
+      },
+      {
+        "path": "assets/participant-api-ooaY9T8a.js",
+        "bytes": 11743,
+        "gzipBytes": 3972
+      },
+      {
+        "path": "assets/participate-BAF1Zc7i.js",
+        "bytes": 4770,
+        "gzipBytes": 2335
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-MNxiKBtL.js",
+        "bytes": 12349,
+        "gzipBytes": 4904
+      },
+      {
+        "path": "assets/text-pager-BEF2ZKST.js",
+        "bytes": 1704,
+        "gzipBytes": 824
+      },
+      {
+        "path": "participate.html",
+        "bytes": 1399,
+        "gzipBytes": 612
+      }
+    ]
+  },
+  "questionnaire": {
+    "bytes": 72372,
+    "gzipBytes": 29709,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/consent-gate-CqJ2-weM.js",
+        "bytes": 1086,
+        "gzipBytes": 638
+      },
+      {
+        "path": "assets/consent-page-Bu1KrQ5a.js",
+        "bytes": 1466,
+        "gzipBytes": 863
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/ending-page-DpynvBZh.js",
+        "bytes": 1094,
+        "gzipBytes": 704
+      },
+      {
+        "path": "assets/environment-CqU9sfZs.js",
+        "bytes": 5141,
+        "gzipBytes": 2311
+      },
+      {
+        "path": "assets/local-store-DP6GhOkR.js",
+        "bytes": 3490,
+        "gzipBytes": 1464
+      },
+      {
+        "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/orientation-gate-CalHCA95.js",
+        "bytes": 3406,
+        "gzipBytes": 1320
+      },
+      {
+        "path": "assets/orientation-gate-Sc0N9uIM.css",
+        "bytes": 8128,
+        "gzipBytes": 2256
+      },
+      {
+        "path": "assets/participant-api-ooaY9T8a.js",
+        "bytes": 11743,
+        "gzipBytes": 3972
+      },
+      {
+        "path": "assets/participate-BAF1Zc7i.js",
+        "bytes": 4770,
+        "gzipBytes": 2335
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-MNxiKBtL.js",
+        "bytes": 12349,
+        "gzipBytes": 4904
+      },
+      {
+        "path": "assets/survey-page-C87M809w.js",
+        "bytes": 54,
+        "gzipBytes": 74
+      },
+      {
+        "path": "assets/survey-page-D8Z_NvT7.js",
+        "bytes": 9822,
+        "gzipBytes": 4185
+      },
+      {
+        "path": "assets/text-pager-BEF2ZKST.js",
+        "bytes": 1704,
+        "gzipBytes": 824
+      },
+      {
+        "path": "participate.html",
+        "bytes": 1399,
+        "gzipBytes": 612
+      }
+    ]
+  },
+  "runner": {
+    "bytes": 89471,
+    "gzipBytes": 34219,
+    "files": [
+      {
+        "path": "assets/build-exKiCKfO.js",
+        "bytes": 3426,
+        "gzipBytes": 1364
+      },
+      {
+        "path": "assets/consent-gate-CqJ2-weM.js",
+        "bytes": 1086,
+        "gzipBytes": 638
+      },
+      {
+        "path": "assets/consent-page-Bu1KrQ5a.js",
+        "bytes": 1466,
+        "gzipBytes": 863
+      },
+      {
+        "path": "assets/contract-CNsJRjxD.js",
+        "bytes": 1226,
+        "gzipBytes": 745
+      },
+      {
+        "path": "assets/environment-CqU9sfZs.js",
+        "bytes": 5141,
+        "gzipBytes": 2311
+      },
+      {
+        "path": "assets/local-store-DP6GhOkR.js",
+        "bytes": 3490,
+        "gzipBytes": 1464
+      },
+      {
+        "path": "assets/modulepreload-polyfill-P2Xu9kJm.js",
+        "bytes": 670,
+        "gzipBytes": 389
+      },
+      {
+        "path": "assets/orientation-gate-CalHCA95.js",
+        "bytes": 3406,
+        "gzipBytes": 1320
+      },
+      {
+        "path": "assets/orientation-gate-Sc0N9uIM.css",
+        "bytes": 8128,
+        "gzipBytes": 2256
+      },
+      {
+        "path": "assets/participant-api-ooaY9T8a.js",
+        "bytes": 11743,
+        "gzipBytes": 3972
+      },
+      {
+        "path": "assets/preload-helper-BaNbYf_w.js",
+        "bytes": 1398,
+        "gzipBytes": 749
+      },
+      {
+        "path": "assets/protocol-MNxiKBtL.js",
+        "bytes": 12349,
+        "gzipBytes": 4904
+      },
+      {
+        "path": "assets/run-82PCHBtu.js",
+        "bytes": 32407,
+        "gzipBytes": 11596
+      },
+      {
+        "path": "assets/runner-C-wNMXbB.css",
+        "bytes": 600,
+        "gzipBytes": 310
+      },
+      {
+        "path": "assets/text-pager-BEF2ZKST.js",
+        "bytes": 1704,
+        "gzipBytes": 824
+      },
+      {
+        "path": "run.html",
+        "bytes": 1231,
+        "gzipBytes": 514
+      }
+    ]
+  }
+}

@@ -1,18 +1,24 @@
 import { ContractError, id, object } from './contract.js';
 export const LAB_SCHEMA = 'lab-events-v1';
 export const RUNNER_VERSION = 'canvas-v1';
-export type Condition = { op: 'eq' | 'neq' | 'includes'; question: string; value: string | number }
+// UTF-16 character budgets. Keep these unchanged for existing frozen protocols.
+export const TEXT_LIMITS = { title: 200, question: 1000, instruction: 8000, choice: 200, answer: 4000, endpoint: 40 } as const;
+export type Condition = { op: 'eq' | 'neq' | 'includes'; question: string; axis?: string; value: string | number }
   | { op: 'and' | 'or'; args: Condition[] } | { op: 'not'; arg: Condition };
-export type Answer = string | string[] | number | null;
-export interface Question { id: string; type: 'single' | 'multi' | 'scale' | 'text'; title: string;
-  required: boolean; choices?: string[]; min?: number; max?: number; max_length?: number; condition?: Condition }
+export type AxisAnswer = Record<string, number | null>;
+export type Answer = string | string[] | number | AxisAnswer | null;
+export interface ScaleAxis {id:string;title:string;min:number;max:number;min_label:string;max_label:string;labels:string[]}
+export interface Question { id: string; type: 'single' | 'multi' | 'scale' | 'scales' | 'text'; title: string;
+  required: boolean; axes?: ScaleAxis[]; choices?: string[]; min?: number; max?: number; min_label?: string; max_label?: string; labels?: string[]; max_length?: number; input_purpose?: 'personal'; condition?: Condition }
 export interface Page { id: string; title: string; instruction: string; condition?: Condition; questions: Question[] }
 export interface Trial { root_id: string; asset_id: string; image_ms: number; isi_ms: number; correct: string | null }
 export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[] }
 export interface Variant { id: string; weight: number; group_order: string[]; trial_order: Record<string, string[]> }
 export interface Protocol {
   schema: 'study-v1'; title: string; mode: 'TEST_ONLY' | 'COLLECTION'; pages: Page[]; groups: Group[];
-  variants: Variant[]; layout: { aspect: number; portrait_min_width: number; landscape_min_width: number; background: string };
+  consent?: {title:string;text:string};
+  ending?: {title:string;text:string};
+  variants: Variant[]; layout: { aspect: number; portrait_min_width: number; landscape_min_width: number; background: string; orientation?: 'portrait' | 'landscape' };
   budget: { commit_ms: number; activate_ms: number; margin_ms: number; draw_budget: number;
     long_frame_ms: number; max_group_ms: number; max_decoded_bytes: number; refresh_min_hz: number; refresh_max_hz: number;
     quantization: 'ceil-frame'; environment_id: string };
@@ -45,19 +51,22 @@ function list(v: unknown, max: number): unknown[] {
   if (!Array.isArray(v) || v.length > max) throw new ContractError('INVALID_PROTOCOL_LIST'); return v;
 }
 function strings(v: unknown, min: number, max: number) {
-  const a = list(v, max).map(x => text(x, 200));
+  const a = list(v, max).map(x => text(x, TEXT_LIMITS.choice));
   if (a.length < min || new Set(a).size !== a.length || a.some(x => !x.trim())) throw new ContractError('INVALID_CHOICES'); return a;
 }
-function condition(v: unknown, prior: Set<string>, depth = 0): Condition {
+function condition(v: unknown, prior: Map<string,Question>, depth = 0): Condition {
   if (depth > 8) throw new ContractError('CONDITION_TOO_DEEP'); const o = object(v);
   if (o.op === 'not') { fields(o, ['op', 'arg']); return { op: 'not', arg: condition(o.arg, prior, depth + 1) }; }
   if (o.op === 'and' || o.op === 'or') {
     fields(o, ['op', 'args']); const args = list(o.args, 10).map(x => condition(x, prior, depth + 1));
     if (!args.length) throw new ContractError('EMPTY_CONDITION'); return { op: o.op, args };
   }
-  fields(o, ['op', 'question', 'value']);
+  fields(o, ['op', 'question', 'axis', 'value']);
   if (!['eq', 'neq', 'includes'].includes(String(o.op)) || !prior.has(id(o.question))
     || !['string', 'number'].includes(typeof o.value)) throw new ContractError('INVALID_CONDITION_REFERENCE');
+  const q=prior.get(id(o.question))!;
+  if(o.axis!==undefined){if(q.type!=='scales'||!q.axes!.some(axis=>axis.id===id(o.axis))||o.op==='includes'||typeof o.value!=='number')throw new ContractError('INVALID_CONDITION_AXIS');}
+  else if(q.type==='scales')throw new ContractError('CONDITION_AXIS_REQUIRED');
   if (typeof o.value === 'number') number(o.value, -100000, 100000); else text(o.value, 2000);
   return o as unknown as Condition;
 }
@@ -67,29 +76,54 @@ export function evaluate(c: Condition | undefined, answers: Record<string, Answe
   if (c.op === 'or') return c.args.some(a => evaluate(a, answers));
   if (c.op === 'not') return !evaluate(c.arg, answers);
   if (!('question' in c)) return false;
-  const a = answers[c.question];
+  const value = answers[c.question];
+  const a = c.axis!==undefined ? value&&typeof value==='object'&&!Array.isArray(value)?value[c.axis]:null : value;
   if (a === undefined || a === null) return false;
+  if(typeof a==='object'&&!Array.isArray(a))return false;
   return c.op === 'eq' ? a === c.value : c.op === 'neq' ? a !== c.value : Array.isArray(a) && a.includes(String(c.value));
 }
 export function parseProtocol(value: unknown): Protocol {
   const p = object(value);
-  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget']);
+  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending']);
   if (p.schema !== 'study-v1' || !['TEST_ONLY', 'COLLECTION'].includes(String(p.mode))) throw new ContractError('INVALID_PROTOCOL_SCHEMA');
-  const prior = new Set<string>(); const ids = new Set<string>();
+  const prior = new Map<string,Question>(); const ids = new Set<string>();
   const unique = (v: unknown) => { const s = id(v); if (ids.has(s)) throw new ContractError('DUPLICATE_PROTOCOL_ID'); ids.add(s); return s; };
   const pages: Page[] = list(p.pages, 30).map(value => {
     const page = object(value); fields(page, ['id', 'title', 'instruction', 'condition', 'questions']);
-    const result: Page = { id: unique(page.id), title: text(page.title, 200), instruction: text(page.instruction, 8000), questions: [] };
+    const result: Page = { id: unique(page.id), title: text(page.title, TEXT_LIMITS.title), instruction: text(page.instruction, TEXT_LIMITS.instruction), questions: [] };
     if (page.condition) result.condition = condition(page.condition, prior);
     result.questions = list(page.questions, 30).map(value => {
-      const q = object(value); fields(q, ['id', 'type', 'title', 'required', 'choices', 'min', 'max', 'max_length', 'condition']);
-      if (!['single', 'multi', 'scale', 'text'].includes(String(q.type)) || typeof q.required !== 'boolean') throw new ContractError('INVALID_QUESTION');
-      const result: Question = { id: unique(q.id), title: text(q.title, 1000), type: q.type as Question['type'], required: q.required };
+      const q = object(value); fields(q, ['id', 'type', 'title', 'required', 'choices', 'min', 'max', 'min_label', 'max_label', 'labels', 'axes', 'max_length', 'input_purpose', 'condition']);
+      if (!['single', 'multi', 'scale', 'scales', 'text'].includes(String(q.type)) || typeof q.required !== 'boolean') throw new ContractError('INVALID_QUESTION');
+      const result: Question = { id: unique(q.id), title: text(q.title, TEXT_LIMITS.question), type: q.type as Question['type'], required: q.required };
+      if(q.input_purpose!==undefined){if(q.type!=='text'||q.input_purpose!=='personal')throw new ContractError('INVALID_INPUT_PURPOSE');result.input_purpose='personal';}
+      if(q.type==='scale'&&q.choices!==undefined)throw new ContractError('SCALE_CHOICES_NOT_ALLOWED');
+      if(q.axes!==undefined&&q.type!=='scales')throw new ContractError('INVALID_SCALE_AXES');
+      if(q.type==='scales'){
+        if(['choices','min','max','min_label','max_label','labels'].some(key=>q[key]!==undefined))throw new ContractError('INVALID_SCALE_AXES');
+        const axes=list(q.axes,6),names=new Set<string>();if(axes.length<2)throw new ContractError('INVALID_SCALE_AXES');
+        result.axes=axes.map(value=>{const a=object(value);fields(a,['id','title','min','max','min_label','max_label','labels']);const key=id(a.id);
+          if(names.has(key)||['__proto__','constructor','prototype'].includes(key))throw new ContractError('DUPLICATE_AXIS_ID');names.add(key);
+          const min=number(a.min,-1000,1000,true),max=number(a.max,min+1,min+20,true),labels=list(a.labels,21).map(v=>text(v,TEXT_LIMITS.endpoint));
+          const min_label=text(a.min_label,TEXT_LIMITS.endpoint),max_label=text(a.max_label,TEXT_LIMITS.endpoint),title=text(a.title,TEXT_LIMITS.endpoint);
+          if(!title.trim()||labels.length!==max-min+1||labels.some(v=>!v.trim())||labels[0]!==min_label||labels.at(-1)!==max_label)throw new ContractError('INVALID_SCALE_LABELS');
+          return {id:key,title,min,max,min_label,max_label,labels};});
+      }
+      if(q.min_label!==undefined||q.max_label!==undefined){
+        if(q.type!=='scale')throw new ContractError('INVALID_SCALE_ENDPOINTS');
+        if(q.min_label!==undefined)result.min_label=text(q.min_label,TEXT_LIMITS.endpoint);
+        if(q.max_label!==undefined)result.max_label=text(q.max_label,TEXT_LIMITS.endpoint);
+      }
       if (q.condition) result.condition = condition(q.condition, prior);
       if (q.type === 'single' || q.type === 'multi') result.choices = strings(q.choices, 2, 20);
       if (q.type === 'scale') { result.min = number(q.min, -1000, 1000, true); result.max = number(q.max, result.min + 1, result.min + 20, true); }
-      if (q.type === 'text') result.max_length = number(q.max_length, 1, 4000, true);
-      prior.add(result.id); return result;
+      if (q.labels !== undefined) {
+        if (q.type !== 'scale') throw new ContractError('INVALID_SCALE_LABELS');
+        result.labels = list(q.labels,21).map(v=>text(v,TEXT_LIMITS.endpoint));
+        if(result.labels.length!==result.max!-result.min!+1||result.labels.some(v=>!v.trim())||result.labels[0]!==result.min_label||result.labels.at(-1)!==result.max_label)throw new ContractError('INVALID_SCALE_LABELS');
+      }
+      if (q.type === 'text') result.max_length = number(q.max_length, 1, TEXT_LIMITS.answer, true);
+      prior.set(result.id,result); return result;
     }); return result;
   });
   const b = object(p.budget); fields(b, ['commit_ms', 'activate_ms', 'margin_ms', 'draw_budget', 'long_frame_ms', 'max_group_ms',
@@ -114,7 +148,7 @@ export function parseProtocol(value: unknown): Protocol {
     });
     if (!trials.length || trials.reduce((n, t) => n + (t.image_ms + t.isi_ms) * (repeats + 1), 0) > budget.max_group_ms)
       throw new ContractError('GROUP_TIME_BUDGET_EXCEEDED');
-    const group={ id: unique(g.id), title: text(g.title, 200), choices, repeats, trials };
+    const group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
     if(new TextEncoder().encode(JSON.stringify(worstAuditPayload(group,budget.draw_budget))).length>120*1024)throw new ContractError('GROUP_AUDIT_SIZE_BUDGET_EXCEEDED');return group;
   });
   if (!pages.length && !groups.length) throw new ContractError('EMPTY_STUDY');
@@ -131,11 +165,23 @@ export function parseProtocol(value: unknown): Protocol {
     } return result;
   });
   if (!variants.length || variants.reduce((n, v) => n + v.weight, 0) > 100) throw new ContractError('INVALID_ALLOCATION_WEIGHTS');
-  const l = object(p.layout); fields(l, ['aspect', 'portrait_min_width', 'landscape_min_width', 'background']);
+  const l = object(p.layout); fields(l, ['aspect', 'portrait_min_width', 'landscape_min_width', 'background', 'orientation']);
+  if(l.orientation!==undefined&&!['portrait','landscape'].includes(String(l.orientation)))throw new ContractError('INVALID_ORIENTATION');
   if (typeof l.background !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(l.background)) throw new ContractError('INVALID_BACKGROUND');
-  return { schema: 'study-v1', title: text(p.title, 200), mode: p.mode as Protocol['mode'], pages, groups, variants,
+  let ending:Protocol['ending'];if(p.ending!==undefined){const e=object(p.ending);fields(e,['title','text']);ending={title:text(e.title,TEXT_LIMITS.title),text:text(e.text,TEXT_LIMITS.instruction)};if(!ending.title.trim()||!ending.text.trim())throw new ContractError('INVALID_ENDING');}
+  let consent:Protocol['consent'];if(p.consent!==undefined){const c=object(p.consent);fields(c,['title','text']);consent={title:text(c.title,TEXT_LIMITS.title),text:text(c.text,TEXT_LIMITS.instruction)};if(!consent.title.trim()||!consent.text.trim())throw new ContractError('INVALID_CONSENT');}
+  return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),
     layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, 200, 2000, true),
-      landscape_min_width: number(l.landscape_min_width, 200, 2000, true), background: l.background }, budget };
+      landscape_min_width: number(l.landscape_min_width, 200, 2000, true), background: l.background,
+      ...(l.orientation!==undefined?{orientation:l.orientation as 'portrait'|'landscape'}:{}) }, budget };
+}
+export function validateQuestionnaire(p:Protocol, strict=false) {
+  if(strict&&!p.layout.orientation)throw new ContractError('ORIENTATION_REQUIRED');
+  for(const page of p.pages)for(const q of page.questions){
+    if(q.type==='text'&&q.input_purpose!=='personal')throw new ContractError('PERSONAL_INPUT_ONLY',409,{question:q.id});
+    if(q.type==='scale'&&(!q.min_label?.trim()||!q.max_label?.trim()))throw new ContractError('SCALE_ENDPOINTS_REQUIRED',409,{question:q.id});
+    if(strict&&q.type==='scale'&&!q.labels)throw new ContractError('SCALE_LABELS_REQUIRED',409,{question:q.id});
+  }
 }
 export function pageSnapshot(page: Page, all: Record<string, Answer>, supplied: Record<string, Answer>) {
   if (Object.keys(supplied).some(k => !page.questions.some(q => q.id === k))) throw new ContractError('UNKNOWN_ANSWER');
@@ -143,7 +189,17 @@ export function pageSnapshot(page: Page, all: Record<string, Answer>, supplied: 
   const answers = { ...all };
   for (const q of page.questions) {
     if (!evaluate(q.condition, answers)) { result[q.id] = { state: 'SKIPPED', answer: null };answers[q.id]=null; continue; }
-    const answer = supplied[q.id] ?? null;
+    let answer = supplied[q.id] ?? null;
+    if(q.type==='scales'){
+      const values=answer===null?{}:object(answer);
+      if(Object.keys(values).some(key=>!q.axes!.some(axis=>axis.id===key)))throw new ContractError('UNKNOWN_AXIS_ANSWER');
+      answer=Object.fromEntries(q.axes!.map(axis=>{const value=values[axis.id]??null;
+        if(value!==null&&(typeof value!=='number'||!Number.isInteger(value)||value<axis.min||value>axis.max))throw new ContractError('INVALID_ANSWER');
+        return [axis.id,value as number|null];}));
+      if(q.required&&answerMissing(q,answer))throw new ContractError('REQUIRED_ANSWER',409,{question:q.id});
+      const filled=Object.values(answer).some(value=>value!==null);
+      result[q.id]={state:filled?'ANSWERED':'UNANSWERED',answer};answers[q.id]=answer;continue;
+    }
     const empty = answer === null || answer === '' || (Array.isArray(answer) && !answer.length);
     if (empty && q.required) throw new ContractError('REQUIRED_ANSWER', 409, { question: q.id });
     if (!empty) {
@@ -155,12 +211,18 @@ export function pageSnapshot(page: Page, all: Record<string, Answer>, supplied: 
     result[q.id] = { state: empty ? 'UNANSWERED' : 'ANSWERED', answer }; answers[q.id] = answer;
   } return result;
 }
+export function axisAnswers(answer:Answer|undefined):AxisAnswer {return answer&&typeof answer==='object'&&!Array.isArray(answer)?answer:{};}
+export function copyAnswer(answer:Answer):Answer {return Array.isArray(answer)?[...answer]:answer&&typeof answer==='object'?{...answer}:answer;}
+export function answerMissing(q:Question,answer:Answer|undefined):boolean {
+  return q.type==='scales'?q.axes!.some(axis=>typeof axisAnswers(answer)[axis.id]!=='number')
+    :answer==null||answer===''||(Array.isArray(answer)&&!answer.length);
+}
 export function sampleProtocol(): Protocol {
   return parseProtocol({ schema: 'study-v1', title: '新研究（测试）', mode: 'TEST_ONLY', pages: [
     { id: 'welcome', title: '说明与问卷', instruction: '这是开发测试研究。请作答后继续。', questions: [
       { id: 'ready', type: 'single', title: '是否准备好？', required: true, choices: ['是', '否'] },
     ] }], groups: [], variants: [{ id: 'standard', weight: 1, group_order: [], trial_order: {} }],
-    layout: { aspect: 1.5, portrait_min_width: 280, landscape_min_width: 280, background: '#f4f6f2' },
+    layout: { aspect: 1.5, portrait_min_width: 280, landscape_min_width: 280, background: '#e5e5e5' },
     budget: { commit_ms: 40, activate_ms: 10, margin_ms: 10, draw_budget: 32, long_frame_ms: 100,
       max_group_ms: 300000, max_decoded_bytes: 32 * 1024 * 1024, refresh_min_hz: 45, refresh_max_hz: 144,
       quantization: 'ceil-frame', environment_id: 'TEST_ONLY' } });

@@ -4,6 +4,37 @@ import {randomUUID} from 'node:crypto';
 import {fixture} from '../helpers/lab-fixture.mjs';
 import {sampleProtocol,parseProtocol,pageSnapshot} from '../../src/shared/protocol.ts';
 import {digest} from '../../src/server/collection-store.ts';
+test('new publication requires personal input purpose and legacy protocol parsing stays exact',t=>{
+  const f=fixture(t),p=sampleProtocol();p.pages[0].questions.push({id:'identity',type:'text',title:'姓名',required:true,max_length:100});
+  assert.deepEqual(parseProtocol(p),p);
+  f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:2,protocol:p});
+  assert.throws(()=>f.admin('study.publish',{request_id:randomUUID(),study_id:f.study.study_id,revision:3}),/PERSONAL_INPUT_ONLY/);
+  p.pages[0].questions[1].input_purpose='personal';
+  f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:3,protocol:p});
+  const version=f.admin('study.publish',{request_id:randomUUID(),study_id:f.study.study_id,revision:4});
+  assert.equal(version.protocol.pages[0].questions[1].input_purpose,'personal');
+  p.pages[0].questions[0].input_purpose='personal';assert.throws(()=>parseProtocol(p),/INVALID_INPUT_PURPOSE/);
+});
+test('axis endpoints are explicit at publication, legacy scales parse exactly and scores stay discrete',t=>{
+  const f=fixture(t),p=sampleProtocol();
+  p.pages[0].questions.push({id:'axis',type:'scale',title:'方便程度',required:true,min:-1,max:1});
+  assert.deepEqual(parseProtocol(p),p);
+  f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:2,protocol:p});
+  assert.throws(()=>f.admin('study.publish',{request_id:randomUUID(),study_id:f.study.study_id,revision:3}),/SCALE_ENDPOINTS_REQUIRED/);
+  p.pages[0].questions[1].min_label='不方便';p.pages[0].questions[1].max_label=' ';
+  f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:3,protocol:p});
+  assert.throws(()=>f.admin('study.publish',{request_id:randomUUID(),study_id:f.study.study_id,revision:4}),/SCALE_ENDPOINTS_REQUIRED/);
+  p.pages[0].questions[1].max_label='方便';
+  f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:4,protocol:p});
+  const version=f.admin('study.publish',{request_id:randomUUID(),study_id:f.study.study_id,revision:5});
+  assert.equal(version.protocol.pages[0].questions[1].min_label,'不方便');
+  assert.equal(pageSnapshot(p.pages[0],{}, {ready:'是',axis:0}).axis.answer,0);
+  assert.throws(()=>pageSnapshot(p.pages[0],{}, {ready:'是',axis:0.5}),/INVALID_ANSWER/);
+  assert.throws(()=>pageSnapshot(p.pages[0],{}, {ready:'是',axis:null}),/REQUIRED_ANSWER/);
+  p.pages[0].questions[1].choices=['不方便','方便'];assert.throws(()=>parseProtocol(p),/SCALE_CHOICES_NOT_ALLOWED/);delete p.pages[0].questions[1].choices;
+  p.pages[0].questions[1].min_label='字'.repeat(41);assert.throws(()=>parseProtocol(p),/INVALID_TEXT/);
+  delete p.pages[0].questions[1].min_label;p.pages[0].questions[0].min_label='错误题型';assert.throws(()=>parseProtocol(p),/INVALID_SCALE_ENDPOINTS/);
+});
 test('draft concurrency, frozen versions, CSRF, admission retry and finite conditions',t=>{
   const f=fixture(t),p=sampleProtocol();p.title='Changed';f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:2,protocol:p});assert.equal(f.call('view').frozen.protocol.title,f.version.protocol.title);
   assert.throws(()=>f.admin('study.save',{request_id:randomUUID(),study_id:f.study.study_id,revision:2,protocol:p}),/DRAFT_REVISION_CONFLICT/);
@@ -20,7 +51,7 @@ test('revision history, out-of-order custody, exact page seal, finalization and 
   assert.throws(()=>f.db.prepare('DELETE FROM lab_raw').run(),/immutable/);assert.equal(f.db.prepare('SELECT raw FROM lab_raw WHERE event_id=?').get(one.event_id).raw.toString(),one.raw);
 });
 test('conditional skip ignores hidden values and actual path excludes skipped pages',t=>{
-  const p=sampleProtocol();p.pages.push({id:'branch',title:'Branch',instruction:'',condition:{op:'eq',question:'ready',value:'否'},questions:[{id:'hidden',title:'Hidden',type:'text',required:true,max_length:100}]});
+  const p=sampleProtocol();p.pages.push({id:'branch',title:'Branch',instruction:'',condition:{op:'eq',question:'ready',value:'否'},questions:[{id:'hidden',title:'Hidden',type:'text',input_purpose:'personal',required:true,max_length:100}]});
   const f=fixture(t,p),event=f.wire('welcome','PAGE_SNAPSHOT',{answers:{ready:'是'}});f.ingest([event]);f.seal('welcome',[event],['welcome']);assert.equal(f.call('view').page_index,2);assert.deepEqual(f.call('view').path,['welcome']);assert.equal(f.call('view').answers.hidden,null);
   assert.equal(pageSnapshot({...p.pages[1],condition:undefined}, {ready:'是'},{hidden:'saved'}).hidden.answer,'saved');
 });

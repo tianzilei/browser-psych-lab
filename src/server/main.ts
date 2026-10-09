@@ -7,7 +7,7 @@ import { labRoutes } from './lab-routes.js';
 import { Maintenance } from './maintenance.js';
 import { privateRoot } from './private-files.js';
 import { retainRelease } from './release.js';
-import { access } from 'node:fs/promises';
+import { access,readFile } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +15,9 @@ try { process.loadEnvFile(); } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 }
 if (!process.env.DATABASE_PATH) throw new Error('Run npm run setup or configure DATABASE_PATH.');
+const tlsKey=process.env.TLS_KEY_PATH,tlsCert=process.env.TLS_CERT_PATH;
+if(!!tlsKey!==!!tlsCert)throw new Error('TLS_KEY_PATH and TLS_CERT_PATH must be configured together.');
+const tls=tlsKey&&tlsCert?{key:await readFile(tlsKey),cert:await readFile(tlsCert)}:undefined;
 
 const storageRoot = await privateRoot(resolve(process.env.STORAGE_ROOT ?? './var'));
 for(const bucket of ['research-assets','research-exports','research-backups']) await privateRoot(resolve(storageRoot,bucket));
@@ -24,6 +27,7 @@ if(!Number.isInteger(sessionConcurrency)||sessionConcurrency<1||sessionConcurren
 const writer = new DatabaseWriter(resolve(process.env.DATABASE_PATH),{workerData:{runnerHash,sessionConcurrency}});
 await writer.start();
 export const app = Fastify({
+  ...(tls?{https:tls}:{}),
   trustProxy:'127.0.0.1',
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
@@ -41,7 +45,8 @@ app.setErrorHandler((error, _request, reply) => {
     details: known ? error.details : null });
 });
 app.addHook('onRequest', async (request, reply) => {
-  reply.header('X-Content-Type-Options','nosniff').header('Referrer-Policy','no-referrer').header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  const frameAncestors=request.url.split('?')[0]==='/simulate.html'?"'self'":"'none'";
+  reply.header('X-Content-Type-Options','nosniff').header('Referrer-Policy','no-referrer').header('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors ${frameAncestors}; base-uri 'self'; form-action 'self'`);
   if (request.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store');
 });
 app.addHook('onResponse', async (request, reply) => {

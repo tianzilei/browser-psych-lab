@@ -42,10 +42,10 @@ async function req(path,data,cookie=adminCookie,admin=true){
 }
 try{
   const hash=await passwordHash('TEST_ONLY-bandwidth-password');
-  child=spawn(process.execPath,[resolve('dist/server/main.js')],{env:{...process.env,NODE_ENV:'production',HOST:'127.0.0.1',PORT:'0',PUBLIC_ORIGIN:origin,STORAGE_ROOT:root,DATABASE_PATH:join(root,'db.sqlite'),SESSION_CONCURRENCY:String(sessionLimit),PREPARATION_CONCURRENCY:'1',ADMIN_PASSWORD_HASH:hash,MAINTAINER_PASSWORD_HASH:hash},stdio:['ignore','pipe','pipe']});
+  child=spawn(process.execPath,[resolve('dist/server/main.js')],{env:{...process.env,NODE_ENV:'production',HOST:'127.0.0.1',PORT:'0',PUBLIC_ORIGIN:origin,STORAGE_ROOT:root,DATABASE_PATH:join(root,'db.sqlite'),SESSION_CONCURRENCY:String(sessionLimit),PREPARATION_CONCURRENCY:'1',ADMIN_PASSWORD_HASH:hash},stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',b=>{output=(output+b.toString()).slice(-64000);});child.stderr.on('data',()=>{});
   for(let i=0;i<200;i++){backend=/Server listening at (http:\/\/127\.0\.0\.1:\d+)/.exec(output)?.[1]??'';if(backend)break;if(child.exitCode!==null)throw new Error('SERVER_EXITED');await new Promise(r=>setTimeout(r,25));}if(!backend)throw new Error('STARTUP_TIMEOUT');
-  const login=await req('/api/auth/login',{role:'maintainer',password:'TEST_ONLY-bandwidth-password'},'',false);adminCookie=login.cookie;csrf=login.value.csrf;
+  const login=await req('/api/auth/login',{password:'TEST_ONLY-bandwidth-password'},'',false);adminCookie=login.cookie;csrf=login.value.csrf;
   const {value:study}=await req('/api/lab/studies',{request_id:randomUUID()});
   const edge=256,png=await sharp(randomBytes(edge*edge*3),{raw:{width:edge,height:edge,channels:3}}).png().toBuffer();
   const upload=await fetch(`${origin}/api/lab/studies/${study.study_id}/upload`,{method:'POST',headers:{Origin:origin,Cookie:adminCookie,'Content-Type':'image/png','X-CSRF-Token':csrf,'X-Request-Id':randomUUID(),'X-File-Name':'noise.png'},body:png});const asset=await upload.json();if(!upload.ok)throw new Error(asset.code);

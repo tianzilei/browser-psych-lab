@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('native DB, bundled SurveyJS, IndexedDB transaction and frame callback work together', async ({ page }) => {
+test('authenticated diagnostics keep native DB, SurveyJS, IndexedDB and frame checks off the home page', async ({ page,context }) => {
   const errors: string[] = [];
   const surveyRequests: string[] = [];
   page.on('request', request => {
@@ -8,6 +8,10 @@ test('native DB, bundled SurveyJS, IndexedDB transaction and frame callback work
   });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
+  await expect(page.getByLabel('密码',{exact:true})).toBeVisible();await expect(page.locator('#checks')).toHaveCount(0);
+  await page.goto('/diagnostics.html');await expect(page).toHaveURL(/\/$/);
+  const login=await context.request.post('/api/auth/login',{headers:{Origin:'http://127.0.0.1:3107'},data:{password:'TEST_ONLY-browser-password'}});expect(login.ok()).toBe(true);
+  await page.goto('/diagnostics.html');
   await expect(page.locator('#checks li')).toHaveCount(4);
   await expect(page.locator('#checks li[data-status="failed"]')).toHaveCount(0);
   await expect(page.locator('#checks')).toContainText('SQLite');
