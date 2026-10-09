@@ -20,7 +20,7 @@ export async function restoreBackup(bundle:string,destination:string){
   }finally{backupDB.close();}
   await privateRoot(dirname(destination));await mkdir(destination,{mode:0o700});
   for(const f of manifest.files){const mapped=f.path==='database.sqlite'?'database/browser-psych-lab.sqlite':f.path.startsWith('assets/')?`research-assets/${f.path.slice(7)}`:f.path.startsWith('runners/')?`research-assets/${f.path}`:null;if(!mapped)throw new Error('UNKNOWN_BACKUP_OBJECT');
-    const target=join(destination,mapped);await mkdir(dirname(target),{recursive:true,mode:0o700});await copyFile(join(bundle,f.path),target,constants.COPYFILE_EXCL);await chmod(target,0o600);const file=await openPrivate(target);try{await file.sync();}finally{await file.close();}await syncDirectory(dirname(target));}
+    const target=join(destination,mapped);await mkdir(dirname(target),{recursive:true,mode:0o700});await copyFile(join(bundle,f.path),target,constants.COPYFILE_EXCL);await chmod(target,0o600);const file=await openPrivate(target);try{try{await file.sync();}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}}finally{await file.close();}await syncDirectory(dirname(target));}
   for(const dir of ['research-assets','research-exports','research-backups'])await privateRoot(join(destination,dir));
   const db=new Database(join(destination,'database/browser-psych-lab.sqlite'));db.pragma('foreign_keys=ON');db.pragma('journal_mode=WAL');db.pragma('synchronous=FULL');
   try{db.transaction(()=>{

@@ -4,14 +4,14 @@ import { dirname, join, resolve, parse } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { type Readable } from 'node:stream';
 import { ContractError, id } from '../shared/contract.js';
-export async function syncDirectory(path: string) {const f=await open(path,constants.O_RDONLY);try{await f.sync();}finally{await f.close();}}
+export async function syncDirectory(path: string) {const f=await open(path,constants.O_RDONLY);try{try{await f.sync();}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}}finally{await f.close();}}
 export async function privateRoot(path:string) {
   await mkdir(path,{recursive:true,mode:0o700});const target=resolve(path);
   let lexical=target;while(lexical!==parse(lexical).root){const st=await lstat(lexical);if(st.isSymbolicLink()&&st.uid!==0)throw new Error('PRIVATE_STORAGE_SYMLINK');lexical=dirname(lexical);}
   if((await lstat(target)).isSymbolicLink())throw new Error('PRIVATE_STORAGE_SYMLINK');
   const actual=await realpath(target);let current=actual;
   while(current!==parse(current).root){const st=await lstat(current);const trustedSticky=(st.mode&0o1000)&&st.uid===0;
-    if(st.isSymbolicLink()||((st.mode&0o022)&&!trustedSticky))throw new Error('UNSAFE_PRIVATE_STORAGE_ANCESTOR');current=dirname(current);}
+    if(st.isSymbolicLink()||(process.platform!=='win32'&&((st.mode&0o022)&&!trustedSticky)))throw new Error('UNSAFE_PRIVATE_STORAGE_ANCESTOR');current=dirname(current);}
   return actual;
 }
 export async function assetPath(root:string,asset:string) {return join(await privateRoot(join(root,'research-assets')),`${id(asset)}.bin`);}
@@ -23,12 +23,12 @@ export async function openPrivate(path:string) {
 export async function fileHash(path:string) {const f=await openPrivate(path);try{const h=createHash('sha256');for await(const chunk of f.createReadStream({autoClose:false}))h.update(chunk);return h.digest('hex');}finally{await f.close();}}
 export async function writeDurable(path:string,bytes:string|Uint8Array) {
   const f=await open(path,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
-  try{await f.writeFile(bytes);await f.sync();}finally{await f.close();}await syncDirectory(dirname(path));
+  try{await f.writeFile(bytes);try{await f.sync();}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}}finally{await f.close();}await syncDirectory(dirname(path));
 }
 export async function receiveUpload(root:string,asset:string,body:Readable) {
   const directory=await privateRoot(join(root,'research-assets','.tmp'));const path=join(directory,`${id(asset)}-${randomUUID()}`);
   const f=await open(path,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);let bytes=0;
-  try{for await(const chunk of body){bytes+=chunk.length;if(bytes>8*1024*1024)throw new ContractError('UPLOAD_TOO_LARGE',413);await f.writeFile(chunk);}await f.sync();}
+  try{for await(const chunk of body){bytes+=chunk.length;if(bytes>8*1024*1024)throw new ContractError('UPLOAD_TOO_LARGE',413);await f.writeFile(chunk);}try{await f.sync();}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}}
   catch(error){await f.close();await unlink(path).catch(()=>{});throw error;}
   await f.close();await syncDirectory(directory);return {path,bytes};
 }

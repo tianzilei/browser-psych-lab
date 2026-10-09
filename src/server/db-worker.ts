@@ -8,6 +8,8 @@ const port = parentPort!;
 const db = openDatabase(workerData.path as string);
 const store = new CollectionStore(db);
 const owner = workerData.owner as string;
+const heartbeat = () => db.prepare("INSERT OR REPLACE INTO p0_meta VALUES ('app_instance',?)").run(JSON.stringify({ pid: process.pid, owner, started_at: Date.now(), heartbeat_at: Date.now() }));
+const heartbeatTimer = setInterval(heartbeat, 5000);
 // Local single-host process ownership, checked inside SQLite's write transaction.
 // Replacement in the same process requires the supervisor to have observed exit.
 db.transaction(() => {
@@ -17,22 +19,24 @@ db.transaction(() => {
     if (previous.owner !== owner) {
       let alive = true;
       try { process.kill(previous.pid, 0); } catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-      if (alive) throw new Error('DATABASE_ALREADY_OWNED');
+      const heartbeatAt=Number((previous as {heartbeat_at?:number}).heartbeat_at??0);
+      if (alive && heartbeatAt>0 && Date.now()-heartbeatAt<30000) throw new Error('DATABASE_ALREADY_OWNED');
     }
   }
-  db.prepare("INSERT OR REPLACE INTO p0_meta VALUES ('app_instance',?)").run(JSON.stringify({ pid: process.pid, owner }));
+  heartbeat();
 }).immediate();
 const lab = new LabStore(db, workerData.runnerHash as string | undefined,Date.now,workerData.sessionConcurrency as number|undefined);
 lab.execute({operation:'lab/internal.job.interrupted',data:{}});
 port.postMessage({ ready: true });
 port.on('message', (message: { id: number; command: Command | null }) => {
+  if (message.command !== null) heartbeat();
   if (message.command === null) {
     db.transaction(() => {
       const record = db.prepare("SELECT value FROM p0_meta WHERE key='app_instance'").get() as { value: string } | undefined;
       if (record && (JSON.parse(record.value) as { owner: string }).owner === owner)
         db.prepare("DELETE FROM p0_meta WHERE key='app_instance'").run();
     }).immediate();
-    db.close(); port.close(); return;
+    clearInterval(heartbeatTimer); db.close(); port.close(); return;
   }
   try {
     const result = message.command.operation.startsWith('lab/') ? lab.execute(message.command) : store.execute(message.command);

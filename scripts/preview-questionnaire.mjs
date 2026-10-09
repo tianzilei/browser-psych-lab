@@ -37,8 +37,9 @@ if(lan){
       response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
       response.end(`<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>手机测试连接</title><style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#e5e5e5;color:#000;font:14px/1.5 system-ui}main{height:100%;padding:3%;display:grid;align-content:center;gap:12px}h1{font-size:22px;margin:0}p{margin:0}section{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:12px}a{display:block;padding:12px;border:1px solid currentColor;color:inherit;text-align:center;text-decoration:none;min-height:44px}small{overflow-wrap:anywhere;font-size:10px}@media(max-height:500px),(max-width:360px){html,body{font-size:12px;line-height:1.4}main{padding:2dvh 3vw;gap:6px}h1{font-size:18px}section{gap:6px}a{padding:8px}small{font-size:8px}}</style><main><h1>手机测试连接</h1><p>手机和电脑连接同一 Wi-Fi。首次使用请安装本机测试证书。</p><section><p><b>iPhone / iPad</b><br>下载证书 → 设置 → 通用 → VPN 与设备管理 → 安装描述文件。<br>再到 通用 → 关于本机 → 证书信任设置，开启此测试 CA 的完全信任。</p><p><b>Android</b><br>下载证书 → 系统设置中搜索“安装证书” → 选择 CA 证书。<br>证书名称：Browser Psych Lab TEST_ONLY Local CA。</p></section><section><a href="/local-test-ca.cer">下载本机测试证书</a><a href="${origin}/questionnaire-preview.html">进入模拟问卷</a></section><small>CA SHA-256：${tls.fingerprint}</small></main></html>`);return;
     }
-    const target=new URL(request.url??'/',origin);target.protocol='https:';target.hostname=ip;target.port=String(tlsPort);
-    response.writeHead(302,{Location:target.href,'Cache-Control':'no-store'});response.end();
+    try { const target=new URL(request.url??'/',origin);target.protocol='https:';target.hostname=ip;target.port=String(tlsPort);
+      response.writeHead(302,{Location:target.href,'Cache-Control':'no-store'});response.end();
+    } catch { response.writeHead(400,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});response.end('Invalid request URL'); }
   });
   redirect.headersTimeout=10000;redirect.requestTimeout=15000;
   await new Promise((resolve,reject)=>{redirect.once('error',reject);redirect.listen(port,'0.0.0.0',resolve);});
