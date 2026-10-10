@@ -22,21 +22,21 @@ export async function prepareImages(session:LabSession,group:Group,status:(text:
   const bitmaps=new Map<string,ImageBitmap>(),controller=new AbortController(),started=performance.now();
   const abort=()=>controller.abort(signal?.reason);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
   const deadline=setTimeout(()=>controller.abort(new Error('本组准备超过 20 分钟，请检查网络或联系研究者。')),DOWNLOAD_POLICY.maximum_ms);
-  let received=0,completed=0;
+  let received=0;
   try{
     // Serial download + decode bounds compressed working memory to one image and
     // avoids doubling every participant's competing stream on a shared 1–5 Mbps link.
     for(const info of unique){
       controller.signal.throwIfAborted();const prior=received;
-      const report=(bytes:number)=>status(`准备图片 ${completed}/${unique.length} · ${((prior+bytes)/1024/1024).toFixed(2)}/${(originalBytes/1024/1024).toFixed(2)} MiB`);
+      const report=(bytes:number)=>status(`下载 ${Math.min(99,Math.floor((prior+bytes)/Math.max(1,originalBytes)*100))}%`);
       report(0);const data=await downloadOriginal(`/api/participate/sessions/${session.session_id}/assets/${info.asset_id}`,info.bytes,controller.signal,report,undefined,headers);
       const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),v=>v.toString(16).padStart(2,'0')).join('');if(h!==info.hash)throw new Error('图片摘要不匹配。');
       controller.signal.throwIfAborted();
       const bitmap=await createImageBitmap(new Blob([data],{type:`image/${info.format}`}));
       if(controller.signal.aborted||bitmap.width!==info.width||bitmap.height!==info.height){bitmap.close();controller.signal.throwIfAborted();throw new Error('图片尺寸与冻结清单不符。');}
-      bitmaps.set(info.hash,bitmap);received+=info.bytes;completed++;
+      bitmaps.set(info.hash,bitmap);received+=info.bytes;
     }
-    controller.signal.throwIfAborted();status(`全部 ${unique.length} 张图片已准备。`);
+    controller.signal.throwIfAborted();status('下载 100%');
     const byAsset=new Map(infos.map(a=>[a.asset_id,bitmaps.get(a.hash)!]));
     return {byAsset,hashes:Object.fromEntries(infos.map(a=>[a.asset_id,a.hash])),decoded_bytes:estimated,
       download:{original_bytes:originalBytes,downloaded_bytes:received,unique_images:unique.length,elapsed_ms:performance.now()-started,policy:'serial-stall60s-total20m-v1'},

@@ -1,0 +1,28 @@
+# Browser Psych Lab reverse proxy.
+# Replace study.example with the public DNS name of this server.
+# Caddy obtains and renews the HTTPS certificate automatically.
+
+study.example {
+	# The application enforces an 8 MiB upload limit as well.
+	request_body {
+		max_size 8MB
+	}
+
+	# Keep response bodies unchanged. The application already serves its
+	# precompressed public assets and private data must pass through exactly.
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+# Optional local-network testing without a public DNS name:
+#
+# 192.168.1.50 {
+#	 tls internal
+#	 request_body {
+#		 max_size 8MB
+#	 }
+#	 reverse_proxy 127.0.0.1:3000 {
+#		 header_up X-Forwarded-Proto https
+#	 }
+# }

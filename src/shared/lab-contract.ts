@@ -18,8 +18,10 @@ export interface LabSession {
   permit: { permit_id: string; scope: string; group_id: string; plan: GroupPlan; state: string } | null;
   seals: Seal[]; completion: unknown; diagnostics: { code: string; scope: string | null }[];
   admission?:SessionAdmissionStatus;
+  task_activity?:{last_seen:number;idle_timeout_ms:number;connection_timeout_ms:number}|null;
+  reanswer?:{old_session_id:string;new_session_id:string;created_at:number}|null;
 }
-export interface SessionAdmissionStatus {status:'QUEUED'|'ACTIVE'|'EXPIRED'|'LEFT'|'ENDED';ticket_id:string|null;position:number;limit:number;poll_ms:number;lease_until:number;lease_remaining_ms:number;pinned:boolean}
+export interface SessionAdmissionStatus {status:'QUEUED'|'ACTIVE'|'EXPIRED'|'LEFT'|'ENDED';ticket_id:string|null;position:number;limit:number|null;poll_ms:number;lease_until:number;lease_remaining_ms:number;pinned:boolean}
 export interface RunRecord { type: 'OP' | 'COMMIT' | 'ONSET' | 'WINDOW' | 'END' | 'INPUT' | 'CORRECTION' | 'CLOSING' | 'ABORT' | 'RATING' | 'RATING_INTENT' | 'RATING_CHANGE';
   value?:number; item?:number; values?:number[];
   at: number; instance_id?: string; operation?: ScheduleAudit; op_id?: string; evidence?: string; answer?: string | null;

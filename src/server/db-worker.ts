@@ -27,6 +27,8 @@ db.transaction(() => {
 }).immediate();
 const lab = new LabStore(db, workerData.runnerHash as string | undefined,Date.now,workerData.sessionConcurrency as number|undefined);
 lab.execute({operation:'lab/internal.job.interrupted',data:{}});
+lab.expireTaskActivity();
+const activityTimer=setInterval(()=>{try{lab.expireTaskActivity();}catch{}},30000);
 port.postMessage({ ready: true });
 port.on('message', (message: { id: number; command: Command | null }) => {
   if (message.command !== null) heartbeat();
@@ -36,7 +38,7 @@ port.on('message', (message: { id: number; command: Command | null }) => {
       if (record && (JSON.parse(record.value) as { owner: string }).owner === owner)
         db.prepare("DELETE FROM p0_meta WHERE key='app_instance'").run();
     }).immediate();
-    clearInterval(heartbeatTimer); db.close(); port.close(); return;
+    clearInterval(heartbeatTimer); clearInterval(activityTimer); db.close(); port.close(); return;
   }
   try {
     const result = message.command.operation.startsWith('lab/') ? lab.execute(message.command) : store.execute(message.command);

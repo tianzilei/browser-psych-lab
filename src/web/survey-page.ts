@@ -9,7 +9,7 @@ const snapshot = (answers: Answers): Answers => Object.fromEntries(Object.entrie
 
 export function mountPage(element: HTMLDivElement, page: Page, previous: Answers, values: Answers,
   revision: (name: string, answer: Answer, data: Answers) => void, complete: (data: Answers) => void,
-  options: { key: string; title: string }) {
+  options: { key: string; title: string; screen?:(question_id:string|undefined)=>void }) {
   const invalid = page.questions.find(q => q.type === 'text' && q.input_purpose !== 'personal' || q.type === 'scale' && (!q.min_label?.trim() || !q.max_label?.trim()));
   if (invalid) {
     element.replaceChildren(el('p', invalid.type === 'scale' ? '此版本未配置量表两端文字，请联系研究者更新问卷。' : '此版本含未标记为个人信息的文字题，请联系研究者更新问卷。'));
@@ -169,7 +169,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
       answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
     }
     controlQuestion=fits&&!pager.more?q:undefined;
-    navigation(); if (focus) reading.focus({ preventScroll: true });
+    navigation(); if (focus) reading.focus({ preventScroll: true });options.screen?.(q?.id);
   }
   function show(index: number) {
     if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();

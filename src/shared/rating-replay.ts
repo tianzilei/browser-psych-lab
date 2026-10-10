@@ -44,9 +44,10 @@ export class RatingReplay {
       if(!result||result.clear!==null||!values||values.length!==count||values.slice(0,coreCount).some(v=>!Number.isInteger(v)||v<1||v>this.plan.choices.length)||(this.plan.rating!.age_prompt!==undefined&&(values.at(-1)!<this.plan.rating!.age_min!||values.at(-1)!>this.plan.rating!.age_max!||!Number.isInteger(values.at(-1))))||typeof r.input_time!=='number'||!Number.isFinite(r.input_time)||r.input_time<result.onset||r.input_time>r.at)throw new Error('INVALID_RATING_ANSWER');
       const prior=this.changes.filter(c=>c.instance_id===id);
       if(prior.length)for(let i=0;i<coreCount;i++){const last=prior.filter(c=>c.item===i).at(-1);if(!last||last.value!==values[i]||last.at>r.input_time)throw new Error('RATING_SELECTION_MISMATCH');}
-      result.ratings=[...values];result.rating=values[0]!;result.rating_label=this.plan.rating!.labels[values[0]!-1]!;result.rating_labels=values.map(v=>this.plan.rating!.labels[v-1]!);result.answer=JSON.stringify(values);result.input_time=r.input_time;
+      result.ratings=[...values];result.rating=values[0]!;result.rating_label=this.plan.rating!.labels[values[0]!-1]!;result.rating_labels=values.slice(0,coreCount).map(v=>this.plan.rating!.labels[v-1]!);result.answer=JSON.stringify(values);result.input_time=r.input_time;
       result.rt_ms=r.input_time-result.onset;result.submit_rt_ms=result.rt_ms;
       if(prior.length)result.first_rt_ms=Math.min(...prior.map(c=>c.at))-result.onset;
+      result.rating_item_times=Array.from({length:coreCount},(_,item)=>{const changes=prior.filter(c=>c.item===item);return {item,first_rt_ms:changes[0]?changes[0].at-result.onset:null,last_rt_ms:changes.at(-1)?changes.at(-1)!.at-result.onset:null,changes:changes.filter((c,i)=>i>0&&c.value!==changes[i-1]!.value).length};});
       result.change_count=prior.filter((c,i)=>i>0&&c.value!==prior[i-1]!.value).length;
       result.clear=r.draw_time!;s.executions.set(id!,'WINDOW_CLOSED');return;
     }

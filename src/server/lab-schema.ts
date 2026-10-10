@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS lab_group_selections(session_id TEXT NOT NULL REFEREN
 CREATE TRIGGER IF NOT EXISTS lab_group_selections_update BEFORE UPDATE ON lab_group_selections BEGIN SELECT RAISE(ABORT,'immutable selection'); END;
 CREATE TRIGGER IF NOT EXISTS lab_group_selections_delete BEFORE DELETE ON lab_group_selections BEGIN SELECT RAISE(ABORT,'immutable selection'); END;
 CREATE TABLE IF NOT EXISTS lab_consents(session_id TEXT PRIMARY KEY REFERENCES lab_sessions,document_hash TEXT NOT NULL,accepted_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_task_activity(session_id TEXT PRIMARY KEY REFERENCES lab_sessions,writer_epoch INTEGER NOT NULL,last_seen INTEGER NOT NULL) STRICT;
+CREATE INDEX IF NOT EXISTS lab_task_activity_seen ON lab_task_activity(last_seen);
 CREATE TRIGGER IF NOT EXISTS lab_consents_update BEFORE UPDATE ON lab_consents BEGIN SELECT RAISE(ABORT,'immutable consent'); END;
 CREATE TRIGGER IF NOT EXISTS lab_consents_delete BEFORE DELETE ON lab_consents BEGIN SELECT RAISE(ABORT,'immutable consent'); END;
 CREATE TRIGGER IF NOT EXISTS lab_covariates_update BEFORE UPDATE ON lab_covariates BEGIN SELECT RAISE(ABORT,'immutable covariates'); END;
@@ -32,6 +34,9 @@ CREATE TABLE IF NOT EXISTS lab_sessions(session_id TEXT PRIMARY KEY,study_id TEX
  state TEXT NOT NULL CHECK(state IN ('CREATED','ACTIVE','FINALIZING','COMPLETED','TERMINATED')),writer_id TEXT,writer_epoch INTEGER NOT NULL DEFAULT 0,
  lease_until INTEGER NOT NULL DEFAULT 0,page_index INTEGER NOT NULL DEFAULT 0,group_index INTEGER NOT NULL DEFAULT 0,
  answers TEXT NOT NULL DEFAULT '{}',path TEXT NOT NULL DEFAULT '[]',allocation_id TEXT,completion TEXT,created_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_reanswer_links(old_session_id TEXT PRIMARY KEY REFERENCES lab_sessions,new_session_id TEXT UNIQUE NOT NULL REFERENCES lab_sessions,created_at INTEGER NOT NULL) STRICT;
+CREATE TRIGGER IF NOT EXISTS lab_reanswer_links_update BEFORE UPDATE ON lab_reanswer_links BEGIN SELECT RAISE(ABORT,'immutable reanswer link'); END;
+CREATE TRIGGER IF NOT EXISTS lab_reanswer_links_delete BEFORE DELETE ON lab_reanswer_links BEGIN SELECT RAISE(ABORT,'immutable reanswer link'); END;
 CREATE TABLE IF NOT EXISTS lab_writers(session_id TEXT NOT NULL REFERENCES lab_sessions,epoch INTEGER NOT NULL,writer_id TEXT NOT NULL,
  PRIMARY KEY(session_id,epoch)) STRICT;
 CREATE TABLE IF NOT EXISTS lab_session_queue(ordinal INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT UNIQUE NOT NULL REFERENCES lab_sessions,

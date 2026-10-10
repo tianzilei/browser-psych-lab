@@ -55,6 +55,7 @@ test('selection history separates first choice RT and submission RT and checks t
   for(const [at,value] of [[1100,2],[1200,2],[1300,7]])for(let item=0;item<6;item++)r.apply({type:'RATING_CHANGE',at:at+item,instance_id:id,item,value});
   r.apply({type:'RATING',at:1400,draw_time:1401,raf_time:1400,input_time:1390,instance_id:id,values:[7,7,7,7,7,7,40]});
   const result=r.results.get(id);assert.equal(result.first_rt_ms,100);assert.equal(result.submit_rt_ms,390);assert.equal(result.rt_ms,390);assert.equal(result.change_count,1);
+  assert.equal(result.rating_labels.length,6);assert.doesNotThrow(()=>JSON.stringify(result));
 });
 test('server freezes selection before download; reserve renewal and expired reservations never redraw images',t=>{
   const raw=input();raw.groups[0].trials=raw.groups[0].trials.map(({image,...rest})=>({...rest,text:rest.root_id}));delete raw.groups[0].rating;delete raw.groups[0].sampling;raw.groups[0].trials=raw.groups[0].trials.slice(0,4);raw.groups[0].choices=['1','2'];

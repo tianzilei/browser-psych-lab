@@ -23,7 +23,7 @@ const storageRoot = await privateRoot(resolve(process.env.STORAGE_ROOT ?? './var
 for(const bucket of ['research-assets','research-exports','research-backups']) await privateRoot(resolve(storageRoot,bucket));
 const runnerHash = await retainRelease(storageRoot);
 const sessionConcurrency=Number(process.env.SESSION_CONCURRENCY??2);
-if(!Number.isInteger(sessionConcurrency)||sessionConcurrency<1||sessionConcurrency>2)throw new Error('INVALID_SESSION_CONCURRENCY');
+if(!Number.isSafeInteger(sessionConcurrency)||sessionConcurrency<1||sessionConcurrency>10000)throw new Error('INVALID_SESSION_CONCURRENCY');
 const writer = new DatabaseWriter(resolve(process.env.DATABASE_PATH),{workerData:{runnerHash,sessionConcurrency}});
 await writer.start();
 export const app = Fastify({
@@ -40,6 +40,7 @@ app.setErrorHandler((error, _request, reply) => {
   const known = error instanceof ContractError || error instanceof WriterError;
   const status = known ? error.status : ((error as { statusCode?: number }).statusCode ?? 500);
   if (status === 503) reply.header('Retry-After', '1');
+  if (known && ['SESSION_CAPACITY_FULL','PREPARATION_CAPACITY_FULL'].includes(error.code)) reply.header('Retry-After','1800');
   return reply.code(status).send({ code: known ? error.code : 'REQUEST_FAILED',
     ingestion: error instanceof WriterError ? error.ingestion : 'NOT_INGESTED',
     details: known ? error.details : null });

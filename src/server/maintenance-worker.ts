@@ -124,6 +124,7 @@ async function run(){
           slots:'SELECT a.* FROM lab_slots a JOIN lab_versions v USING(version_id) WHERE v.study_id=?',
         };
         queries.questionnaire_sources='SELECT * FROM lab_questionnaire_sources WHERE study_id=?';queries.packages='SELECT * FROM lab_packages WHERE study_id=?';queries.package_images='SELECT * FROM lab_package_images WHERE study_id=?';
+        queries.reanswer_links='SELECT a.* FROM lab_reanswer_links a JOIN lab_sessions s ON s.session_id=a.new_session_id WHERE s.study_id=?';
         for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents','group_selections'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
         queries.dispositions='SELECT d.* FROM lab_dispositions d JOIN lab_raw r USING(receipt_id) JOIN lab_sessions s USING(session_id) WHERE s.study_id=?';
         for(const [table,query]of Object.entries(queries)){tables[table]=0;
@@ -131,6 +132,7 @@ async function run(){
             if(Buffer.isBuffer(row.raw)){row.raw_utf8=(row.raw as Buffer).toString('utf8');delete row.raw;}const encoded=stableJSON(row);source.update(`${table}\0${encoded}\n`);emit(`${cell(table)},${cell(encoded)}\r\n`);tables[table]++;}
         }
         // Derived trial rows are recomputed from the same read view, including interrupted histories.
+        for(const row of db.prepare("SELECT e.session_id,e.event_id,e.envelope FROM lab_events e JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND e.kind='INPUT_DIAGNOSTIC' AND e.scope LIKE 'd-ui-%' ORDER BY e.rowid").iterate(sid) as Iterable<{session_id:string;event_id:string;envelope:string}>){const batch=object(parseLabEvent(row.envelope).payload.interaction);for(const sample of batch.samples as Record<string,unknown>[]){const encoded=stableJSON({session_id:row.session_id,event_id:row.event_id,time_origin:batch.time_origin,...sample});if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');emit(`${cell('interaction_actions')},${cell(encoded)}\r\n`);source.update(`interaction_actions\0${encoded}\n`);tables.interaction_actions=(tables.interaction_actions??0)+1;}}
         for(const session of db.prepare('SELECT s.session_id,s.version_id,s.page_index,s.path,v.protocol FROM lab_sessions s JOIN lab_versions v USING(version_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;version_id:string;page_index:number;path:string;protocol:string}>){
           const protocol=JSON.parse(session.protocol) as Protocol,path=JSON.parse(session.path) as string[],answers:Record<string,Answer>={},states:Record<string,unknown>={};
           for(const [index,page]of protocol.pages.entries()){

@@ -20,6 +20,6 @@ export async function request<T>(url:string,data?:unknown,csrf?:string,signal?:A
       await response.body?.cancel();await wait(Math.min(overloadDelay(response,attempt),Math.max(0,budget-(performance.now()-started))),signal);continue;
     }
     const result=await response.json() as {code?:string;details?:unknown};
-    if(!response.ok)throw new Error(`${result.code??'REQUEST_FAILED'}${result.details?`：${JSON.stringify(result.details)}`:''}`);return result as T;
+    if(!response.ok){if(['SESSION_CAPACITY_FULL','PREPARATION_CAPACITY_FULL'].includes(result.code??''))throw new Error('当前作答人数较多，建议30分钟后再进行答题。已保存的答卷保留。');throw new Error(`${result.code??'REQUEST_FAILED'}${result.details?`：${JSON.stringify(result.details)}`:''}`);}return result as T;
   }
 }

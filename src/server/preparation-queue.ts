@@ -5,7 +5,7 @@ interface Ticket {key:string;nonce:string;joined:number;seen:number;started:numb
 export class PreparationQueue {
   private tickets:Ticket[]=[];
   constructor(private concurrency=1,private now=Date.now,private leaseMs=90000){
-    if(!Number.isInteger(concurrency)||concurrency<1||concurrency>4)throw new Error('INVALID_PREPARATION_CONCURRENCY');
+    if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>10000)throw new Error('INVALID_PREPARATION_CONCURRENCY');
   }
   private sweep(){
     const time=this.now();
@@ -15,14 +15,12 @@ export class PreparationQueue {
       }
     }
     this.tickets=this.tickets.filter(t=>!t.closing||t.streams.size>0);
-    let active=this.tickets.filter(t=>t.started!==null).length;
-    for(const t of this.tickets){if(active>=this.concurrency)break;if(t.started===null&&!t.closing){t.started=time;active++;}}
   }
   join(key:string,nonce:string){
     this.sweep();const old=this.tickets.find(t=>t.key===key);
-    if(old&&old.nonce!==nonce)throw new ContractError('PREPARATION_ALREADY_QUEUED',409);
-    if(!old){if(this.tickets.length>=64)throw new ContractError('PREPARATION_QUEUE_FULL',503);
-      this.tickets.push({key,nonce,joined:this.now(),seen:this.now(),started:null,closing:false,streams:new Set()});}
+    if(old&&old.nonce!==nonce)throw new ContractError('PREPARATION_ALREADY_ACTIVE',409);
+    if(!old){if(this.tickets.length>=this.concurrency)throw new ContractError('PREPARATION_CAPACITY_FULL',409,{retry_after_seconds:1800});
+      this.tickets.push({key,nonce,joined:this.now(),seen:this.now(),started:this.now(),closing:false,streams:new Set()});}
     return this.touch(key,nonce);
   }
   touch(key:string,nonce:string){
@@ -46,22 +44,14 @@ export class PreparationQueue {
     const t=this.tickets.find(t=>t.key.startsWith(`${session}:`)&&t.nonce===nonce);
     return t?this.release(t.key,nonce):{status:'RELEASED'};
   }
-  async legacyTransfer(session:string,signal:AbortSignal,cancel:()=>void,waitMs=18000){
-    signal.throwIfAborted();const nonce=randomUUID(),key=`${session}:legacy:${nonce}`,deadline=this.now()+waitMs;
+  async legacyTransfer(session:string,signal:AbortSignal,cancel:()=>void){
+    signal.throwIfAborted();const nonce=randomUUID(),key=`${session}:legacy:${nonce}`;
     try{
-      let ticket=this.join(key,nonce);
-      while(ticket.status!=='READY'){
-        if(this.now()>=deadline)throw new ContractError('LEGACY_PREPARATION_BUSY',503);
-        await new Promise<void>((resolve,reject)=>{
-          const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(signal.reason);};
-          const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},Math.min(200,Math.max(1,deadline-this.now())));
-          signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
-        });ticket=this.touch(key,nonce);
-      }
+      this.join(key,nonce);
       signal.throwIfAborted();const done=this.transfer(key,nonce,cancel);
       return ()=>{done();this.release(key,nonce);};
     }catch(error){this.release(key,nonce);throw error;}
   }
-  stats(){this.sweep();return {active:this.tickets.filter(t=>t.started!==null).length,queued:this.tickets.filter(t=>t.started===null).length,streams:this.tickets.reduce((n,t)=>n+t.streams.size,0),limit:this.concurrency,capacity:64};}
+  stats(){this.sweep();return {active:this.tickets.length,queued:0,streams:this.tickets.reduce((n,t)=>n+t.streams.size,0),limit:this.concurrency,capacity:this.concurrency};}
   close(){for(const t of this.tickets){t.closing=true;for(const cancel of t.streams)cancel();}this.tickets=[];}
 }
