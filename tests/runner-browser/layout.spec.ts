@@ -4,7 +4,9 @@ test('document pages scroll on touch, wrap titles, and use the configured select
   await page.setViewportSize({width:320,height:480});
   await page.goto('/run.html');
   const result=await page.evaluate(async()=>{
-    const {applyParticipantBackground}=await import('/participant-theme.ts');
+    // Browser URL resolved by Vite at runtime, not a TypeScript module path.
+    const themeUrl='/participant-theme.ts';
+    const {applyParticipantBackground}=await import(themeUrl);
     applyParticipantBackground('#123456');
     const title=document.querySelector<HTMLElement>('#title')!;
     title.textContent='这是一份需要完整显示的很长的研究标题'.repeat(4);

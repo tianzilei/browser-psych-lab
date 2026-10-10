@@ -1,0 +1,19 @@
+{
+  "schema": "mobile-images-v1",
+  "package": "mobile-optimized.zip",
+  "defaults": {
+    "scene": "stimulus",
+    "viewport": {"width": 360, "height": 240},
+    "density": 2,
+    "fit": "contain",
+    "content": "text",
+    "format": "webp"
+  },
+  "images": [{
+    "source": "../stimuli/mobile-card.png",
+    "variants": [
+      {"name": "mobile-card"},
+      {"name": "mobile-card-small", "density": 1.5}
+    ]
+  }]
+}

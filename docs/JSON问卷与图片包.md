@@ -98,6 +98,8 @@
 
 ## 图片压缩包
 
+上传前可运行本地 [移动端图片处理工具](移动端图片处理.md)，按显示尺寸/DPR 缩放、显式主体区域裁切或生成长图切片，并直接输出符合本平台限制的 ZIP 与检查报告。
+
 图片/文字刺激现支持 general 与题目级时长、jitter、固定/伪随机顺序、键盘作答和反馈。配置规则见 [刺激任务设计](刺激任务设计.md)，完整示例见 [randomized-stimuli.json](../examples/questionnaires/randomized-stimuli.json)。
 
 图片先在自己的电脑上完成压缩、移除 EXIF 及方向归一化，再打成标准 ZIP；管理端同一次上传可选择多个 ZIP。JSON 引用的是压缩包文件名及内部路径，无需写 bucket、服务器绝对路径、云密钥或公开 URL：

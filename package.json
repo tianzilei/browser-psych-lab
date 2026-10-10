@@ -22,6 +22,7 @@
     "smoke": "node scripts/smoke.mjs",
     "profile:foundation": "node scripts/profile-foundation.mjs",
     "preview:questionnaire": "node scripts/preview-questionnaire.mjs",
+    "images:prepare": "node --import tsx scripts/prepare-images.mjs",
     "test:browser": "playwright test",
     "test:runner": "playwright test --config tests/runner-browser.config.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.mjs",
