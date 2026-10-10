@@ -40,10 +40,10 @@ export class RatingReplay {
       this.changes.push({instance_id:id!,item,value:r.value!,at:r.at});return;
     }
     if(r.type==='RATING'){
-      const count=this.plan.rating!.items?.length??1,values=r.values??(r.value===undefined?undefined:[r.value]);
-      if(!result||result.clear!==null||!values||values.length!==count||values.some(v=>!Number.isInteger(v)||v<1||v>this.plan.choices.length)||typeof r.input_time!=='number'||!Number.isFinite(r.input_time)||r.input_time<result.onset||r.input_time>r.at)throw new Error('INVALID_RATING_ANSWER');
+      const coreCount=this.plan.rating!.items?.length??1,count=coreCount+(this.plan.rating!.age_prompt?1:0),values=r.values??(r.value===undefined?undefined:[r.value]);
+      if(!result||result.clear!==null||!values||values.length!==count||values.slice(0,coreCount).some(v=>!Number.isInteger(v)||v<1||v>this.plan.choices.length)||(this.plan.rating!.age_prompt!==undefined&&(values.at(-1)!<this.plan.rating!.age_min!||values.at(-1)!>this.plan.rating!.age_max!||!Number.isInteger(values.at(-1))))||typeof r.input_time!=='number'||!Number.isFinite(r.input_time)||r.input_time<result.onset||r.input_time>r.at)throw new Error('INVALID_RATING_ANSWER');
       const prior=this.changes.filter(c=>c.instance_id===id);
-      if(prior.length)for(let i=0;i<count;i++){const last=prior.filter(c=>c.item===i).at(-1);if(!last||last.value!==values[i]||last.at>r.input_time)throw new Error('RATING_SELECTION_MISMATCH');}
+      if(prior.length)for(let i=0;i<coreCount;i++){const last=prior.filter(c=>c.item===i).at(-1);if(!last||last.value!==values[i]||last.at>r.input_time)throw new Error('RATING_SELECTION_MISMATCH');}
       result.ratings=[...values];result.rating=values[0]!;result.rating_label=this.plan.rating!.labels[values[0]!-1]!;result.rating_labels=values.map(v=>this.plan.rating!.labels[v-1]!);result.answer=JSON.stringify(values);result.input_time=r.input_time;
       result.rt_ms=r.input_time-result.onset;result.submit_rt_ms=result.rt_ms;
       if(prior.length)result.first_rt_ms=Math.min(...prior.map(c=>c.at))-result.onset;
@@ -57,4 +57,5 @@ export class RatingReplay {
     throw new Error('INVALID_RATING_RECORD');
   }
   finish(){if(this.scheduler.state!=='GROUP_CLOSING')throw new Error('GROUP_NOT_NORMALLY_CLOSED');return [...this.results.values()];}
-}\n
+}
+

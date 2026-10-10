@@ -142,4 +142,4 @@ test('Project1 downloads exactly 32 of 102 real portraits and saves all balanced
     for(let i=0;i<32;i++){expect(results[i]!.ratings).toHaveLength(5);expect(results[i]!.ratings).toEqual(Array.from({length:5},(_,item)=>(i+item)%9+1));expect(results[i]!.isi_ms).toBeGreaterThanOrEqual(3000);if(i)expect(results[i]!.onset-results[i-1]!.clear!).toBeGreaterThanOrEqual(3000);}
     expect(permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);expect(f.downloads()).toBe(32);
   }finally{f.close();}
-});\n
+});
