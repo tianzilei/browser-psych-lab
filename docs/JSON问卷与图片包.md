@@ -53,6 +53,7 @@
 | `consent` | 顶层知情同意 title/text，明确同意后创建会话；标题最多 200、正文最多 8000 个 UTF-16 单元 |
 | `ending` | 可选顶层结束语 title/text，完成确认后显示 |
 | `text` | 只能 `input_purpose: "personal"`，max_length 必填，建议昵称等短输入 |
+| `input_match` | 可选的文字输入格式约束。优先使用安全预设，如 `{"kind":"preset","preset":"alphanumeric"}`；也可使用不超过 160 字符、无分支和开放量词、最多一个有界 `{n,m}` 量词的正则 `{"kind":"regex","pattern":"[A-Z0-9]{6,12}","message":"请输入 6–12 位大写字母或数字。"}`。仅适用于 `text`，服务端最终校验；旧 JSON 未配置时保持原行为 |
 | `condition` | 保留既有 eq/neq/includes/and/or/not 条件 AST，只能引用前序题，不执行脚本 |
 | `mode` | 默认 TEST_ONLY；COLLECTION 仍需既有真实环境验收与采集准入 |
 
@@ -153,5 +154,7 @@
 
 
 手机测试：执行 `npm run preview:questionnaire -- --lan`，HTTP/HTTPS 分别绑定 `0.0.0.0:3081` 和 `0.0.0.0:3082`。首次从同一 Wi-Fi 的手机打开终端给出的 `/phone-setup` 地址，下载本机测试 CA 并完成系统信任设置，再打开 HTTPS 模拟问卷。HTTP 问卷链接保留路径与 version 跳转 HTTPS。该测试使用 OpenSSL 私有 CA 和服务证书，不安装系统全局信任，也不改项目 .env；签名私钥仅在受保护的 `.local` 目录，公开下载只有 CA 证书。直接配置服务器 TLS 时，`TLS_KEY_PATH` 与 `TLS_CERT_PATH` 必须同时设置；HTTPS 请求的会话与管理 Cookie 使用 Secure 标志。
+
+正式作答依赖原生 Web Locks 保证同一会话只有一个页面写入。`--lan-http` 在非安全上下文中只适合查看模拟界面；浏览器缺少 Web Locks 时，参加页和图片运行页会提示使用支持该能力的浏览器与 HTTPS，不创建会话。兼容层不会伪造互斥锁。
 
 本机实际使用局域网 IP 的 HTTPS 完成灰／深主题同意、拒绝重新阅读、三坐标、图片任务、结束语、刷新和管理员 CSV 下载，浏览器无页面错误；真实 Web Crypto/UUID/Web Locks 均可用。curl 使用生成的 CA 正常验证 TLS 链、IP SAN 与健康检查；HTTP 跳转保留参数，下载 CA 字节一致；证书设置页在三种设备尺寸中无滚动或裁剪。浏览器检查使用 Chromium 手机触控模拟与证书例外，尚未声称实机手机验收。

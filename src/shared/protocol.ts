@@ -8,9 +8,13 @@ export type Condition = { op: 'eq' | 'neq' | 'includes'; question: string; axis?
   | { op: 'and' | 'or'; args: Condition[] } | { op: 'not'; arg: Condition };
 export type AxisAnswer = Record<string, number | null>;
 export type Answer = string | string[] | number | AxisAnswer | null;
+export type InputPreset = 'digits' | 'integer' | 'decimal' | 'letters' | 'alphanumeric' | 'chinese' | 'phone_cn' | 'email';
+export type InputMatch =
+  | { kind: 'preset'; preset: InputPreset; message?: string }
+  | { kind: 'regex'; pattern: string; flags?: string; message?: string };
 export interface ScaleAxis {id:string;title:string;min:number;max:number;min_label:string;max_label:string;labels:string[]}
 export interface Question { id: string; type: 'single' | 'multi' | 'scale' | 'scales' | 'text'; title: string;
-  required: boolean; axes?: ScaleAxis[]; choices?: string[]; min?: number; max?: number; min_label?: string; max_label?: string; labels?: string[]; max_length?: number; input_purpose?: 'personal'; condition?: Condition }
+  required: boolean; axes?: ScaleAxis[]; choices?: string[]; min?: number; max?: number; min_label?: string; max_label?: string; labels?: string[]; max_length?: number; input_purpose?: 'personal'; input_match?: InputMatch; condition?: Condition }
 export interface Page { id: string; title: string; instruction: string; condition?: Condition; questions: Question[] }
 export interface TimingSpec {base: number; jitter: number}
 export interface TimingDefaults {stimulus_ms?: TimingSpec; isi_ms?: TimingSpec; feedback_ms?: TimingSpec}
@@ -61,6 +65,46 @@ function strings(v: unknown, min: number, max: number) {
   const a = list(v, max).map(x => text(x, TEXT_LIMITS.choice));
   if (a.length < min || new Set(a).size !== a.length || a.some(x => !x.trim())) throw new ContractError('INVALID_CHOICES'); return a;
 }
+const INPUT_PRESETS: Record<InputPreset, string> = {
+  digits: '[0-9]+', integer: '-?[0-9]+', decimal: '-?(?:[0-9]+(?:\\.[0-9]+)?)',
+  letters: '[A-Za-z]+', alphanumeric: '[A-Za-z0-9]+', chinese: '[\\u3400-\\u9fff]+',
+  phone_cn: '1[3-9][0-9]{9}', email: '[^\\s@]+@[^\\s@]+\\.[^\\s@]+',
+};
+const INPUT_PRESET_NAMES = new Set(Object.keys(INPUT_PRESETS));
+function inputMatch(v: unknown): InputMatch {
+  const o = object(v); fields(o, ['kind', 'preset', 'pattern', 'flags', 'message']);
+  const message = o.message === undefined ? undefined : text(o.message, 200);
+  if (o.kind === 'preset') {
+    if (typeof o.preset !== 'string' || !INPUT_PRESET_NAMES.has(o.preset)) throw new ContractError('INVALID_INPUT_MATCH');
+    if (o.pattern !== undefined || o.flags !== undefined) throw new ContractError('INVALID_INPUT_MATCH');
+    return { kind: 'preset', preset: o.preset as InputPreset, ...(message === undefined ? {} : { message }) };
+  }
+  if (o.kind !== 'regex' || typeof o.pattern !== 'string' || o.pattern.length < 1 || o.pattern.length > 160)
+    throw new ContractError('INVALID_INPUT_MATCH');
+  const flags = o.flags === undefined ? '' : o.flags;
+  if (typeof flags !== 'string' || !/^i?$/.test(flags))
+    throw new ContractError('INVALID_INPUT_MATCH');
+  // Avoid backreferences/lookarounds and nested unbounded quantifiers. They are
+  // unnecessary for questionnaire identifiers and can make a browser regex
+  // take unbounded time on a 4,000-character answer.
+  const bounded = [...o.pattern.matchAll(/\{(\d+)(?:,(\d+))?\}/g)];
+  const hasUnsafeQuantifier = /(?:^|[^\\])[+*?]/.test(o.pattern)
+    || bounded.length > 1
+    || bounded.some(m => Number(m[1]) > 4000 || (m[2] !== undefined && Number(m[2]) > 4000));
+  if (/[()|]/.test(o.pattern) || /(?:^|[^\\])\./.test(o.pattern) || /\\[1-9]|\{\d+,\}/.test(o.pattern) || hasUnsafeQuantifier)
+    throw new ContractError('UNSAFE_INPUT_MATCH');
+  try { new RegExp(`^(?:${o.pattern})$`, flags); } catch { throw new ContractError('INVALID_INPUT_MATCH'); }
+  return { kind: 'regex', pattern: o.pattern, ...(flags ? { flags } : {}), ...(message === undefined ? {} : { message }) };
+}
+export function inputMatchPattern(match: InputMatch): string {
+  return match.kind === 'preset' ? INPUT_PRESETS[match.preset] : match.pattern;
+}
+export function inputMatchRegex(match: InputMatch): RegExp {
+  return new RegExp(`^(?:${inputMatchPattern(match)})$`, match.kind === 'regex' ? (match.flags ?? '') : '');
+}
+export function inputMatchMessage(match: InputMatch): string {
+  return match.message ?? '输入格式不符合要求。';
+}
 function condition(v: unknown, prior: Map<string,Question>, depth = 0): Condition {
   if (depth > 8) throw new ContractError('CONDITION_TOO_DEEP'); const o = object(v);
   if (o.op === 'not') { fields(o, ['op', 'arg']); return { op: 'not', arg: condition(o.arg, prior, depth + 1) }; }
@@ -100,10 +144,11 @@ export function parseProtocol(value: unknown): Protocol {
     const result: Page = { id: unique(page.id), title: text(page.title, TEXT_LIMITS.title), instruction: text(page.instruction, TEXT_LIMITS.instruction), questions: [] };
     if (page.condition) result.condition = condition(page.condition, prior);
     result.questions = list(page.questions, 30).map(value => {
-      const q = object(value); fields(q, ['id', 'type', 'title', 'required', 'choices', 'min', 'max', 'min_label', 'max_label', 'labels', 'axes', 'max_length', 'input_purpose', 'condition']);
+      const q = object(value); fields(q, ['id', 'type', 'title', 'required', 'choices', 'min', 'max', 'min_label', 'max_label', 'labels', 'axes', 'max_length', 'input_purpose', 'input_match', 'condition']);
       if (!['single', 'multi', 'scale', 'scales', 'text'].includes(String(q.type)) || typeof q.required !== 'boolean') throw new ContractError('INVALID_QUESTION');
       const result: Question = { id: unique(q.id), title: text(q.title, TEXT_LIMITS.question), type: q.type as Question['type'], required: q.required };
       if(q.input_purpose!==undefined){if(q.type!=='text'||q.input_purpose!=='personal')throw new ContractError('INVALID_INPUT_PURPOSE');result.input_purpose='personal';}
+      if(q.input_match!==undefined){if(q.type!=='text')throw new ContractError('INVALID_INPUT_MATCH');result.input_match=inputMatch(q.input_match);}
       if(q.type==='scale'&&q.choices!==undefined)throw new ContractError('SCALE_CHOICES_NOT_ALLOWED');
       if(q.axes!==undefined&&q.type!=='scales')throw new ContractError('INVALID_SCALE_AXES');
       if(q.type==='scales'){
@@ -240,7 +285,7 @@ export function pageSnapshot(page: Page, all: Record<string, Answer>, supplied: 
       if (q.type === 'single' && (typeof answer !== 'string' || !q.choices!.includes(answer))) throw new ContractError('INVALID_ANSWER');
       if (q.type === 'multi' && (!Array.isArray(answer) || new Set(answer).size !== answer.length || answer.some(a => !q.choices!.includes(a)))) throw new ContractError('INVALID_ANSWER');
       if (q.type === 'scale' && (typeof answer !== 'number' || !Number.isInteger(answer) || answer < q.min! || answer > q.max!)) throw new ContractError('INVALID_ANSWER');
-      if (q.type === 'text' && (typeof answer !== 'string' || answer.length > q.max_length!)) throw new ContractError('INVALID_ANSWER');
+      if (q.type === 'text' && (typeof answer !== 'string' || answer.length > q.max_length! || (q.input_match!==undefined && !inputMatchRegex(q.input_match).test(answer)))) throw new ContractError('INVALID_ANSWER');
     }
     result[q.id] = { state: empty ? 'UNANSWERED' : 'ANSWERED', answer }; answers[q.id] = answer;
   } return result;

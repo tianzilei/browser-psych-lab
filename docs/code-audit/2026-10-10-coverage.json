@@ -1,0 +1,1136 @@
+{
+  "initial_files": [
+    {
+      "path": "src/server/auth.ts",
+      "chars": 1489
+    },
+    {
+      "path": "src/server/collection-routes.ts",
+      "chars": 4428
+    },
+    {
+      "path": "src/server/collection-store.ts",
+      "chars": 26404
+    },
+    {
+      "path": "src/server/database.ts",
+      "chars": 1500
+    },
+    {
+      "path": "src/server/db-worker.ts",
+      "chars": 2869
+    },
+    {
+      "path": "src/server/image-package.ts",
+      "chars": 7421
+    },
+    {
+      "path": "src/server/lab-routes.ts",
+      "chars": 19395
+    },
+    {
+      "path": "src/server/lab-schema.ts",
+      "chars": 11155
+    },
+    {
+      "path": "src/server/lab-store.ts",
+      "chars": 57794
+    },
+    {
+      "path": "src/server/main.ts",
+      "chars": 5147
+    },
+    {
+      "path": "src/server/maintenance-worker.ts",
+      "chars": 23884
+    },
+    {
+      "path": "src/server/maintenance.ts",
+      "chars": 3919
+    },
+    {
+      "path": "src/server/preparation-queue.ts",
+      "chars": 4296
+    },
+    {
+      "path": "src/server/private-files.ts",
+      "chars": 4237
+    },
+    {
+      "path": "src/server/release.ts",
+      "chars": 4710
+    },
+    {
+      "path": "src/server/restore.ts",
+      "chars": 5355
+    },
+    {
+      "path": "src/server/runner-asset-policy.ts",
+      "chars": 2396
+    },
+    {
+      "path": "src/server/runner-encoding.ts",
+      "chars": 966
+    },
+    {
+      "path": "src/server/session-admission.ts",
+      "chars": 5937
+    },
+    {
+      "path": "src/server/writer.ts",
+      "chars": 6146
+    },
+    {
+      "path": "src/shared/contract.ts",
+      "chars": 6254
+    },
+    {
+      "path": "src/shared/lab-contract.ts",
+      "chars": 4356
+    },
+    {
+      "path": "src/shared/prng.ts",
+      "chars": 1910
+    },
+    {
+      "path": "src/shared/protocol.ts",
+      "chars": 27660
+    },
+    {
+      "path": "src/shared/questionnaire-json.ts",
+      "chars": 5781
+    },
+    {
+      "path": "src/shared/run-replay.ts",
+      "chars": 9413
+    },
+    {
+      "path": "src/shared/scheduler.ts",
+      "chars": 13477
+    },
+    {
+      "path": "src/shared/trial-design.ts",
+      "chars": 5660
+    },
+    {
+      "path": "src/web/admin.css",
+      "chars": 303
+    },
+    {
+      "path": "src/web/admin.html",
+      "chars": 429
+    },
+    {
+      "path": "src/web/admin.ts",
+      "chars": 9205
+    },
+    {
+      "path": "src/web/asset-download.ts",
+      "chars": 3187
+    },
+    {
+      "path": "src/web/compat.ts",
+      "chars": 3085
+    },
+    {
+      "path": "src/web/consent-gate.ts",
+      "chars": 1701
+    },
+    {
+      "path": "src/web/consent-page.ts",
+      "chars": 2044
+    },
+    {
+      "path": "src/web/diagnostics.html",
+      "chars": 1095
+    },
+    {
+      "path": "src/web/diagnostics.ts",
+      "chars": 176
+    },
+    {
+      "path": "src/web/dom.ts",
+      "chars": 2857
+    },
+    {
+      "path": "src/web/ending-page.ts",
+      "chars": 1599
+    },
+    {
+      "path": "src/web/environment.ts",
+      "chars": 6350
+    },
+    {
+      "path": "src/web/index.html",
+      "chars": 429
+    },
+    {
+      "path": "src/web/ledger.ts",
+      "chars": 9252
+    },
+    {
+      "path": "src/web/local-store.ts",
+      "chars": 6182
+    },
+    {
+      "path": "src/web/main.ts",
+      "chars": 2428
+    },
+    {
+      "path": "src/web/orientation-gate.ts",
+      "chars": 3283
+    },
+    {
+      "path": "src/web/p0.html",
+      "chars": 1029
+    },
+    {
+      "path": "src/web/p0.ts",
+      "chars": 6068
+    },
+    {
+      "path": "src/web/participant-api.ts",
+      "chars": 4249
+    },
+    {
+      "path": "src/web/participant-theme.ts",
+      "chars": 1029
+    },
+    {
+      "path": "src/web/participant.css",
+      "chars": 10309
+    },
+    {
+      "path": "src/web/participant.ts",
+      "chars": 5630
+    },
+    {
+      "path": "src/web/participate.html",
+      "chars": 430
+    },
+    {
+      "path": "src/web/preparation-gate.ts",
+      "chars": 2151
+    },
+    {
+      "path": "src/web/prepare.ts",
+      "chars": 5307
+    },
+    {
+      "path": "src/web/run.html",
+      "chars": 364
+    },
+    {
+      "path": "src/web/run.ts",
+      "chars": 15422
+    },
+    {
+      "path": "src/web/runner-input.ts",
+      "chars": 3375
+    },
+    {
+      "path": "src/web/runner.css",
+      "chars": 1017
+    },
+    {
+      "path": "src/web/scale-input.ts",
+      "chars": 2948
+    },
+    {
+      "path": "src/web/session-gate.ts",
+      "chars": 2563
+    },
+    {
+      "path": "src/web/simulate.html",
+      "chars": 339
+    },
+    {
+      "path": "src/web/simulate.ts",
+      "chars": 4018
+    },
+    {
+      "path": "src/web/stimulus.ts",
+      "chars": 956
+    },
+    {
+      "path": "src/web/style.css",
+      "chars": 3150
+    },
+    {
+      "path": "src/web/survey-demo.ts",
+      "chars": 662
+    },
+    {
+      "path": "src/web/survey-page.ts",
+      "chars": 14935
+    },
+    {
+      "path": "src/web/text-pager.ts",
+      "chars": 2949
+    },
+    {
+      "path": "src/web/viewport.ts",
+      "chars": 1406
+    },
+    {
+      "path": "src/web/wait.ts",
+      "chars": 690
+    },
+    {
+      "path": "scripts/auth-setup.mjs",
+      "chars": 1583
+    },
+    {
+      "path": "scripts/backup.mjs",
+      "chars": 1379
+    },
+    {
+      "path": "scripts/browser-server.mjs",
+      "chars": 920
+    },
+    {
+      "path": "scripts/convert-formbricks-csv.mjs",
+      "chars": 6278
+    },
+    {
+      "path": "scripts/dev.mjs",
+      "chars": 1115
+    },
+    {
+      "path": "scripts/doctor.mjs",
+      "chars": 2795
+    },
+    {
+      "path": "scripts/lib.mjs",
+      "chars": 651
+    },
+    {
+      "path": "scripts/precompress.mjs",
+      "chars": 897
+    },
+    {
+      "path": "scripts/preview-questionnaire.mjs",
+      "chars": 13431
+    },
+    {
+      "path": "scripts/preview-tls.mjs",
+      "chars": 1975
+    },
+    {
+      "path": "scripts/profile-bandwidth.mjs",
+      "chars": 9401
+    },
+    {
+      "path": "scripts/profile-foundation.mjs",
+      "chars": 3832
+    },
+    {
+      "path": "scripts/profile-frontend.mjs",
+      "chars": 2003
+    },
+    {
+      "path": "scripts/profile-mixed.mjs",
+      "chars": 10864
+    },
+    {
+      "path": "scripts/references.mjs",
+      "chars": 2752
+    },
+    {
+      "path": "scripts/release.mjs",
+      "chars": 1823
+    },
+    {
+      "path": "scripts/setup.mjs",
+      "chars": 1256
+    },
+    {
+      "path": "scripts/smoke.mjs",
+      "chars": 2551
+    },
+    {
+      "path": "tests/audit/reproduce-2026-10-09.mjs",
+      "chars": 7176
+    },
+    {
+      "path": "tests/browser/collection.spec.ts",
+      "chars": 7403
+    },
+    {
+      "path": "tests/browser/environment.spec.ts",
+      "chars": 2627
+    },
+    {
+      "path": "tests/browser/lab.spec.ts",
+      "chars": 56010
+    },
+    {
+      "path": "tests/fixtures/stalled-worker.mjs",
+      "chars": 722
+    },
+    {
+      "path": "tests/fixtures/writer-process.mjs",
+      "chars": 412
+    },
+    {
+      "path": "tests/helpers/lab-fixture.mjs",
+      "chars": 2680
+    },
+    {
+      "path": "tests/helpers/run-trace.mjs",
+      "chars": 2649
+    },
+    {
+      "path": "tests/runner-browser/runner.spec.ts",
+      "chars": 9111
+    },
+    {
+      "path": "tests/runner-browser.config.ts",
+      "chars": 557
+    },
+    {
+      "path": "tests/unit/admin-auth.test.mjs",
+      "chars": 5350
+    },
+    {
+      "path": "tests/unit/asset-compatibility.test.mjs",
+      "chars": 8384
+    },
+    {
+      "path": "tests/unit/collection.test.mjs",
+      "chars": 9562
+    },
+    {
+      "path": "tests/unit/consent.test.mjs",
+      "chars": 3739
+    },
+    {
+      "path": "tests/unit/lab.test.mjs",
+      "chars": 11573
+    },
+    {
+      "path": "tests/unit/maintenance.test.mjs",
+      "chars": 8621
+    },
+    {
+      "path": "tests/unit/multi-scale.test.mjs",
+      "chars": 3796
+    },
+    {
+      "path": "tests/unit/preparation.test.mjs",
+      "chars": 5977
+    },
+    {
+      "path": "tests/unit/process-crash.test.mjs",
+      "chars": 3514
+    },
+    {
+      "path": "tests/unit/questionnaire-json.test.mjs",
+      "chars": 6708
+    },
+    {
+      "path": "tests/unit/run-replay.test.mjs",
+      "chars": 3389
+    },
+    {
+      "path": "tests/unit/runner-release.test.mjs",
+      "chars": 7017
+    },
+    {
+      "path": "tests/unit/scheduler.test.mjs",
+      "chars": 6242
+    },
+    {
+      "path": "tests/unit/session-admission.test.mjs",
+      "chars": 7260
+    },
+    {
+      "path": "tests/unit/trial-design.test.mjs",
+      "chars": 10578
+    },
+    {
+      "path": "tests/unit/writer.test.mjs",
+      "chars": 3419
+    },
+    {
+      "path": "deploy/1c2g.conf",
+      "chars": 345
+    },
+    {
+      "path": "deploy/browser-psych-lab-backup.service",
+      "chars": 390
+    },
+    {
+      "path": "deploy/browser-psych-lab-backup.timer",
+      "chars": 170
+    },
+    {
+      "path": "deploy/browser-psych-lab.service",
+      "chars": 696
+    },
+    {
+      "path": "deploy/Caddyfile",
+      "chars": 710
+    },
+    {
+      "path": "deploy/nginx.conf",
+      "chars": 1293
+    },
+    {
+      "path": "package.json",
+      "chars": 2099
+    },
+    {
+      "path": "vite.config.ts",
+      "chars": 1279
+    },
+    {
+      "path": "playwright.config.ts",
+      "chars": 587
+    },
+    {
+      "path": "tsconfig.base.json",
+      "chars": 264
+    },
+    {
+      "path": "tsconfig.server.json",
+      "chars": 290
+    },
+    {
+      "path": "tsconfig.web.json",
+      "chars": 334
+    }
+  ],
+  "chunks": [
+    {
+      "batch": 1,
+      "scope": "frontend",
+      "chars": 16485,
+      "files": [
+        "src/web/admin.css",
+        "src/web/admin.html",
+        "src/web/admin.ts",
+        "src/web/asset-download.ts",
+        "src/web/compat.ts"
+      ]
+    },
+    {
+      "batch": 2,
+      "scope": "frontend",
+      "chars": 16731,
+      "files": [
+        "src/web/consent-gate.ts",
+        "src/web/consent-page.ts",
+        "src/web/diagnostics.html",
+        "src/web/diagnostics.ts",
+        "src/web/dom.ts",
+        "src/web/ending-page.ts",
+        "src/web/environment.ts",
+        "src/web/index.html"
+      ]
+    },
+    {
+      "batch": 3,
+      "scope": "frontend",
+      "chars": 15548,
+      "files": [
+        "src/web/ledger.ts",
+        "src/web/local-store.ts"
+      ]
+    },
+    {
+      "batch": 4,
+      "scope": "frontend",
+      "chars": 17339,
+      "files": [
+        "src/web/main.ts",
+        "src/web/orientation-gate.ts",
+        "src/web/p0.html",
+        "src/web/p0.ts",
+        "src/web/participant-api.ts"
+      ]
+    },
+    {
+      "batch": 5,
+      "scope": "frontend",
+      "chars": 15289,
+      "files": [
+        "src/web/participant-theme.ts",
+        "src/web/participant.ts",
+        "src/web/participate.html",
+        "src/web/preparation-gate.ts",
+        "src/web/prepare.ts",
+        "src/web/run.html"
+      ]
+    },
+    {
+      "batch": 6,
+      "scope": "frontend",
+      "chars": 15468,
+      "files": [
+        "src/web/run.ts"
+      ]
+    },
+    {
+      "batch": 7,
+      "scope": "frontend",
+      "chars": 14561,
+      "files": [
+        "src/web/runner-input.ts",
+        "src/web/scale-input.ts",
+        "src/web/session-gate.ts",
+        "src/web/simulate.html",
+        "src/web/simulate.ts",
+        "src/web/stimulus.ts"
+      ]
+    },
+    {
+      "batch": 8,
+      "scope": "frontend",
+      "chars": 3926,
+      "files": [
+        "src/web/style.css",
+        "src/web/survey-demo.ts"
+      ]
+    },
+    {
+      "batch": 9,
+      "scope": "frontend",
+      "chars": 14997,
+      "files": [
+        "src/web/survey-page.ts"
+      ]
+    },
+    {
+      "batch": 10,
+      "scope": "frontend",
+      "chars": 3747,
+      "files": [
+        "src/web/text-pager.ts",
+        "src/web/wait.ts"
+      ]
+    },
+    {
+      "batch": 11,
+      "scope": "shared",
+      "chars": 12706,
+      "files": [
+        "src/shared/contract.ts",
+        "src/shared/lab-contract.ts",
+        "src/shared/prng.ts"
+      ]
+    },
+    {
+      "batch": 12,
+      "scope": "shared",
+      "chars": 16541,
+      "files": [
+        "src/shared/protocol.ts"
+      ]
+    },
+    {
+      "batch": 13,
+      "scope": "shared",
+      "chars": 11267,
+      "files": [
+        "src/shared/protocol.ts"
+      ]
+    },
+    {
+      "batch": 14,
+      "scope": "shared",
+      "chars": 15342,
+      "files": [
+        "src/shared/questionnaire-json.ts",
+        "src/shared/run-replay.ts"
+      ]
+    },
+    {
+      "batch": 15,
+      "scope": "shared",
+      "chars": 13541,
+      "files": [
+        "src/shared/scheduler.ts"
+      ]
+    },
+    {
+      "batch": 16,
+      "scope": "shared",
+      "chars": 5730,
+      "files": [
+        "src/shared/trial-design.ts"
+      ]
+    },
+    {
+      "batch": 17,
+      "scope": "server",
+      "chars": 6051,
+      "files": [
+        "src/server/auth.ts",
+        "src/server/collection-routes.ts"
+      ]
+    },
+    {
+      "batch": 18,
+      "scope": "server",
+      "chars": 16549,
+      "files": [
+        "src/server/collection-store.ts"
+      ]
+    },
+    {
+      "batch": 19,
+      "scope": "server",
+      "chars": 10035,
+      "files": [
+        "src/server/collection-store.ts"
+      ]
+    },
+    {
+      "batch": 20,
+      "scope": "server",
+      "chars": 11988,
+      "files": [
+        "src/server/database.ts",
+        "src/server/db-worker.ts",
+        "src/server/image-package.ts"
+      ]
+    },
+    {
+      "batch": 21,
+      "scope": "server",
+      "chars": 16543,
+      "files": [
+        "src/server/lab-routes.ts"
+      ]
+    },
+    {
+      "batch": 22,
+      "scope": "server",
+      "chars": 3008,
+      "files": [
+        "src/server/lab-routes.ts"
+      ]
+    },
+    {
+      "batch": 23,
+      "scope": "server",
+      "chars": 11221,
+      "files": [
+        "src/server/lab-schema.ts"
+      ]
+    },
+    {
+      "batch": 24,
+      "scope": "server",
+      "chars": 16542,
+      "files": [
+        "src/server/lab-store.ts"
+      ]
+    },
+    {
+      "batch": 25,
+      "scope": "server",
+      "chars": 16546,
+      "files": [
+        "src/server/lab-store.ts"
+      ]
+    },
+    {
+      "batch": 26,
+      "scope": "server",
+      "chars": 16546,
+      "files": [
+        "src/server/lab-store.ts"
+      ]
+    },
+    {
+      "batch": 27,
+      "scope": "server",
+      "chars": 8404,
+      "files": [
+        "src/server/lab-store.ts"
+      ]
+    },
+    {
+      "batch": 28,
+      "scope": "server",
+      "chars": 5201,
+      "files": [
+        "src/server/main.ts"
+      ]
+    },
+    {
+      "batch": 29,
+      "scope": "server",
+      "chars": 16551,
+      "files": [
+        "src/server/maintenance-worker.ts"
+      ]
+    },
+    {
+      "batch": 30,
+      "scope": "server",
+      "chars": 7521,
+      "files": [
+        "src/server/maintenance-worker.ts"
+      ]
+    },
+    {
+      "batch": 31,
+      "scope": "server",
+      "chars": 17442,
+      "files": [
+        "src/server/maintenance.ts",
+        "src/server/preparation-queue.ts",
+        "src/server/private-files.ts",
+        "src/server/release.ts"
+      ]
+    },
+    {
+      "batch": 32,
+      "scope": "server",
+      "chars": 14954,
+      "files": [
+        "src/server/restore.ts",
+        "src/server/runner-asset-policy.ts",
+        "src/server/runner-encoding.ts",
+        "src/server/session-admission.ts"
+      ]
+    },
+    {
+      "batch": 33,
+      "scope": "server",
+      "chars": 6204,
+      "files": [
+        "src/server/writer.ts"
+      ]
+    },
+    {
+      "batch": 34,
+      "scope": "tooling-tests-deploy",
+      "chars": 16104,
+      "files": [
+        "scripts/auth-setup.mjs",
+        "src/server/auth.ts';\r",
+        "scripts/backup.mjs",
+        "scripts/browser-server.mjs",
+        "scripts/convert-formbricks-csv.mjs",
+        "scripts/dev.mjs",
+        "src/server/main.ts']",
+        "scripts/doctor.mjs",
+        "src/server/database.ts';\r",
+        "scripts/lib.mjs",
+        "scripts/precompress.mjs"
+      ]
+    },
+    {
+      "batch": 35,
+      "scope": "tooling-tests-deploy",
+      "chars": 15554,
+      "files": [
+        "scripts/preview-questionnaire.mjs",
+        "scripts/preview-tls.mjs"
+      ]
+    },
+    {
+      "batch": 36,
+      "scope": "tooling-tests-deploy",
+      "chars": 15464,
+      "files": [
+        "scripts/profile-bandwidth.mjs",
+        "src/server/auth.ts';\r",
+        "src/shared/protocol.ts';\r",
+        "src/server/collection-store.ts';\r",
+        "scripts/profile-foundation.mjs",
+        "scripts/profile-frontend.mjs"
+      ]
+    },
+    {
+      "batch": 37,
+      "scope": "tooling-tests-deploy",
+      "chars": 16933,
+      "files": [
+        "scripts/profile-mixed.mjs",
+        "src/server/auth.ts';\r",
+        "src/shared/protocol.ts';\r",
+        "src/server/collection-store.ts';\r",
+        "src/web/asset-download.ts';\r",
+        "tests/helpers/run-trace.mjs';\r",
+        "scripts/references.mjs",
+        "scripts/release.mjs",
+        "scripts/setup.mjs",
+        "src/server/database.ts';\r"
+      ]
+    },
+    {
+      "batch": 38,
+      "scope": "tooling-tests-deploy",
+      "chars": 17354,
+      "files": [
+        "scripts/smoke.mjs",
+        "src/server/database.ts';\r",
+        "tests/audit/reproduce-2026-10-09.mjs",
+        "src/shared/protocol.ts';",
+        "src/shared/scheduler.ts';",
+        "src/shared/run-replay.ts';",
+        "src/server/database.ts';",
+        "src/server/collection-store.ts';",
+        "src/server/writer.ts';",
+        "src/shared/trial-design.ts';",
+        "src/web/runner-input.ts'",
+        "scripts/preview-questionnaire.mjs'",
+        "tests/browser/collection.spec.ts"
+      ]
+    },
+    {
+      "batch": 39,
+      "scope": "tooling-tests-deploy",
+      "chars": 2711,
+      "files": [
+        "tests/browser/environment.spec.ts"
+      ]
+    },
+    {
+      "batch": 40,
+      "scope": "tooling-tests-deploy",
+      "chars": 16544,
+      "files": [
+        "tests/browser/lab.spec.ts",
+        "src/shared/protocol.js';\r",
+        "src/shared/questionnaire-json.js';\r"
+      ]
+    },
+    {
+      "batch": 41,
+      "scope": "tooling-tests-deploy",
+      "chars": 16548,
+      "files": [
+        "tests/browser/lab.spec.ts"
+      ]
+    },
+    {
+      "batch": 42,
+      "scope": "tooling-tests-deploy",
+      "chars": 16548,
+      "files": [
+        "tests/browser/lab.spec.ts"
+      ]
+    },
+    {
+      "batch": 43,
+      "scope": "tooling-tests-deploy",
+      "chars": 6626,
+      "files": [
+        "tests/browser/lab.spec.ts"
+      ]
+    },
+    {
+      "batch": 44,
+      "scope": "tooling-tests-deploy",
+      "chars": 16613,
+      "files": [
+        "tests/fixtures/stalled-worker.mjs",
+        "tests/fixtures/writer-process.mjs",
+        "tests/helpers/lab-fixture.mjs",
+        "src/server/database.ts';\r",
+        "src/server/lab-store.ts';\r",
+        "src/server/collection-store.ts';\r",
+        "src/shared/protocol.ts';\r",
+        "tests/helpers/run-trace.mjs",
+        "src/shared/run-replay.ts';\r",
+        "tests/runner-browser/runner.spec.ts",
+        "src/server/database.js';",
+        "src/server/lab-store.js';",
+        "src/server/collection-store.js';",
+        "src/shared/questionnaire-json.js';",
+        "src/shared/run-replay.js';",
+        "src/shared/protocol.js';",
+        "tests/runner-browser.config.ts"
+      ]
+    },
+    {
+      "batch": 45,
+      "scope": "tooling-tests-deploy",
+      "chars": 13908,
+      "files": [
+        "tests/unit/admin-auth.test.mjs",
+        "src/server/lab-store.ts';\r",
+        "src/server/lab-routes.ts';\r",
+        "src/server/auth.ts';\r",
+        "src/server/collection-store.ts';\r",
+        "src/shared/contract.ts';\r",
+        "tests/unit/asset-compatibility.test.mjs",
+        "src/server/writer.ts';\r",
+        "src/server/maintenance.ts';\r",
+        "src/server/release.ts';\r",
+        "src/server/private-files.ts';\r",
+        "src/shared/protocol.ts';\r"
+      ]
+    },
+    {
+      "batch": 46,
+      "scope": "tooling-tests-deploy",
+      "chars": 13451,
+      "files": [
+        "tests/unit/collection.test.mjs",
+        "src/server/database.ts';\r",
+        "src/server/collection-store.ts';\r",
+        "src/shared/contract.ts';\r",
+        "tests/unit/consent.test.mjs",
+        "src/shared/questionnaire-json.ts';\r",
+        "src/shared/protocol.ts';\r"
+      ]
+    },
+    {
+      "batch": 47,
+      "scope": "tooling-tests-deploy",
+      "chars": 11637,
+      "files": [
+        "tests/unit/lab.test.mjs",
+        "src/shared/protocol.ts';\r",
+        "src/server/collection-store.ts';\r"
+      ]
+    },
+    {
+      "batch": 48,
+      "scope": "tooling-tests-deploy",
+      "chars": 12577,
+      "files": [
+        "tests/unit/maintenance.test.mjs",
+        "src/server/writer.ts';\r",
+        "src/server/maintenance.ts';\r",
+        "src/server/release.ts';\r",
+        "src/server/runner-asset-policy.ts';\r",
+        "src/server/restore.ts';\r",
+        "src/server/private-files.ts';\r",
+        "src/shared/protocol.ts';\r",
+        "src/server/collection-store.ts';\r",
+        "tests/unit/multi-scale.test.mjs",
+        "src/shared/questionnaire-json.ts';\r"
+      ]
+    },
+    {
+      "batch": 49,
+      "scope": "tooling-tests-deploy",
+      "chars": 16457,
+      "files": [
+        "tests/unit/preparation.test.mjs",
+        "src/server/preparation-queue.ts';\r",
+        "src/web/asset-download.ts';\r",
+        "src/web/dom.ts';\r",
+        "tests/unit/process-crash.test.mjs",
+        "tests/unit/questionnaire-json.test.mjs",
+        "src/shared/questionnaire-json.ts';\r",
+        "src/shared/protocol.ts';\r",
+        "src/server/image-package.ts';\r",
+        "src/server/lab-store.ts';\r",
+        "src/server/collection-store.ts';\r"
+      ]
+    },
+    {
+      "batch": 50,
+      "scope": "tooling-tests-deploy",
+      "chars": 16888,
+      "files": [
+        "tests/unit/run-replay.test.mjs",
+        "src/shared/run-replay.ts';\r",
+        "tests/unit/runner-release.test.mjs",
+        "src/server/collection-store.ts';\r",
+        "src/server/release.ts';\r",
+        "src/server/runner-encoding.ts';\r",
+        "src/server/runner-asset-policy.ts';\r",
+        "tests/unit/scheduler.test.mjs",
+        "src/shared/prng.ts';\r",
+        "src/shared/scheduler.ts';\r"
+      ]
+    },
+    {
+      "batch": 51,
+      "scope": "tooling-tests-deploy",
+      "chars": 7352,
+      "files": [
+        "tests/unit/session-admission.test.mjs",
+        "src/server/collection-store.ts';\r",
+        "src/shared/protocol.ts';\r",
+        "src/server/lab-store.ts';\r",
+        "src/server/database.ts';\r"
+      ]
+    },
+    {
+      "batch": 52,
+      "scope": "tooling-tests-deploy",
+      "chars": 16830,
+      "files": [
+        "tests/unit/trial-design.test.mjs",
+        "src/shared/questionnaire-json.ts';",
+        "src/shared/protocol.ts';",
+        "src/shared/trial-design.ts';",
+        "src/shared/run-replay.ts';",
+        "tests/unit/writer.test.mjs",
+        "deploy/1c2g.conf",
+        "deploy/browser-psych-lab-backup.service",
+        "scripts/backup.mjs\r",
+        "deploy/browser-psych-lab-backup.timer",
+        "deploy/browser-psych-lab.service",
+        "deploy/Caddyfile"
+      ]
+    },
+    {
+      "batch": 53,
+      "scope": "tooling-tests-deploy",
+      "chars": 6508,
+      "files": [
+        "deploy/nginx.conf",
+        "scripts/setup.mjs\"",
+        "scripts/references.mjs\"",
+        "scripts/doctor.mjs\"",
+        "scripts/dev.mjs\"",
+        "src/server/main.ts\"",
+        "scripts/precompress.mjs",
+        "scripts/release.mjs\"",
+        "scripts/auth-setup.mjs\"",
+        "scripts/smoke.mjs\"",
+        "scripts/profile-foundation.mjs\"",
+        "scripts/preview-questionnaire.mjs\"",
+        "tests/runner-browser.config.ts\"",
+        "tests/unit/*.test.mjs\"",
+        "scripts/backup.mjs\"",
+        "scripts/profile-mixed.mjs\"",
+        "scripts/profile-bandwidth.mjs\"\r",
+        "src/web'",
+        "src/web/index.html'",
+        "src/web/diagnostics.html'",
+        "src/web/admin.html'",
+        "src/web/simulate.html'",
+        "src/web/participate.html'",
+        "src/web/run.html'",
+        "src/web/p0.html'",
+        "tests/browser'",
+        "scripts/browser-server.mjs'",
+        "src/server/**/*.ts\"",
+        "src/shared/**/*.ts\"]\r",
+        "src/web/**/*.ts\"",
+        "tests/**/*.ts\"]\r"
+      ]
+    }
+  ],
+  "excluded": [
+    "node_modules third-party implementations",
+    "references/checkouts upstream repositories",
+    "dist generated bundles",
+    "var and .local runtime state",
+    "private .env credentials",
+    "examples/fromoldserver CSV data"
+  ],
+  "new_tests": [
+    "tests/unit/compat.test.mjs",
+    "tests/runner-browser/layout.spec.ts"
+  ],
+  "attribution_notes": [
+    "Batch 24 response was only a progress marker; batch 25 explicitly requested and returned a joint review.",
+    "Batches 34, 38, 52 returned late results, retrieved by matching request/result IDs.",
+    "Batch 40 was uncertain and explicitly supplemented in the final review.",
+    "Batch 53 initially was not sent due to disconnect; final-b53 succeeded."
+  ]
+}

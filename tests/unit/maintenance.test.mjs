@@ -18,7 +18,9 @@ test('exclusive durable publication refuses different bytes and symlinks',async 
   const root=await mkdtemp(join(tmpdir(),'bpl-files-'));t.after(()=>rm(root,{recursive:true,force:true}));await privateRoot(root);
   await writeDurable(join(root,'temp-a'),'first');await publishExclusive(join(root,'temp-a'),join(root,'asset'));assert.equal(await fileHash(join(root,'asset')),digest('first'));
   await writeDurable(join(root,'temp-b'),'second');await assert.rejects(publishExclusive(join(root,'temp-b'),join(root,'asset')));assert.equal(await fileHash(join(root,'asset')),digest('first'));
-  await symlink(join(root,'asset'),join(root,'linked'));await assert.rejects(openPrivate(join(root,'linked')));
+  try{await symlink(join(root,'asset'),join(root,'linked'));}
+  catch(error){if(process.platform==='win32'&&error.code==='EPERM'){t.diagnostic('Windows requires Developer Mode or symlink privilege; link rejection check unavailable.');return;}throw error;}
+  await assert.rejects(openPrivate(join(root,'linked')));
 });
 test('header validation, blocked recovery, snapshot CSV, joint backup and closed-gate restore preserve exact files',async t=>{
   const root=await mkdtemp(join(tmpdir(),'bpl-maintenance-')),dbPath=join(root,'db.sqlite');const hash=await retainRelease(root),writer=new DatabaseWriter(dbPath,{workerData:{runnerHash:hash}});await writer.start();const maintenance=new Maintenance(writer,dbPath,root);

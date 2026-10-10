@@ -9,19 +9,21 @@ import { root } from './lib.mjs';
 
 // An isolated TEST_ONLY deployment, separate from the project's .env/data.
 const port = Number(process.env.QUESTIONNAIRE_PREVIEW_PORT ?? 3081);
-const lan=process.argv.includes('--lan'),tlsPort=Number(process.env.QUESTIONNAIRE_PREVIEW_TLS_PORT??port+1);
+const lan=process.argv.includes('--lan')||process.argv.includes('--lan-http'),httpOnly=process.argv.includes('--lan-http'),tlsPort=Number(process.env.QUESTIONNAIRE_PREVIEW_TLS_PORT??port+1);
 if (!Number.isInteger(port) || port < 1024 || port > 65535||!Number.isInteger(tlsPort)||tlsPort<1024||tlsPort>65535||lan&&port===tlsPort) throw new Error('Invalid preview port.');
 const addresses=Object.entries(networkInterfaces()).flatMap(([name,entries])=>(entries??[]).filter(e=>e.family==='IPv4'&&!e.internal&&/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(e.address)).map(e=>({name,ip:e.address}))).sort((a,b)=>Number(b.name==='en0')-Number(a.name==='en0'));
 const ip=process.env.QUESTIONNAIRE_PREVIEW_IP??addresses[0]?.ip;
 if(lan&&(!ip||isIP(ip)!==4||!addresses.some(a=>a.ip===ip)))throw new Error('No LAN IPv4 address found; set QUESTIONNAIRE_PREVIEW_IP to a local interface address.');
-const directory = resolve(root, '.local/questionnaire-preview'), origin = lan?`https://${ip}:${tlsPort}`:`http://127.0.0.1:${port}`;
+const directory = resolve(root, '.local/questionnaire-preview'), origin = lan?(httpOnly?`http://${ip}:${port}`:`https://${ip}:${tlsPort}`):`http://127.0.0.1:${port}`;
+const importDirArg = process.argv.find((arg) => arg.startsWith('--questionnaire-dir='))?.slice('--questionnaire-dir='.length);
+const importDir = importDirArg ? resolve(process.cwd(), importDirArg) : process.env.QUESTIONNAIRE_PREVIEW_DIR ? resolve(process.env.QUESTIONNAIRE_PREVIEW_DIR) : null;
 await mkdir(directory, { recursive: true, mode: 0o700 });
-const tls=lan?await previewTLS(directory,ip):null;
+const tls=lan&&!httpOnly?await previewTLS(directory,ip):null;
 const { passwordHash } = await import('../dist/server/auth.js');
 const { sampleProtocol } = await import('../dist/shared/protocol.js');
 const password = 'TEST_ONLY-local-preview';
 Object.assign(process.env, {
-  NODE_ENV: 'production', HOST: lan?'0.0.0.0':'127.0.0.1', PORT: String(lan?tlsPort:port), PUBLIC_ORIGIN: lan?'':origin,
+  NODE_ENV: 'production', HOST: lan?'0.0.0.0':'127.0.0.1', PORT: String(lan?(httpOnly?port:tlsPort):port), PUBLIC_ORIGIN: lan&&httpOnly?origin:lan?'':origin,
   TLS_KEY_PATH:tls?.key??'',TLS_CERT_PATH:tls?.cert??'',
   DATABASE_PATH: resolve(directory, 'database.sqlite'), STORAGE_ROOT: directory,
   ADMIN_PASSWORD_HASH: await passwordHash(password),
@@ -29,7 +31,7 @@ Object.assign(process.env, {
 });
 const { app } = await import('../dist/server/main.js');
 let redirect;
-if(lan){
+if(lan&&!httpOnly){
   const ca=await readFile(tls.download);
   redirect=createServer((request,response)=>{
     if(request.url==='/local-test-ca.cer'){response.writeHead(200,{'Content-Type':'application/x-x509-ca-cert','Content-Disposition':'attachment; filename="local-test-ca.cer"','Cache-Control':'no-store'});response.end(ca);return;}
@@ -97,15 +99,32 @@ try {
     versions[theme] = { study_id: study.study_id, version_id: version.version_id,
       url: `${origin}/participate.html?version=${version.version_id}` };
   }
-  const menu = `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>模拟问卷预览</title>
-<style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#e5e5e5;color:#000;font:16px/1.4 system-ui,sans-serif}body{display:grid;place-items:center;padding:4%}main{width:min(100%,420px)}h1{font-size:24px;margin:0 0 12px}p{margin:0 0 20px}nav{display:grid;gap:12px}a{display:grid;place-items:center;min-height:56px;padding:12px;border:1px solid currentColor;color:inherit;text-decoration:none}a:focus-visible{outline:2px solid currentColor;outline-offset:3px}.dark{background:#202020;color:white}</style>
-<main><h1>模拟问卷预览</h1><p>灰色要求竖屏，深色要求横屏。请使用模拟信息。</p><nav><a href="/participate.html?version=${versions.gray.version_id}">灰色问卷 · 竖屏</a><a class="dark" href="/participate.html?version=${versions.dark.version_id}">深色问卷 · 横屏</a><a href="/">管理主页</a></nav><p style="font-size:12px;margin-top:12px">本地管理密码：TEST_ONLY-local-preview</p></main></html>`;
+  const imported = {};
+  if (importDir) {
+    const { readdir } = await import('node:fs/promises');
+    const files = (await readdir(importDir, { withFileTypes: true })).filter((entry) => entry.isFile() && entry.name.endsWith('.json') && entry.name !== 'manifest.json').map((entry) => entry.name).sort();
+    if (!files.length) throw new Error(`No questionnaire JSON files found in ${importDir}`);
+    for (const file of files) {
+      const source = JSON.parse((await readFile(resolve(importDir, file), 'utf8')).replace(/^\uFEFF/, ''));
+      if (source.schema !== 'questionnaire-v1' || typeof source.title !== 'string') throw new Error(`Invalid questionnaire-v1 source: ${file}`);
+      const study = await post('/api/lab/studies', { request_id: randomUUID() });
+      const { frozen: version } = await post(`/api/lab/studies/${study.study_id}/import`, { request_id: randomUUID(), revision: 1, source: JSON.stringify(source, null, 2) });
+      await post(`/api/lab/studies/${study.study_id}/admission`, { request_id: randomUUID(), paused: false });
+      const key = file.slice(0, -'.json'.length);
+      imported[key] = { study_id: study.study_id, version_id: version.version_id, title: source.title, url: `${origin}/participate.html?version=${version.version_id}` };
+    }
+  }
+  const importedLinks = Object.values(imported).map((item) => `<a href="/participate.html?version=${item.version_id}">${item.title}</a>`).join('');  const menu = `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>模拟问卷预览</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:100%;min-height:100%;overflow:auto;background:#e5e5e5;color:#000;font:16px/1.4 system-ui,sans-serif}body{display:block;padding:4%}main{width:min(100%,520px);margin:0 auto}h1{font-size:24px;margin:0 0 12px}p{margin:0 0 20px}nav{display:grid;gap:12px}a{display:grid;place-items:center;min-height:56px;padding:12px;border:1px solid currentColor;color:inherit;text-decoration:none}a:focus-visible{outline:2px solid currentColor;outline-offset:3px}.dark{background:#202020;color:white}</style>
+<main><h1>模拟问卷预览</h1><p>灰色要求竖屏，深色要求横屏。请使用模拟信息。</p><nav><a href="/participate.html?version=${versions.gray.version_id}">灰色问卷 · 竖屏</a><a class="dark" href="/participate.html?version=${versions.dark.version_id}">深色问卷 · 横屏</a>${importedLinks}<a href="/">管理主页</a></nav><p style="font-size:12px;margin-top:12px">本地管理密码：TEST_ONLY-local-preview</p></main></html>`;
   await writeFile(resolve(root, 'dist/web/questionnaire-preview.html'), menu);
+  await writeFile(resolve(root, 'dist/web/index.html'), menu);
   await writeFile(resolve(directory, 'menu.html'), menu);
-  const links = { origin, preview: `${origin}/questionnaire-preview.html`,...(lan?{phone_setup:`http://${ip}:${port}/phone-setup`,certificate:`http://${ip}:${port}/local-test-ca.cer`,bind:'0.0.0.0',http_port:port,https_port:tlsPort,ca_fingerprint:tls.fingerprint}:{}),pid: process.pid, ...versions };
+  const links = { origin, preview: `${origin}/questionnaire-preview.html`,...(lan?{bind:'0.0.0.0',http_port:port,...(httpOnly?{}:{https_port:tlsPort,phone_setup:`http://${ip}:${port}/phone-setup`,certificate:`http://${ip}:${port}/local-test-ca.cer`,ca_fingerprint:tls.fingerprint})}:{}),pid: process.pid, ...versions, imported };
   await writeFile(resolve(directory, 'links.json'), JSON.stringify(links, null, 2) + '\n', { mode: 0o600 });
   await writeFile(resolve(directory, 'server.pid'), `${process.pid}\n`, { mode: 0o600 });
   console.log(`Preview ready: ${links.preview}`);
   console.log(`Gray: ${versions.gray.url}\nDark: ${versions.dark.url}`);
-  if(lan)console.log(`Phone certificate setup: ${links.phone_setup}`);
+  for (const item of Object.values(imported)) console.log(`${item.title}: ${item.url}`);
+  if(lan&&!httpOnly)console.log(`Phone certificate setup: ${links.phone_setup}`);
 } catch (error) { await app.close(); throw error; }

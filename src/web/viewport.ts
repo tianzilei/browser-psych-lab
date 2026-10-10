@@ -12,7 +12,7 @@ export function lockParticipantViewport() {
   };
   const resize = () => { if (!frame) frame = requestAnimationFrame(size); };
   const move = (event: TouchEvent) => {
-    if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+    if (document.body.classList.contains('runner-layout')) event.preventDefault();
   };
   size();
   window.addEventListener('resize', resize);

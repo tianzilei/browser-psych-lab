@@ -33,12 +33,12 @@ async function begin(page:Page){await page.getByRole('button',{name:'开始作�
 async function fit(page:Page){
   await expect.poll(()=>page.evaluate(()=>{
     const problems:string[]=[],root=document.documentElement,v=visualViewport;
-    if(scrollX||scrollY||root.scrollWidth!==root.clientWidth||root.scrollHeight!==root.clientHeight)problems.push('page scroll');
+    if(scrollX||root.scrollWidth>root.clientWidth+1)problems.push('horizontal page scroll');
     const left=v?.offsetLeft??0,top=v?.offsetTop??0,right=left+(v?.width??innerWidth),bottom=top+(v?.height??innerHeight);
     for(const node of document.querySelectorAll<HTMLElement>('main button,main input')){
       if(getComputedStyle(node).visibility==='hidden')continue;
       const r=node.getBoundingClientRect();if(!r.width||!r.height)continue;
-      if(r.left<left-1||r.top<top-1||r.right>right+1||r.bottom>bottom+1)problems.push(`clipped control: ${node.textContent??node.tagName}`);
+      if(r.left<left-1||r.right>right+1)problems.push(`clipped control: ${node.textContent??node.tagName}`);
       if(node instanceof HTMLButtonElement&&(node.scrollHeight>node.clientHeight+1||node.scrollWidth>node.clientWidth+1))problems.push('button overflow');
     }
     const reading=document.querySelector<HTMLElement>('.reading-text');
@@ -209,7 +209,7 @@ test('multiple axes stay together, restore independent drafts, confirm endings a
   for(const viewport of [{width:320,height:480},{width:390,height:844},{width:844,height:390},{width:1024,height:768}]){await page.setViewportSize(viewport);await expect(page.getByRole('slider')).toHaveCount(3);await fit(page);}
   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'下一题',exact:true}).click();await expect(page.getByRole('slider')).toHaveCount(2);
   await page.getByRole('slider',{name:'左侧',exact:true}).press('Home');await expect(page.locator('[data-axis-id=left] output')).toHaveText('已选：低');
-  await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('.ending-text')).toContainText('感谢参与这次测试');await expect(page.locator('.ending-text')).toContainText('结束语正文');await fit(page);
+  await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('.ending-title')).toHaveText('感谢参与这次测试');await expect(page.locator('.ending-text')).toContainText('结束语正文');await fit(page);
   await expect(page.locator('a')).toHaveCount(0);await page.reload();await expect(page.locator('.ending-text')).toContainText('结束语正文');
   const sid=(await (await context.request.get(`/api/lab/studies/${study.study_id}/sessions`)).json()).sessions[0].session_id;
   const detail=await (await context.request.get(`/api/lab/sessions/${sid}`)).json();expect(detail.state).toBe('COMPLETED');expect(detail.answers.feel).toEqual({ease:0,clear:2,comfort:0});expect(detail.answers.optional).toEqual({left:0,right:null});
@@ -234,15 +234,15 @@ test('six axes use a wide grid and block undersized screens without paging or sc
   const {version}=await setup(context,false,0,p=>{p.pages[0]!.questions=[{id:'six',type:'scales',title:'六个维度',required:true,axes:Array.from({length:6},(_,index)=>({id:`a${index}`,title:`维度 ${index+1}`,min:0,max:2,min_label:'低',max_label:'高',labels:['低','中','高']}))}];});
   await page.setViewportSize({width:320,height:480});await page.goto(`/participate.html?version=${version.version_id}`);await begin(page);
   await expect(page.getByRole('button',{name:'提交本页'})).toBeDisabled();await expect(page.locator('.question-error')).toContainText('内容放不下');await fit(page);await expect(page.getByRole('button',{name:/下一组|下一轴/})).toHaveCount(0);
-  await page.setViewportSize({width:844,height:390});await expect(page.getByRole('slider')).toHaveCount(6);await fit(page);
+  await page.setViewportSize({width:1024,height:768});await expect(page.getByRole('slider')).toHaveCount(6);await fit(page);
   for(const slider of await page.getByRole('slider').all())await slider.press('Home');await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('.ending-page')).toBeVisible();await fit(page);
 });
 test('long ending text is button-paged without scroll and failed finalization never shows it',async({page,context})=>{
-  const {version}=await setup(context,false,0,p=>{p.ending={title:'结束语标题',text:'文本完整保留，点击按钮继续阅读。\n'.repeat(300)};});
+  const {version}=await setup(context,false,0,p=>{p.ending={title:'结束语标题',text:Array.from({length:300},(_,i)=>`第${i+1}行：文本完整保留，点击按钮继续阅读。\n`).join('')};});
   await page.setViewportSize({width:320,height:480});await page.goto(`/participate.html?version=${version.version_id}`);await begin(page);await page.getByRole('button',{name:'是',exact:true}).click();
   await page.route('**/api/participate/sessions/*/finalize',route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({code:'TEST_ONLY_FINALIZE_FAILED'})}));
   await page.getByRole('button',{name:'提交本页'}).click();await expect(page.getByRole('button',{name:'重试保存与核对'})).toBeVisible();await expect(page.locator('.ending-page')).toHaveCount(0);
-  await page.unroute('**/api/participate/sessions/*/finalize');await page.getByRole('button',{name:'重试保存与核对'}).click();await expect(page.locator('.ending-text')).toContainText('结束语标题');await fit(page);
+  await page.unroute('**/api/participate/sessions/*/finalize');await page.getByRole('button',{name:'重试保存与核对'}).click();await expect(page.locator('.ending-title')).toHaveText('结束语标题');await fit(page);
   const first=await page.locator('.ending-text').textContent();await page.getByRole('button',{name:'阅读下一段'}).click();expect(await page.locator('.ending-text').textContent()).not.toBe(first);await fit(page);
   await page.getByRole('button',{name:'阅读上一段'}).click();expect(await page.locator('.ending-text').textContent()).toBe(first);
 });

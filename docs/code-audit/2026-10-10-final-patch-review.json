@@ -1,0 +1,11 @@
+{
+  "result_id": "res_3e021dbc2b88a34664ec",
+  "kind": "message",
+  "content": "本批补丁无确定遗漏或新缺陷：\n\n1. **CSS与视口隔离**：`html:has(body.runner-layout)` 与 `body.runner-layout` 独立加锁，`touchmove` 仅在存在该类名时拦截，彻底放行问卷页正常滚动；`#status` 预留 `4.8em` 与主区域高度绑定变量，消除布局挤压与跳动。\n2. **测试断言对齐**：`fit()` 放宽纵向滚动、保留横向溢出及水平裁剪断言；`.ending-title` 独立校验与 1024×768 视口放大量表空间符合预期设计。\n3. **HTTP 兼容层与密码学安全**：\n  - 彻底移除虚假 Web Locks 降级，避免非安全上下文并发写竞争；\n  - `sha256` 补丁中 `bytes.slice().buffer` 精确规避了 `ArrayBufferView` 偏移与底层 buffer 共享脏数据；位长度大端序高低字切分正确，算法对空字节及跨块长均单测覆盖，无确定缺陷。",
+  "next_offset": 440,
+  "done": true,
+  "total_length": 440,
+  "completeness": "complete",
+  "request_status": "COMPLETED",
+  "late_result": false
+}

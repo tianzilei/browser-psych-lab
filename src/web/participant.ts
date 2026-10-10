@@ -1,4 +1,5 @@
 import './participant.css';
+import './compat.js';
 import {applyParticipantBackground} from './participant-theme.js';
 import {lockParticipantViewport} from './viewport.js';
 import {el,button,uid} from './dom.js';
@@ -12,8 +13,14 @@ const writer=sessionStorage.getItem(`lab-writer-${version}`)??uid();sessionStora
 let admissionController:AbortController|undefined;
 let disposePage:(()=>void)|undefined;
 lockParticipantViewport();
-async function action(fn:()=>Promise<void>){if(busy)return;busy=true;try{await fn();}catch(error){disposePage?.();disposePage=undefined;await api?.stopAdmission();status.textContent=error instanceof Error?error.message:'保存尚未完成，答案仍保留在本机。';content.replaceChildren(button(admissionController?.signal.aborted?'重新排队':'重试保存与核对',()=>action(restore)));}finally{busy=false;}}
-async function restore(){disposePage?.();disposePage=undefined;if(!owned){status.textContent='此会话已在其他页面打开。此页只读。';content.replaceChildren();return;}api??=await ParticipantAPI.open(version,writer);await api.stopAdmission();await api.refresh();const s=api.session;applyParticipantBackground(s.frozen.protocol.layout.background);title.textContent=s.frozen.protocol.title;title.title=s.frozen.protocol.title;
+function recovery(error:unknown){
+  disposePage?.();disposePage=undefined;void api?.stopAdmission();
+  status.textContent=error instanceof Error?error.message:'保存尚未完成，答案仍保留在本机。';
+  const retry=button(admissionController?.signal.aborted?'重新排队':'重试保存与核对',()=>action(restore));
+  const back=button('返回当前题目',()=>action(restore));
+  const actions=el('div',undefined,'recovery-actions');actions.append(retry,back);content.replaceChildren(actions);
+}
+async function action(fn:()=>Promise<void>){if(busy)return;busy=true;try{await fn();}catch(error){recovery(error);}finally{busy=false;}}async function restore(){disposePage?.();disposePage=undefined;if(!owned){status.textContent='此会话已在其他页面打开。此页只读。';content.replaceChildren();return;}api??=await ParticipantAPI.open(version,writer);await api.stopAdmission();await api.refresh();const s=api.session;applyParticipantBackground(s.frozen.protocol.layout.background);title.textContent=s.frozen.protocol.title;title.title=s.frozen.protocol.title;
   if(s.state==='COMPLETED'){await api.sync();status.textContent='研究已完成，数据已保存。';disposePage=mountEnding(content,s.frozen.protocol.ending);return;}
   if(s.state==='TERMINATED'){status.textContent='此会话已终止，不能重新作答。正在补传已保存记录。';await api.reconcile();status.textContent='此会话已终止。已保存记录已补传核对，原始数据保留。';content.replaceChildren();return;}
   if(!owned){status.textContent='此会话已在其他页面打开。此页只读。';content.replaceChildren();return;}
@@ -32,5 +39,5 @@ async function restore(){disposePage?.();disposePage=undefined;if(!owned){status
 }
 window.addEventListener('online',()=>{if(owned)void action(restore);});
 window.addEventListener('pagehide',()=>{admissionController?.abort(new Error('页面已关闭。'));if(owned&&api?.session.state==='ACTIVE'&&api.session.permit?.state!=='ISSUED')void fetch(api.path('release'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_id:uid(),...api.fence()}),keepalive:true});});
-if(!version||!navigator.locks||!crypto.subtle){status.textContent='参与链接或浏览器能力不完整，无法开始。';}
+if(!version||!navigator.locks||!crypto.subtle){status.textContent=!navigator.locks?'当前浏览器无法保证单页面作答，请使用支持 Web Locks 的浏览器和 HTTPS 链接。':'参与链接或浏览器能力不完整，无法开始。';}
 else void navigator.locks.request(`lab-version-${version}`,{ifAvailable:true},async lock=>{owned=!!lock;await action(restore);if(lock)await new Promise<void>(resolve=>window.addEventListener('pagehide',()=>{owned=false;api?.ledger.db.close();resolve();},{once:true}));});
