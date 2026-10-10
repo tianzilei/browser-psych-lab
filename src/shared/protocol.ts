@@ -1,5 +1,6 @@
 import { ContractError, id, object } from './contract.js';
 import {parseTiming,parseTimingDefaults,parseOrdering,orderTrials} from './trial-design.js';
+import {parseSampling,type Sampling} from './trial-sampling.js';
 export const LAB_SCHEMA = 'lab-events-v1';
 export const RUNNER_VERSION = 'canvas-v1';
 // UTF-16 character budgets. Keep these unchanged for existing frozen protocols.
@@ -20,9 +21,11 @@ export interface TimingSpec {base: number; jitter: number}
 export interface TimingDefaults {stimulus_ms?: TimingSpec; isi_ms?: TimingSpec; feedback_ms?: TimingSpec}
 export interface Ordering {mode: 'fixed' | 'shuffle' | 'category' | 'balanced'; max_run?: number}
 export interface Feedback {correct: string; incorrect: string; miss: string; neutral: string}
+export interface Rating {prompt:string;labels:string[];items?:string[]}
 export interface Trial { root_id: string; asset_id?: string; text?: string; category?: string; image_ms: number; isi_ms: number; correct: string | null;
   timing?: TimingDefaults; timing_general?: (keyof TimingDefaults)[]; feedback_ms?: number }
 export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[];
+  rating?:Rating; sampling?:Sampling;
   timing_defaults?: TimingDefaults; ordering?: Ordering; response_keys?: Record<string,string>; feedback?: Feedback }
 export interface Variant { id: string; weight: number; group_order: string[]; trial_order: Record<string, string[]> }
 export interface Protocol {
@@ -190,10 +193,10 @@ export function parseProtocol(value: unknown): Protocol {
   if (budget.refresh_min_hz > budget.refresh_max_hz) throw new ContractError('INVALID_REFRESH_RANGE');
   const general=p.timing_defaults===undefined?undefined:parseTimingDefaults(p.timing_defaults);
   const groups: Group[] = list(p.groups, 20).map(value => {
-    const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials','timing_defaults','ordering','response_keys','feedback']);
-    const choices = strings(g.choices, 2, 6); const repeats = number(g.repeats, 0, 2, true);
+    const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials','timing_defaults','ordering','response_keys','feedback','rating','sampling']);
+    const choices = strings(g.choices, 2, g.rating===undefined?6:11); const repeats = number(g.repeats, 0, 2, true);
     const defaults=general||g.timing_defaults!==undefined?{...general,...(g.timing_defaults===undefined?{}:parseTimingDefaults(g.timing_defaults))}:undefined;
-    const trials: Trial[] = list(g.trials, 100).map(value => {
+    const trials: Trial[] = list(g.trials, g.rating!==undefined&&g.sampling!==undefined?200:100).map(value => {
       const t = object(value); fields(t, ['root_id', 'asset_id', 'image_ms', 'isi_ms', 'correct','text','category','timing','feedback_ms','timing_general']);
       const timing=t.timing===undefined?{}:parseTimingDefaults(t.timing);
       const inherited=t.timing_general===undefined?[]:list(t.timing_general,3).map(v=>{
@@ -222,13 +225,19 @@ export function parseProtocol(value: unknown): Protocol {
     if (!trials.length || trials.reduce((n, t) => n + (maxTime(t,'stimulus_ms',t.image_ms)+maxTime(t,'isi_ms',t.isi_ms)+maxTime(t,'feedback_ms',t.feedback_ms??0)) * (repeats + 1), 0) > budget.max_group_ms)
       throw new ContractError('GROUP_TIME_BUDGET_EXCEEDED');
     const group:Group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
+    if(g.rating!==undefined){
+      const r=object(g.rating);fields(r,['prompt','labels','items']);const prompt=text(r.prompt,TEXT_LIMITS.question),labels=strings(r.labels,choices.length,choices.length),items=r.items===undefined?undefined:strings(r.items,1,20);
+      if(!prompt.trim()||choices.some((c,i)=>c!==String(i+1))||repeats!==0||defaults||g.ordering!==undefined||g.response_keys!==undefined||g.feedback!==undefined||trials.some(t=>t.correct!==null||!t.asset_id||t.timing||t.feedback_ms||t.image_ms!==1)||new Set(trials.map(t=>t.asset_id)).size!==trials.length)throw new ContractError('INVALID_SELF_PACED_RATING');
+      group.rating={prompt,labels,...(items?{items}:{})};
+    }
+    if(g.sampling!==undefined){if(!group.rating)throw new ContractError('SAMPLING_REQUIRES_RATING');group.sampling=parseSampling(g.sampling,trials);}
     if(defaults)group.timing_defaults=defaults;
     if(g.ordering!==undefined){group.ordering=parseOrdering(g.ordering);orderTrials(trials,group.ordering,[1,2,3,4]);}
     if(g.response_keys!==undefined){const keys=object(g.response_keys);if(Object.keys(keys).length!==choices.length||Object.keys(keys).some(k=>!choices.includes(k))
       ||new Set(Object.values(keys)).size!==choices.length||Object.values(keys).some(k=>typeof k!=='string'||! /^(Key[A-Z]|Digit[0-9]|Arrow(Left|Right|Up|Down)|Space|Enter)$/.test(k)))throw new ContractError('INVALID_RESPONSE_KEYS');
       group.response_keys=keys as Record<string,string>;}
     if(g.feedback!==undefined){const f=object(g.feedback);fields(f,['correct','incorrect','miss','neutral']);group.feedback={correct:text(f.correct,100),incorrect:text(f.incorrect,100),miss:text(f.miss,100),neutral:text(f.neutral,100)};}
-    if(new TextEncoder().encode(JSON.stringify(worstAuditPayload(group,budget.draw_budget))).length>120*1024)throw new ContractError('GROUP_AUDIT_SIZE_BUDGET_EXCEEDED');return group;
+    if(!group.rating&&new TextEncoder().encode(JSON.stringify(worstAuditPayload(group,budget.draw_budget))).length>120*1024)throw new ContractError('GROUP_AUDIT_SIZE_BUDGET_EXCEEDED');return group;
   });
   if (!pages.length && !groups.length) throw new ContractError('EMPTY_STUDY');
   const variants: Variant[] = list(p.variants, 20).map(value => {
@@ -238,7 +247,7 @@ export function parseProtocol(value: unknown): Protocol {
       || Object.keys(trial_order).length !== groups.length) throw new ContractError('INVALID_VARIANT_ORDER');
     const result: Variant = { id: unique(v.id), weight: number(v.weight, 1, 20, true), group_order: order, trial_order: {} };
     for (const g of groups) {
-      const ids = list(trial_order[g.id], 100).map(id);
+      const ids = list(trial_order[g.id], g.rating&&g.sampling?200:100).map(id);
       if (ids.length !== g.trials.length || new Set(ids).size !== ids.length || ids.some(k => !g.trials.some(t => t.root_id === k))) throw new ContractError('INVALID_TRIAL_ORDER');
       result.trial_order[g.id] = ids;
     } return result;
@@ -250,8 +259,8 @@ export function parseProtocol(value: unknown): Protocol {
   let ending:Protocol['ending'];if(p.ending!==undefined){const e=object(p.ending);fields(e,['title','text']);ending={title:text(e.title,TEXT_LIMITS.title),text:text(e.text,TEXT_LIMITS.instruction)};if(!ending.title.trim()||!ending.text.trim())throw new ContractError('INVALID_ENDING');}
   let consent:Protocol['consent'];if(p.consent!==undefined){const c=object(p.consent);fields(c,['title','text']);consent={title:text(c.title,TEXT_LIMITS.title),text:text(c.text,TEXT_LIMITS.instruction)};if(!consent.title.trim()||!consent.text.trim())throw new ContractError('INVALID_CONSENT');}
   return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),...(general?{timing_defaults:general}:{}),
-    layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, 200, 2000, true),
-      landscape_min_width: number(l.landscape_min_width, 200, 2000, true), background: l.background,
+    layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, groups.length>0&&groups.every(g=>g.rating)?120:200, 2000, true),
+      landscape_min_width: number(l.landscape_min_width, groups.length>0&&groups.every(g=>g.rating)?120:200, 2000, true), background: l.background,
       ...(l.orientation!==undefined?{orientation:l.orientation as 'portrait'|'landscape'}:{}) }, budget };
 }
 export function validateQuestionnaire(p:Protocol, strict=false) {

@@ -8,7 +8,8 @@ import {SessionAdmission,SESSION_LEASE_MS} from './session-admission.js';
 import { ContractError, eventRef, hash, id, object, integer, parseManifest, manifestText, type Receipt, type Seal } from '../shared/contract.js';
 import { parseProtocol, sampleProtocol, stableJSON, evaluate, pageSnapshot, RUNNER_VERSION,
   type Protocol, type FrozenProtocol, type AssetInfo, type Answer } from '../shared/protocol.js';
-import { parseLabEvent, type LabEvent, type LabSession, type GroupPlan } from '../shared/lab-contract.js';
+import { parseLabEvent, type LabEvent, type LabSession, type GroupPlan, type TrialSelection } from '../shared/lab-contract.js';
+import {sampleTrials} from '../shared/trial-sampling.js';
 import {realizeTrials} from '../shared/trial-design.js';
 import {compileQuestionnaire,parseQuestionnaireText,packageName} from '../shared/questionnaire-json.js';
 interface SessionRow { session_id: string; study_id: string; version_id: string; credential_hash: string; admission_id: string;
@@ -302,10 +303,11 @@ export class LabStore {
     }
   }
   private validateAssets(sid: string,p: Protocol) {
-    for(const group of p.groups){let decoded=0;const hashes=new Set<string>();
+    for(const group of p.groups){let decoded=0;const hashes=new Set<string>(),sizes:number[]=[];
       for(const a of new Set(group.trials.flatMap(t=>t.asset_id?[t.asset_id]:[]))){const asset=this.get<{state:string;width:number;height:number;hash:string}>('SELECT state,width,height,hash FROM lab_assets WHERE asset_id=? AND study_id=?',a,sid);
-        if(!asset||asset.state!=='READY')throw new ContractError('ASSET_NOT_READY',409,{asset_id:a});if(!hashes.has(asset.hash)){hashes.add(asset.hash);decoded+=asset.width*asset.height*4;}
-      }if(decoded>p.budget.max_decoded_bytes)throw new ContractError('RESOURCE_MEMORY_BUDGET_EXCEEDED');
+        if(!asset||asset.state!=='READY')throw new ContractError('ASSET_NOT_READY',409,{asset_id:a});if(!hashes.has(asset.hash)){hashes.add(asset.hash);const bytes=asset.width*asset.height*4;decoded+=bytes;sizes.push(bytes);}
+      }if(group.sampling)decoded=sizes.sort((a,b)=>b-a).slice(0,Object.values(group.sampling.allocations[0]!).reduce((n,v)=>n+v,0)).reduce((n,v)=>n+v,0);
+      if(decoded>p.budget.max_decoded_bytes)throw new ContractError('RESOURCE_MEMORY_BUDGET_EXCEEDED');
     }
   }
 
@@ -317,7 +319,7 @@ export class LabStore {
     this.run('UPDATE lab_sessions SET page_index=?,answers=? WHERE session_id=?',index,stableJSON(answers),s.session_id);
   }
   private reserve(s: SessionRow,p: Protocol) {
-    if(s.allocation_id)return this.get('SELECT reservation_id,variant_id,allocation_id FROM lab_slots WHERE session_id=? AND allocation_id IS NOT NULL',s.session_id)!;
+    if(s.allocation_id)return this.get<{reservation_id:string;variant_id:string;allocation_id:string}>('SELECT reservation_id,variant_id,allocation_id FROM lab_slots WHERE session_id=? AND allocation_id IS NOT NULL',s.session_id)!;
     let slot=this.get<{slot_id:string;reservation_id:string;variant_id:string;reserved_until:number}>('SELECT * FROM lab_slots WHERE session_id=? AND allocation_id IS NULL AND reserved_until>?',s.session_id,this.now());
     if(!slot) {
       this.run('UPDATE lab_slots SET session_id=NULL,reservation_id=NULL,reserved_until=NULL WHERE allocation_id IS NULL AND reserved_until<?',this.now());
@@ -338,6 +340,14 @@ export class LabStore {
       slot.reserved_until=this.now()+300000;
       this.run('UPDATE lab_slots SET reserved_until=? WHERE slot_id=?',slot.reserved_until,slot.slot_id);
     }return {reservation_id:slot.reservation_id,variant_id:slot.variant_id,reserved_until:slot.reserved_until};
+  }
+  private selection(s:SessionRow,group:Protocol['groups'][number]):TrialSelection|undefined {
+    if(!group.sampling)return undefined;
+    const old=this.get<{selection:string}>('SELECT selection FROM lab_group_selections WHERE session_id=? AND group_id=?',s.session_id,group.id);
+    if(old)return JSON.parse(old.selection) as TrialSelection;
+    const bytes=randomBytes(16),seed=[0,4,8,12].map(i=>bytes.readUInt32LE(i)) as GroupPlan['seed'];if(seed.every(n=>n===0))seed[0]=1;
+    const selection:TrialSelection={group_id:group.id,seed,...sampleTrials(group.trials,group.sampling,seed)};
+    this.run('INSERT INTO lab_group_selections VALUES (?,?,?)',s.session_id,group.id,stableJSON(selection));return selection;
   }
   private participant(op: string,c: Command,d: Record<string,unknown>): unknown {
     const s=this.session(c),sid=s.session_id;
@@ -376,7 +386,8 @@ export class LabStore {
       if(!slot)throw new ContractError('RESERVATION_EXPIRED',409);
       const group=p.groups.find(g=>g.id===p.variants.find(v=>v.id===slot.variant_id)!.group_order[s.group_index]);
       if(!group)throw new ContractError('NO_NEXT_GROUP',409);
-      return {key:`${sid}:${s.writer_epoch}:${s.group_index}:${slot.variant_id}`,asset_ids:[...new Set(group.trials.flatMap(t=>t.asset_id?[t.asset_id]:[]))]};
+      const selection=this.selection(s,group);
+      return {key:`${sid}:${s.writer_epoch}:${s.group_index}:${slot.variant_id}`,asset_ids:[...new Set((selection?.roots??group.trials).flatMap(t=>t.asset_id?[t.asset_id]:[]))]};
     }
     if(op==='participant.asset') {
       const asset=id(d.asset_id);if(!this.get("SELECT 1 FROM lab_asset_refs WHERE asset_id=? AND kind='VERSION' AND owner=?",asset,s.version_id))throw new ContractError('ASSET_FORBIDDEN',403);
@@ -411,7 +422,9 @@ export class LabStore {
         if(s.page_index<p.pages.length)throw new ContractError('PAGES_NOT_SEALED',409);
         if(this.get("SELECT 1 FROM lab_permits WHERE session_id=? AND state='ISSUED'",sid))throw new ContractError('RUN_LOCKED',409);
         this.run('UPDATE lab_sessions SET lease_until=? WHERE session_id=?',this.now()+300000,sid);
-        return this.reserve(s,p);
+        const reservation=this.reserve(s,p),variant=p.variants.find(v=>v.id===reservation.variant_id)!,group=p.groups.find(g=>g.id===variant.group_order[s.group_index]);
+        const selection=group?this.selection(s,group):undefined;
+        return {...reservation,...(selection?{selection}:{})};
       }
       if(op==='participant.permit') {
         if(this.frozen(s.version_id).runner_version!==RUNNER_VERSION)throw new ContractError('RUNNER_VERSION_UNAVAILABLE',409);
@@ -429,11 +442,13 @@ export class LabStore {
         if(!positive(viewport.width)||!positive(viewport.height)||!positive(viewport.dpr)||!inside(canvas)||Number(canvas.width)<(readiness.layout==='portrait'?p.layout.portrait_min_width:p.layout.landscape_min_width)||Math.abs(Number(canvas.width)/Number(canvas.height)-p.layout.aspect)>.01||!Array.isArray(geometry.buttons))throw new ContractError('INVALID_GEOMETRY');
         const variant=p.variants.find(v=>v.id===slot.variant_id)!;const group=p.groups.find(g=>g.id===variant.group_order[s.group_index]);if(!group)throw new ContractError('NO_NEXT_GROUP');
         if(geometry.buttons.length!==group.choices.length||geometry.buttons.some((v,i)=>{const b=object(v);return b.choice!==group.choices[i]||!inside(b)||Number(b.height)<44;}))throw new ContractError('INVALID_GEOMETRY');
-        const roots=variant.trial_order[group.id]!.map(root=>group.trials.find(t=>t.root_id===root)!);
+        const selection=this.selection(s,group);
+        const roots=selection?.roots??variant.trial_order[group.id]!.map(root=>group.trials.find(t=>t.root_id===root)!);
         const assetHashes=object(readiness.assets);for(const t of roots){if(!t.asset_id)continue;const a=this.get<{hash:string;state:string}>('SELECT hash,state FROM lab_assets WHERE asset_id=?',t.asset_id)!;if(a.state!=='READY'||assetHashes[t.asset_id]!==a.hash)throw new ContractError('RESOURCE_NOT_READY',409);}
-        const seed=randomBytes(16);const dv=new DataView(seed.buffer,seed.byteOffset,seed.byteLength);const state=[0,4,8,12].map(i=>dv.getUint32(i,true)) as GroupPlan['seed'];if(state.every(v=>v===0))state[0]=1;
-        const design=realizeTrials(group,roots,state,frame);
+        const seed=randomBytes(16);const dv=new DataView(seed.buffer,seed.byteOffset,seed.byteLength);const state=selection?.seed??[0,4,8,12].map(i=>dv.getUint32(i,true)) as GroupPlan['seed'];if(state.every(v=>v===0))state[0]=1;
+        const design=group.rating?{roots:roots.map(t=>({...t,isi_ms:Math.ceil(t.isi_ms/frame)*frame}))}:realizeTrials(group,roots,state,frame);
         const scope=`g-${randomUUID()}`;const start=Math.max(1000,p.budget.commit_ms+p.budget.activate_ms+p.budget.margin_ms+1);const plan:GroupPlan={group_id:group.id,scope,seed:state,...design,...(group.response_keys?{response_keys:group.response_keys}:{}),...(group.feedback?{feedback:group.feedback}:{}),choices:group.choices,repeats:group.repeats,start,frame_ms:frame,layout:String(readiness.layout),budget:p.budget,geometry:geometry as unknown as NonNullable<GroupPlan['geometry']>};
+        if(group.rating)plan.rating=group.rating;if(selection)plan.sampling=selection.sampling;
         if(plan.roots.reduce((n,t)=>n+(t.image_ms+t.isi_ms+(t.feedback_ms??0))*(plan.repeats+1),0)>p.budget.max_group_ms)throw new ContractError('QUANTIZED_GROUP_BUDGET_EXCEEDED',409);
         const allocation=slot.allocation_id??randomUUID();if(!slot.allocation_id){this.run('UPDATE lab_slots SET allocation_id=? WHERE slot_id=?',allocation,slot.slot_id);this.run('UPDATE lab_sessions SET allocation_id=? WHERE session_id=?',allocation,sid);}
         const permit=randomUUID();this.run("INSERT INTO lab_permits VALUES (?,?,?,?,?,?,?,?, 'ISSUED')",permit,sid,scope,group.id,s.writer_epoch,stableJSON(plan),digest(stableJSON(plan)),stableJSON(readiness));return this.view(sid).permit;

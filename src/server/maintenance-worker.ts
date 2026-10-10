@@ -124,7 +124,7 @@ async function run(){
           slots:'SELECT a.* FROM lab_slots a JOIN lab_versions v USING(version_id) WHERE v.study_id=?',
         };
         queries.questionnaire_sources='SELECT * FROM lab_questionnaire_sources WHERE study_id=?';queries.packages='SELECT * FROM lab_packages WHERE study_id=?';queries.package_images='SELECT * FROM lab_package_images WHERE study_id=?';
-        for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
+        for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents','group_selections'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
         queries.dispositions='SELECT d.* FROM lab_dispositions d JOIN lab_raw r USING(receipt_id) JOIN lab_sessions s USING(session_id) WHERE s.study_id=?';
         for(const [table,query]of Object.entries(queries)){tables[table]=0;
           for(const row of db.prepare(query).iterate(sid) as Iterable<Record<string,unknown>>){if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');

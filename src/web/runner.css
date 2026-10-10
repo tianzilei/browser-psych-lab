@@ -11,3 +11,11 @@ body.runner-layout #status { min-height: 4.8em; }
 .response-buttons button[aria-pressed=true] { color: var(--background,#e5e5e5); background: var(--foreground,#000000); }
 body.running #stimulus,
 body.running .response-buttons button { transition: none !important; animation: none !important; }
+body.rating-layout #status { min-height: 2.4em; }
+.rating-stage { gap: 8px; grid-template-rows: 65% minmax(0,1fr) auto; }
+.rating-stage .canvas-slot { align-items: start; }
+.rating-controls { display: grid; gap: 6px; }
+.rating-controls p { font-size: 16px; }
+.rating-controls .response-buttons { gap: 6px; }
+.rating-controls .response-buttons button { min-height: 48px; padding: 8px; }
+.rating-stage .runner-start { min-height: 48px; }

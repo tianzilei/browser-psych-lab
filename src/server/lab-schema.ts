@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS lab_archived_studies(study_id TEXT PRIMARY KEY REFERE
 CREATE TABLE IF NOT EXISTS lab_packages(study_id TEXT NOT NULL REFERENCES lab_studies,name TEXT NOT NULL,hash TEXT NOT NULL,job_id TEXT NOT NULL,PRIMARY KEY(study_id,name)) STRICT;
 CREATE TABLE IF NOT EXISTS lab_package_images(study_id TEXT NOT NULL,name TEXT NOT NULL,path TEXT NOT NULL,asset_id TEXT NOT NULL REFERENCES lab_assets,PRIMARY KEY(study_id,name,path),FOREIGN KEY(study_id,name) REFERENCES lab_packages(study_id,name)) STRICT;
 CREATE TABLE IF NOT EXISTS lab_covariates(session_id TEXT NOT NULL REFERENCES lab_sessions,sample_id TEXT NOT NULL,hash TEXT NOT NULL,raw TEXT NOT NULL,source TEXT NOT NULL,received_at INTEGER NOT NULL,PRIMARY KEY(session_id,sample_id)) STRICT;
+CREATE TABLE IF NOT EXISTS lab_group_selections(session_id TEXT NOT NULL REFERENCES lab_sessions,group_id TEXT NOT NULL,selection TEXT NOT NULL,PRIMARY KEY(session_id,group_id)) STRICT;
+CREATE TRIGGER IF NOT EXISTS lab_group_selections_update BEFORE UPDATE ON lab_group_selections BEGIN SELECT RAISE(ABORT,'immutable selection'); END;
+CREATE TRIGGER IF NOT EXISTS lab_group_selections_delete BEFORE DELETE ON lab_group_selections BEGIN SELECT RAISE(ABORT,'immutable selection'); END;
 CREATE TABLE IF NOT EXISTS lab_consents(session_id TEXT PRIMARY KEY REFERENCES lab_sessions,document_hash TEXT NOT NULL,accepted_at INTEGER NOT NULL) STRICT;
 CREATE TRIGGER IF NOT EXISTS lab_consents_update BEFORE UPDATE ON lab_consents BEGIN SELECT RAISE(ABORT,'immutable consent'); END;
 CREATE TRIGGER IF NOT EXISTS lab_consents_delete BEFORE DELETE ON lab_consents BEGIN SELECT RAISE(ABORT,'immutable consent'); END;

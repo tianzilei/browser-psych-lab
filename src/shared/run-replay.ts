@@ -1,7 +1,9 @@
 import { Scheduler, type ScheduleAudit } from './scheduler.js';
 import { stableJSON } from './protocol.js';
 import type { GroupPlan, InputRecord, RunRecord } from './lab-contract.js';
+import {RatingReplay} from './rating-replay.js';
 export interface TrialResult { instance_id:string;root_id:string;number:number;onset:number;clear:number|null;end:number|null;
+  rating?:number;rating_label?:string;ratings?:number[];rating_labels?:string[];asset_id?:string;category?:string;isi_ms?:number;first_rt_ms?:number;submit_rt_ms?:number;change_count?:number;
   answer:string|null;input_time:number|null;correct:boolean|null;rt_ms:number|null;software_quality:string;actual_gap:number|null }
 export class RunReplay {
   readonly scheduler:Scheduler; readonly results=new Map<string,TrialResult>(); readonly obligations=new Set<string>();
@@ -9,8 +11,10 @@ export class RunReplay {
   private last=-Infinity; private closed=false;private clockOrigin:number|null=null;
   private corrections=new Set<string>();
   private domOrigin:number|null=null;
-  constructor(readonly plan:GroupPlan){this.scheduler=new Scheduler(plan.roots,plan.repeats,plan.start,plan.seed,plan.budget);}
+  private ratingReplay?:RatingReplay;
+  constructor(readonly plan:GroupPlan){if(plan.rating){this.ratingReplay=new RatingReplay(plan);this.scheduler=this.ratingReplay.scheduler;this.results=this.ratingReplay.results;}else this.scheduler=new Scheduler(plan.roots,plan.repeats,plan.start,plan.seed,plan.budget);}
   apply(r:RunRecord) {
+    if(this.ratingReplay){this.ratingReplay.apply(r);return;}
     if(!Number.isFinite(r.at)||r.at<this.last)throw new Error('NONMONOTONIC_TRACE');this.last=r.at;
     if(this.plan.budget.environment_id!=='TEST_ONLY'&&(typeof r.clock_origin!=='number'||!Number.isFinite(r.clock_origin)||r.clock_origin<0))throw new Error('MISSING_GROUP_CLOCK_DOMAIN');
     if(r.clock_origin!==undefined){if(this.clockOrigin!==null&&r.clock_origin!==this.clockOrigin)throw new Error('GROUP_CLOCK_ORIGIN_CHANGED');this.clockOrigin=r.clock_origin;}
@@ -103,5 +107,5 @@ export class RunReplay {
     }
     if(result!.rt_ms!<0)throw new Error('NEGATIVE_VALID_RT');
   }
-  finish(){if(this.scheduler.state!=='GROUP_CLOSING')throw new Error('GROUP_NOT_NORMALLY_CLOSED');return [...this.results.values()];}
+  finish(){if(this.ratingReplay)return this.ratingReplay.finish();if(this.scheduler.state!=='GROUP_CLOSING')throw new Error('GROUP_NOT_NORMALLY_CLOSED');return [...this.results.values()];}
 }

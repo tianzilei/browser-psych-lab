@@ -12,7 +12,8 @@ import {bindRunnerInput,preventTaskGestures,showResponse} from './runner-input.j
 import {drawTextStimulus} from './stimulus.js';
 import {cancelAdmission} from './session-gate.js';
 import {RunReplay} from '../shared/run-replay.js';
-import type {GroupPlan,InputRecord,RunRecord,LabSession} from '../shared/lab-contract.js';
+import {ratingControls,runRating} from './rating-run.js';
+import type {GroupPlan,InputRecord,RunRecord,LabSession,GroupReservation} from '../shared/lab-contract.js';
 import type {ScheduleAudit} from '../shared/scheduler.js';
 const version=new URLSearchParams(location.search).get('version')??'',writer=sessionStorage.getItem(`lab-writer-${version}`)??uid();
 sessionStorage.setItem(`lab-writer-${version}`,writer);
@@ -28,10 +29,11 @@ async function prepare(){
   content.replaceChildren(button('退出等待',()=>cancelAdmission(preparing)));
   await api.enter(preparing.signal,text=>status.textContent=text,error=>{preparing.abort(error);releaseImages?.();releaseImages=null;failure(error);});
   await api.claim();if(api.session.page_index<api.session.frozen.protocol.pages.length){returnToPage();return;}
-  const reserve=(signal?:AbortSignal)=>request<{reservation_id:string;variant_id:string}>(api!.path('reserve'),{request_id:uid(),...api!.fence()},undefined,signal);
+  const reserve=(signal?:AbortSignal)=>request<GroupReservation>(api!.path('reserve'),{request_id:uid(),...api!.fence()},undefined,signal);
   let reservation=await reserve();
   const p=api.session.frozen.protocol,variant=p.variants.find(v=>v.id===reservation.variant_id)!,group=p.groups.find(g=>g.id===variant.group_order[api!.session.group_index]);
   if(!group){returnToPage();return;}title.textContent=group.title;status.textContent='正在校验资源和本地保存路径…';
+  const preparedGroup=reservation.selection?{...group,trials:reservation.selection.roots}:group;
   content.replaceChildren(button('取消准备',()=>preparing.abort(new Error('已取消准备，可返回后重试。'))));
   let renewal:Promise<void>=Promise.resolve(),renewTimer:ReturnType<typeof setTimeout>|undefined,renewing=true;
   const renew=()=>{renewTimer=setTimeout(()=>{
@@ -40,15 +42,17 @@ async function prepare(){
   },60000);};renew();
   let images:Awaited<ReturnType<typeof prepareImages>>;
   try{const gate=await awaitPreparation(api,preparing.signal,text=>status.textContent=text,error=>preparing.abort(error));
-    try{images=await prepareImages(api.session,group,text=>status.textContent=text,preparing.signal,gate.headers);releaseImages=images.release;gate.check();}
+    try{images=await prepareImages(api.session,preparedGroup,text=>status.textContent=text,preparing.signal,gate.headers);releaseImages=images.release;gate.check();}
     finally{await gate.release();}
   }
   finally{renewing=false;clearTimeout(renewTimer);await renewal;window.removeEventListener('pagehide',pageHidden);}
   preparing.signal.throwIfAborted();
-  const measured=await refreshProbe(p),storage=await storageProbe(group,p);if(storage.commit_ms>p.budget.commit_ms)throw new Error('本地事务耗时超过此版本预算，无法开始该组。');
+  const measured=await refreshProbe(p),storage=await storageProbe(preparedGroup,p);if(storage.commit_ms>p.budget.commit_ms)throw new Error('本地事务耗时超过此版本预算，无法开始该组。');
   const canvas=el('canvas'),buttons=group.choices.map(c=>el('button',c));canvas.id='stimulus';const controls=el('div',undefined,'response-buttons');controls.append(...buttons);
   document.body.classList.add('runner-layout');window.scrollTo(0,0);
   const stage=el('div',undefined,'runner-stage'),slot=el('div',undefined,'canvas-slot'),footer=el('div',undefined,'runner-start');slot.append(canvas);stage.append(slot,controls,footer);content.replaceChildren(stage);preventTaskGestures(stage);showResponse(buttons,null);controls.style.setProperty('--response-columns',String(Math.min(buttons.length,Math.max(2,Math.floor(controls.clientWidth/80)))));for(const b of buttons)b.disabled=true;
+  const rating=group.rating?ratingControls(group.rating.items??[group.rating.prompt],group.rating.labels,buttons,footer):undefined;
+  if(rating){stage.classList.add('rating-stage');controls.replaceWith(rating.controls);document.body.classList.add('rating-layout');}
   const layout=innerWidth>innerHeight?'landscape':'portrait',min=layout==='portrait'?p.layout.portrait_min_width:p.layout.landscape_min_width;
   const width=Math.floor(Math.min(slot.clientWidth,720,slot.clientHeight*p.layout.aspect));if(width<min)throw new Error('屏幕可用区域不足，请在开始前调整方向。');
   canvas.style.width=`${width}px`;canvas.style.height=`${width/p.layout.aspect}px`;canvas.width=Math.round(width*devicePixelRatio);canvas.height=Math.round(width/p.layout.aspect*devicePixelRatio);
@@ -59,7 +63,9 @@ async function prepare(){
     api!.admission?.check();await api!.stopAdmission();start.style.visibility='hidden';if(document.visibilityState!=='visible')throw new Error('页面当前不可见。');const actual=geometry(canvas,buttons);if(JSON.stringify(actual)!==JSON.stringify(ready))throw new Error('准备后布局已变化，请重新准备。');
     const next=await reserve();if(next.variant_id!==reservation.variant_id)throw new Error('预留方案已变化，请重新准备。');reservation=next;
     const permit=await request<NonNullable<LabSession['permit']>>(api!.path('permit'),{request_id:uid(),...api!.fence(),reservation_id:reservation.reservation_id,readiness:{...measured,...storage,download:images.download,layout,geometry:ready,assets:images.hashes,decoded_bytes:images.decoded_bytes,protocol_hash:api!.session.frozen.hash}});
-    await api!.refresh();for(const b of buttons)b.disabled=false;await run(permit.plan,canvas,buttons,images.byAsset,ctx);
+    await api!.refresh();
+    if(rating){start.hidden=true;await runRating(permit.plan,api!,canvas,buttons,rating.submit,rating.heading,images.byAsset,ctx,status,()=>geometry(canvas,buttons),()=>{releaseImages?.();releaseImages=null;},returnToPage,content);}
+    else {for(const b of buttons)b.disabled=false;await run(permit.plan,canvas,buttons,images.byAsset,ctx);}
   }catch(error){releaseImages?.();releaseImages=null;if(api?.session.permit?.state==='ISSUED')await api.terminate('PREPARATION_INTERRUPTED',{message:String(error)}).catch(()=>{});failure(error);}});footer.append(start);
   ready=geometry(canvas,buttons);
 }
