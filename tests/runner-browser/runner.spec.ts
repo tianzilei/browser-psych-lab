@@ -133,13 +133,14 @@ test('Project1 downloads exactly 32 of 102 real portraits and saves all balanced
     expect(f.downloads()).toBe(32);await page.getByRole('button',{name:'开始本组'}).click();
     for(let i=1;i<=32;i++){
       await expect(page.locator('#status')).toHaveText(new RegExp(`第 ${i}\/32 张`),{timeout:10000});
-      for(let item=0;item<5;item++){const value=(i+item-1)%9+1;await page.getByRole('button',{name:new RegExp(`^评分 ${value}：`)}).click();await page.getByRole('button',{name:item===4?'提交评分':'下一题',exact:true}).click();}
+      for(let item=0;item<6;item++){const value=(i+item-1)%9+1;await page.getByRole('button',{name:new RegExp(`^评分 ${value}：`)}).click();await page.getByRole('button',{name:'下一题',exact:true}).click();}
+      await page.locator('.rating-age').fill('40');await page.getByRole('button',{name:'提交评分',exact:true}).click();
     }
     await expect(page.locator('#done')).toBeVisible({timeout:15000});
     const permit=f.view().permit,replay=new RunReplay(permit.plan);for(const r of f.records())replay.apply(r);
     const results=replay.finish();expect(results).toHaveLength(32);expect(new Set(results.map(r=>r.root_id)).size).toBe(32);
     expect(results.filter(r=>r.category!.startsWith('female')).length).toBe(16);expect(results.filter(r=>!r.category!.includes('no-glasses')).length).toBe(16);
-    for(let i=0;i<32;i++){expect(results[i]!.ratings).toHaveLength(5);expect(results[i]!.ratings).toEqual(Array.from({length:5},(_,item)=>(i+item)%9+1));expect(results[i]!.isi_ms).toBeGreaterThanOrEqual(3000);if(i)expect(results[i]!.onset-results[i-1]!.clear!).toBeGreaterThanOrEqual(3000);}
+    for(let i=0;i<32;i++){expect(results[i]!.ratings).toHaveLength(7);expect(results[i]!.ratings).toEqual([...Array.from({length:6},(_,item)=>(i+item)%9+1),40]);expect(results[i]!.isi_ms).toBeGreaterThanOrEqual(3000);if(i)expect(results[i]!.onset-results[i-1]!.clear!).toBeGreaterThanOrEqual(3000);}
     expect(permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);expect(f.downloads()).toBe(32);
   }finally{f.close();}
 });

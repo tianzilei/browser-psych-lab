@@ -37,7 +37,7 @@ export async function runRating(plan:GroupPlan,a:ParticipantAPI,canvas:HTMLCanva
     if(phase!=='rating'||submission||stopped)return;selected=i+1;void emit({type:'RATING_CHANGE',at:now(),instance_id:instance(),item:question,value:selected}).catch(stop);for(const [j,node] of buttons.entries())node.setAttribute('aria-pressed',String(j===i));submit.disabled=false;status.textContent=`第 ${index+1}/${plan.roots.length} 张 · ${plan.rating!.items?.[question]??plan.rating!.prompt} · 已选 ${selected}：${plan.rating!.labels[i]}`;
   };
   submit.onclick=()=>{
-    if(phase!=='rating'||submission||stopped)return;if(question===items){const value=Number(age?.value);if(!Number.isInteger(value)||value<0||value>120){status.textContent='请输入 0–120 之间的整数年龄';return;}answers[question]=value;}else{if(selected===null)return;answers[question]=selected;}if(question<total-1){question++;selected=null;for(const b of buttons){b.disabled=false;b.setAttribute('aria-pressed','false');}if(age)age.hidden=question!==items;submit.disabled=question===items;heading.textContent=question===items?(plan.rating!.age_prompt??'年龄'):plan.rating!.items?.[question]??plan.rating!.prompt;submit.textContent=question===total-1?'提交评分':'下一题';status.textContent=`第 ${index+1}/${plan.roots.length} 张 · ${heading.textContent}`;return;}submission={values:[...answers],at:now()};disable();
+    if(phase!=='rating'||submission||stopped)return;if(question===items){const value=Number(age?.value);if(!Number.isInteger(value)||value<0||value>120){status.textContent='请输入 0–120 之间的整数年龄';return;}answers[question]=value;}else{if(selected===null)return;answers[question]=selected;}if(question<total-1){question++;selected=null;for(const b of buttons){b.disabled=false;b.setAttribute('aria-pressed','false');}if(age)age.hidden=question!==items;submit.disabled=false;heading.textContent=question===items?(plan.rating!.age_prompt??'年龄'):plan.rating!.items?.[question]??plan.rating!.prompt;submit.textContent=question===total-1?'提交评分':'下一题';status.textContent=`第 ${index+1}/${plan.roots.length} 张 · ${heading.textContent}`;return;}submission={values:[...answers],at:now()};disable();
   };
   async function finish(){
     phase='closing';disable();remove();
@@ -64,4 +64,5 @@ export async function runRating(plan:GroupPlan,a:ParticipantAPI,canvas:HTMLCanva
   }
   document.body.classList.add('running');submit.hidden=false;disable();blank();visible(false);await intent();if(!stopped)frame=requestAnimationFrame(tick);
 }
+
 
