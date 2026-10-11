@@ -1,0 +1,95 @@
+{
+  "schema": "ui-validation-v1",
+  "captured_at": "2026-10-11T04:24:30.659554+00:00",
+  "git_head": "4f7a2123b55234190c842e4e0d4156acc9c3804a",
+  "scope": "Participant UI, copy, recovery, native rating, list, management and replay",
+  "gemini": [
+    {
+      "request_id": "ui-review-20261011",
+      "result_id": "res_16400ff8fa3045f0bc69",
+      "end_marker": "UI_REVIEW_DONE",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "ui-final-20261011",
+      "result_id": "res_94ecd7f2f0b69fe3ca30",
+      "end_marker": "UI_FINAL_DONE",
+      "completeness": "complete"
+    }
+  ],
+  "validation": {
+    "command": "npm run check",
+    "exit_code": 0,
+    "typecheck": "passed",
+    "build": "passed",
+    "smoke": "passed",
+    "unit": 119,
+    "browser": 42,
+    "runner_browser": 6,
+    "total_tests": 167,
+    "git_diff_check": "passed",
+    "log": ".local/ui-check-final.log"
+  },
+  "runtime_dependencies": {
+    "@fastify/static": "10.1.5",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.5"
+  },
+  "added_dependencies": [],
+  "runner_hash": "3f5b559fae209032c668639c806faed91b758a5c32f9d550ba4c696c74fe8482",
+  "source_hashes": {
+    "src/web/participant-ui.ts": "7d12862d2b96a5f2577c038e9bf4b79d26b7e4b67df5b5f9134e3eaf7e040979",
+    "src/web/request-error.ts": "14e5f265569a29ff7e900349d9c6343bc3c5e6a643b1a8b12b91bcba7b79068e",
+    "src/web/participant.ts": "6135efae76128b03d4f1d556e36b4b94bca4ea069bff9a3b4c3c9ec933f22097",
+    "src/web/participant.css": "dd32ba571f24e34a0bf2f283807776b3c12bbf3ae9bef15a302f5836aaca7e70",
+    "src/web/participate.html": "030fbf7bf82c9907a81ed6d3a73a6c9ba262e936a4d51e446c0561d18cf6826d",
+    "src/web/dom.ts": "4dae1e7fbf5ae8755a82cd47316af7a3d90197873c0511783e75e4f96d0bf8e8",
+    "src/web/participant-api.ts": "447f3bf4373f4d5fe0aa6ff83968c78791671c38f8e33f386417b84aed24ef10",
+    "src/web/survey-page.ts": "16828bfe4d7212a1ede89b4eda6e1add1823b2fb66696a78d76eb309af2aca45",
+    "src/web/scale-input.ts": "3f2eb591c1ba0898dfb59a0e2b38dcac4e3921a7b9e4b2c328085cc9d0a0ba10",
+    "src/web/questionnaire-list.ts": "098b483426f9d159205a370533a7e519354edd4a987d8fdccf4bf58bf4f51b64",
+    "src/web/questionnaire-list.css": "f7430ee4ec574d5ea79b073664474f271a93029beddd8783147027014391d65d",
+    "src/web/index.html": "891045068fdc8b10006f1e498058135dbca58057359e36ef373aa3103f9a500d",
+    "src/web/run.ts": "0ac59500b0c8dc03214ddaa7a2f1fdba339e635df99c7c428182c1b7a5d36006",
+    "src/web/run.html": "82308f7f49d561259915f2c3ea611a06712af15998af23486b9f507c741aa963",
+    "src/web/runner.css": "3fefa597d33772f11f4dae1dadb3310de96b613e7b3844726ed92d7c0722cd49",
+    "src/web/rating-run.ts": "e1e83e86844b813fd62bb52a3ecb082c62e302dd13c6367ac7fbcea26c76e913",
+    "src/web/prepare.ts": "fd708908b15c68c82da41af6d5e1b13069217d23a3e86dabfbdaf7691eca940c",
+    "src/web/asset-download.ts": "f379806a1f28eb13056137417170260a4c681c863efafc8556a427ad6a707779",
+    "src/web/session-gate.ts": "2ec7be6b75da46717906dca52258d69aab0ba02d112e9bb7a537f21dc3922aa8",
+    "src/web/preparation-gate.ts": "8c2f5a14ffa62c925a258f37b8274f37104d48eb548b650eb829c19e534df45f",
+    "src/web/consent-page.ts": "471869edbe56c7848935b0649d943c5a914c0d12d6fa3dc12bf82733971fee67",
+    "src/web/consent-gate.ts": "3204c9d1114b82611b9398868b5ed3293e33be477600448d529ae47f17443e85",
+    "src/web/ending-page.ts": "203bf301bc264761c4ea46f86f261d198d44e51a35d9ea77094187362c2d2d89",
+    "src/web/admin.ts": "59929ecc528add69daee0cda1671c614dd48b3e7eba40cdc314d0095477f2caf",
+    "src/web/replay.ts": "8d4d3ac12c10b75aa6fe865598df3ae3732f772e72a6448833b66781d24391bb",
+    "src/web/replay.html": "dc2394d93e34b2ac3865044d44340ea4dd5a089c990ed182dd9aef47af4f7d19",
+    "src/web/simulate.ts": "04f6fa161ae6b12d502d8097f82fa70df546a99630fa8c7df6eeb6961a2ee378",
+    "src/web/simulate.html": "0a60c0ea4548bb31a5433af27ba6222e9eb2c2e0c0a3a45169ed89b706a1d340",
+    "src/web/p0.ts": "aaf2f148fa06e709609c6724d1dbdacd1dcb0228c7428fd381feb39692fee497",
+    "src/web/p0.html": "f125ccdcd4718d1a7d520268466d7bb45282ca90ccc165d37d62be2f78d0ab08",
+    "src/web/main.ts": "62fc5b801d55ebb07df7e7d976c8edb82d019cf0b3abe4edb6a35cc9447d0cf3",
+    "tests/browser/lab.spec.ts": "c36d2703aedf237f28d1b920f5793778bb7fb10bc10f10f632a451dcf0636aba",
+    "tests/browser/collection.spec.ts": "682eede58cb5d70403fd8b77290a88739fec9491e58fd4d7692c8779f2bf4636",
+    "tests/runner-browser/runner.spec.ts": "a0f463f709aef0604a526fcd027987b8938acffd03e6248b45cd23b15ff1ba92",
+    "tests/unit/participant-ui.test.mjs": "fbb7dec644cac9d80717ae5d8d710d6c13cd5896d86291f95adf94f0f1de727d",
+    "tests/unit/preparation.test.mjs": "27e6b6b4c527e3154dff49ea73424e3d9aa1617edc8ccdf399ecf242ee951f0b"
+  },
+  "screenshots": {
+    "before": ".local/ui-before",
+    "after": ".local/ui-after",
+    "database": "isolated TEST_ONLY temporary directory",
+    "inspected": [
+      "desktop-intro",
+      "mobile-question",
+      "mobile-dark-question",
+      "mobile-rating-age",
+      "mobile-recovery",
+      "mobile-list"
+    ]
+  },
+  "limits": [
+    "Chromium with mobile emulation; no claim of validation on all physical devices or browsers",
+    "Gemini discussed supplied UI structure and implementation summaries; local tests validate runtime behavior"
+  ]
+}

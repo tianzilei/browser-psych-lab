@@ -5,7 +5,7 @@ import {worstAuditPayload,type Group,type Protocol} from '../shared/protocol.js'
 export async function refreshProbe(protocol:Protocol){
   const times:number[]=[];await new Promise<void>(resolve=>{let prior:number|null=null;const tick=(t:number)=>{if(prior!==null)times.push(t-prior);prior=t;if(times.length<30)requestAnimationFrame(tick);else resolve();};requestAnimationFrame(tick);});
   const sorted=[...times].sort((a,b)=>a-b),frame=sorted[Math.floor(sorted.length/2)]!;
-  if(1000/frame<protocol.budget.refresh_min_hz||1000/frame>protocol.budget.refresh_max_hz||Math.max(...times)>protocol.budget.long_frame_ms)throw new Error('当前刷新节奏不符合该版本预算。');
+  if(1000/frame<protocol.budget.refresh_min_hz||1000/frame>protocol.budget.refresh_max_hz||Math.max(...times)>protocol.budget.long_frame_ms)throw new Error('此设备的显示节奏未满足任务要求，请更换设备或联系研究者。');
   return {frame_ms:frame,observed_intervals:times};
 }
 export async function storageProbe(group:Group,protocol:Protocol){const name=`bpl-storage-probe-${crypto.randomUUID()}`,db=await openDB(name,1,{upgrade(db){db.createObjectStore('events');db.createObjectStore('outbox');db.createObjectStore('meta');}});const samples:number[]=[];
@@ -16,9 +16,9 @@ export async function storageProbe(group:Group,protocol:Protocol){const name=`bp
   finally{db.close();await deleteDB(name);}
 }
 export async function prepareImages(session:LabSession,group:Group,status:(text:string)=>void,signal?:AbortSignal,headers:Record<string,string>={}){
-  const infos=group.trials.filter(t=>t.asset_id).map(t=>session.frozen.assets.find(a=>a.asset_id===t.asset_id)!);if(infos.some(a=>!a))throw new Error('冻结资源清单不完整。');
+  const infos=group.trials.filter(t=>t.asset_id).map(t=>session.frozen.assets.find(a=>a.asset_id===t.asset_id)!);if(infos.some(a=>!a))throw new Error('任务图片不完整，请联系研究者。');
   const unique=[...new Map(infos.map(a=>[a.hash,a])).values()];const estimated=unique.reduce((n,a)=>n+a.width*a.height*4,0),originalBytes=unique.reduce((n,a)=>n+a.bytes,0);
-  if(estimated>session.frozen.protocol.budget.max_decoded_bytes)throw new Error('图片解码预算不足。');
+  if(estimated>session.frozen.protocol.budget.max_decoded_bytes)throw new Error('任务图片超出此问卷允许的内存用量，请联系研究者。');
   const bitmaps=new Map<string,ImageBitmap>(),controller=new AbortController(),started=performance.now();
   const abort=()=>controller.abort(signal?.reason);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
   const deadline=setTimeout(()=>controller.abort(new Error('本组准备超过 20 分钟，请检查网络或联系研究者。')),DOWNLOAD_POLICY.maximum_ms);
@@ -28,15 +28,15 @@ export async function prepareImages(session:LabSession,group:Group,status:(text:
     // avoids doubling every participant's competing stream on a shared 1–5 Mbps link.
     for(const info of unique){
       controller.signal.throwIfAborted();const prior=received;
-      const report=(bytes:number)=>status(`下载 ${Math.min(99,Math.floor((prior+bytes)/Math.max(1,originalBytes)*100))}%`);
+      const report=(bytes:number)=>status(`正在下载图片 ${Math.min(99,Math.floor((prior+bytes)/Math.max(1,originalBytes)*100))}%`);
       report(0);const data=await downloadOriginal(`/api/participate/sessions/${session.session_id}/assets/${info.asset_id}`,info.bytes,controller.signal,report,undefined,headers);
-      const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),v=>v.toString(16).padStart(2,'0')).join('');if(h!==info.hash)throw new Error('图片摘要不匹配。');
+      const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),v=>v.toString(16).padStart(2,'0')).join('');if(h!==info.hash)throw new Error('图片完整性校验未通过，请重新准备任务。');
       controller.signal.throwIfAborted();
       const bitmap=await createImageBitmap(new Blob([data],{type:`image/${info.format}`}));
-      if(controller.signal.aborted||bitmap.width!==info.width||bitmap.height!==info.height){bitmap.close();controller.signal.throwIfAborted();throw new Error('图片尺寸与冻结清单不符。');}
+      if(controller.signal.aborted||bitmap.width!==info.width||bitmap.height!==info.height){bitmap.close();controller.signal.throwIfAborted();throw new Error('图片尺寸与问卷配置不符，请联系研究者。');}
       bitmaps.set(info.hash,bitmap);received+=info.bytes;
     }
-    controller.signal.throwIfAborted();status('下载 100%');
+    controller.signal.throwIfAborted();status('图片已准备，正在检查设备…');
     const byAsset=new Map(infos.map(a=>[a.asset_id,bitmaps.get(a.hash)!]));
     return {byAsset,hashes:Object.fromEntries(infos.map(a=>[a.asset_id,a.hash])),decoded_bytes:estimated,
       download:{original_bytes:originalBytes,downloaded_bytes:received,unique_images:unique.length,elapsed_ms:performance.now()-started,policy:'serial-stall60s-total20m-v1'},

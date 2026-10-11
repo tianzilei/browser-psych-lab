@@ -1,5 +1,6 @@
 import {request,uid} from './dom.js';
 import type {ParticipantAPI} from './participant-api.js';
+import {RequestError} from './request-error.js';
 interface Ticket {ticket_id:string;status:'QUEUED'|'READY';position:number;poll_ms:number}
 export async function awaitPreparation(api:ParticipantAPI,signal:AbortSignal,status:(text:string)=>void,onFailure:(error:unknown)=>void=()=>{}){
   const ticket=uid(),url=api.path('preparation'),fence=api.fence();
@@ -11,7 +12,7 @@ export async function awaitPreparation(api:ParticipantAPI,signal:AbortSignal,sta
   window.addEventListener('pagehide',hidden,{once:true});
   try{
     let result=await request<Ticket>(url,body('join'),undefined,signal);
-    if(result.status!=='READY')throw new Error('当前作答人数较多，建议30分钟后再进行答题。已保存的答卷保留。');
+    if(result.status!=='READY')throw new RequestError('PREPARATION_CAPACITY_FULL',409);
     const renew=()=>{timer=setTimeout(()=>{pending=(async()=>{
       try{await request<Ticket>(url,body('touch'),undefined,signal);}
       catch(error){renewalError=error;onFailure(error);}

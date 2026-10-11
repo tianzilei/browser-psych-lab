@@ -1,0 +1,52 @@
+{
+  "mode": "TEST_ONLY",
+  "schema": "transport-profile-v1",
+  "sampled_at": "2026-10-11T03:51:42.446Z",
+  "runtime": "v24.21.0",
+  "platform": "darwin",
+  "scope": "Local Node native CompressionStream/WebCrypto and asynchronous zlib. Chromium records, when supplied, are test fixtures. No mobile/ECS timing or capacity claim.",
+  "measured_iterations": 10,
+  "policy": {
+    "threshold_bytes": 8192,
+    "maximum_ratio": 0.875,
+    "maximum_bytes": 1048576,
+    "decompression_concurrency": 4,
+    "stream_reserve_bytes": 131072,
+    "receive_timeout_ms": 15000
+  },
+  "results": [
+    {
+      "label": "small-control",
+      "event_count": 0,
+      "decoded_json_bytes": 61,
+      "wire_body_bytes": 61,
+      "encoding": "identity",
+      "saved_percent": 0,
+      "median_prepare_ms": 0.001,
+      "median_decode_and_parse_ms": 0,
+      "median_utf8_and_sha256_ms": 0.001
+    },
+    {
+      "label": "synthetic-16-event-interaction-batch",
+      "event_count": 16,
+      "decoded_json_bytes": 202312,
+      "wire_body_bytes": 5594,
+      "encoding": "gzip",
+      "saved_percent": 97.23,
+      "median_prepare_ms": 0.826,
+      "median_decode_and_parse_ms": 0.469,
+      "median_utf8_and_sha256_ms": 0.147
+    },
+    {
+      "label": "chromium-test-collected-records",
+      "event_count": 6,
+      "decoded_json_bytes": 172454,
+      "wire_body_bytes": 9562,
+      "encoding": "gzip",
+      "saved_percent": 94.46,
+      "median_prepare_ms": 2.681,
+      "median_decode_and_parse_ms": 0.891,
+      "median_utf8_and_sha256_ms": 0.696
+    }
+  ]
+}

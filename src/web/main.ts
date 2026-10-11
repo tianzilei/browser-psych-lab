@@ -40,7 +40,7 @@ if (context) {
   }));
 }
 show('Canvas 与帧回调', Boolean(context), context ? '可用；尚未测量时序' : '不可用');
-show('Web Locks', Boolean(navigator.locks), navigator.locks ? '接口可用；单写者合同待实现' : '接口不可用');
+show('Web Locks', Boolean(navigator.locks), navigator.locks ? '接口可用；支持单页面作答锁' : '接口不可用');
 
 const loadSurvey = document.querySelector<HTMLButtonElement>('#load-survey')!;
 const surveyStatus = document.querySelector<HTMLParagraphElement>('#survey-status')!;

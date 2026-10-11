@@ -1,0 +1,162 @@
+{
+  "schema": "lightweight-validation-v1",
+  "completed_at": "2026-10-11T03:52:42.775295+00:00",
+  "mode": "TEST_ONLY",
+  "base_commit": "4f7a2123b55234190c842e4e0d4156acc9c3804a",
+  "checks": {
+    "command": "npm run check",
+    "exit_code": 0,
+    "typecheck": "passed",
+    "build": "passed",
+    "sqlite_smoke": "passed",
+    "unit": {
+      "passed": 116,
+      "failed": 0
+    },
+    "chromium_browser": {
+      "passed": 39,
+      "failed": 0
+    },
+    "runner_browser": {
+      "passed": 5,
+      "failed": 0
+    },
+    "diff_check": "passed",
+    "log": ".local/lightweight-check-final.log",
+    "log_sha256": "0e80eb9a96ec59961a33c5883138bae0154dd8dd4ef0875766915a7a624ede63"
+  },
+  "focus": [
+    "Native gzip exact Unicode raw/hash preservation; identical wire body reused for explicit overload retries",
+    "Missing/failing/unhelpful compression keeps plain JSON",
+    "Malformed/truncated/CRC-corrupt/expanded/wrong-length bodies rejected before handlers",
+    "Four-decoder bound, plain control admission, real aborted connections, virtual-clock receive timeout and capacity recovery",
+    "100 coalesced pen samples preserved; exactly one rect read and coalesced query per dispatch",
+    "Keyboard/input/wheel/lifecycle metadata and actual Chromium gzip upload",
+    "Old optional byte_length/hash absent: offline original events and environment recover",
+    "Permission query errors/timeouts do not block participation",
+    "Fixed and self-paced runner timing/response regressions with gzip-capable fixture"
+  ],
+  "profile": {
+    "file": "transport-profile.json",
+    "sha256": "94e5f0578195f5fd2ad6db711057e68dd6e05c130ed6bde9c013cd24b347c878",
+    "command": "npm run profile:transport -- --browser-records=.local/lightweight-browser-records.json --out=.local/lightweight-transport-profile.json",
+    "browser_fixture_sha256": "27a05f8325a02dd5631a2d6ce182db318805cf5107af5e91be99fd0279c50ef1",
+    "scope": "Local Node 24 native APIs on isolated Chromium/synthetic fixtures; not a mobile/ECS measurement"
+  },
+  "gemini": {
+    "conversation_url": "https://gemini.google.com/app/40a1fe9e41989eac",
+    "requests": [
+      {
+        "request_id": "lightweight-design-20261011-01",
+        "result_id": "res_930d6ad30a8e2f6258ac",
+        "adopted_as": "design discussion with corrections"
+      },
+      {
+        "request_id": "lightweight-design-20261011-02",
+        "result_id": "res_fe4d5ba9dfed246563ff",
+        "bridge_completeness": "complete",
+        "adopted_as": "incomplete response, not a completed review",
+        "snapshot_result_id": "res_c635b7d4bc0ada7b43b7"
+      },
+      {
+        "request_id": "lightweight-design-20261011-03",
+        "result_id": "res_ca04eb9c9f1248e0df9b",
+        "bridge_completeness": "complete",
+        "end_marker": "LIGHT_REVIEW_DONE",
+        "adopted_as": "static convergence advice; subsequent bounded error stream cleanup tested"
+      }
+    ]
+  },
+  "runtime_dependencies": [
+    "@fastify/static",
+    "better-sqlite3",
+    "fastify"
+  ],
+  "added_runtime_dependencies": 0,
+  "deployment": false,
+  "git_commit_created": false,
+  "formal_gate_opened": false,
+  "actual_research_data_modified": false,
+  "final_files": [
+    {
+      "path": "src/shared/transport.ts",
+      "sha256": "6edca62bc0cf2d8e6222e978171dd1a4cbbb380da9aa8fb0145ff5d0100eb248"
+    },
+    {
+      "path": "src/server/json-transport.ts",
+      "sha256": "30fd682516b5970cfc1437d6a04852b3506d9cabc9be1218e6f4216dd4ecfa4c"
+    },
+    {
+      "path": "src/server/main.ts",
+      "sha256": "e685c43f57cc976ca78c7a1bfb1c63c6e41bf57e26bbb7170d0d6316aff9a98f"
+    },
+    {
+      "path": "src/server/lab-routes.ts",
+      "sha256": "4bec8b25b8937568c2ccc9865a6e48619064ddbb342d90e59db849557eb7d96d"
+    },
+    {
+      "path": "src/web/browser-state.ts",
+      "sha256": "ff08074c88fa632f1135d1572788e569eb8f3f3e174971c12da85f39659b48da"
+    },
+    {
+      "path": "src/web/environment.ts",
+      "sha256": "56228f986b59899ec0e4372b5f69565d343ed2a62b3f01973de4212f41446860"
+    },
+    {
+      "path": "src/web/json-transport.ts",
+      "sha256": "8af760a36e0057c9b2a44734ab8e450ea5d0cc3a5fa627ee778de918c7d96425"
+    },
+    {
+      "path": "src/web/dom.ts",
+      "sha256": "acdf2ab4800abcde59cd63608c387a204c9e39af4494ee7651c1d2d1c34d06f3"
+    },
+    {
+      "path": "src/web/interaction-recorder.ts",
+      "sha256": "09c70d7463eb420972ecf7afa9290091a3f08dee8052d9e202716681535244eb"
+    },
+    {
+      "path": "src/shared/interaction.ts",
+      "sha256": "d3d3540f412680125d813aecf551aec499fe77caae237816557affcfd2bb593b"
+    },
+    {
+      "path": "src/web/ledger.ts",
+      "sha256": "e5fa21a957944d30140bd34ae4e92270f9b38fe8f85e506302af027828834c38"
+    },
+    {
+      "path": "src/web/local-store.ts",
+      "sha256": "4c8044a201a79d7987f5dd6613c75a6bb3ce15f2e4a9caecb5c9a451a6618943"
+    },
+    {
+      "path": "src/web/participant-api.ts",
+      "sha256": "33d004659b3631db1f2bbaf5714873be0501938cf09da81893197a9c8df48c99"
+    },
+    {
+      "path": "tests/unit/json-transport.test.mjs",
+      "sha256": "51b3672d900194604a132e486f74d8f2d1e02e6ff4d2e2860b1578c18ac5873a"
+    },
+    {
+      "path": "tests/browser/lab.spec.ts",
+      "sha256": "9fa1010328242293a483ac48e8aa1d744ba38d594c52ac94fccb74d6ed2ed671"
+    },
+    {
+      "path": "tests/runner-browser/runner.spec.ts",
+      "sha256": "aad3426bff072b95ff8c1e9c00b6557466c1f4d390b514d4282f9a7fbb33c698"
+    },
+    {
+      "path": "scripts/profile-transport.mjs",
+      "sha256": "256f2c5afc62c77817a3f8ce7c1a5eb8fec06876f6757489e03de67bd2f4918a"
+    },
+    {
+      "path": "package.json",
+      "sha256": "5196fef96b67e414fcefd000e9bfb0825e4a15e2b1fb8672f2c62f8d475ce910"
+    },
+    {
+      "path": "docs/浏览器轻量采集与传输设计.md",
+      "sha256": "c039fb8a06e0882cf285016244e389facf7894ba09e1f8d21f2651f90065e41f"
+    },
+    {
+      "path": "docs/interaction-recording.md",
+      "sha256": "4722cb3fcc4fe92847d94fa992d4e67516d40cf2aed556d194afcc728137ef5d"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import { labRoutes } from './lab-routes.js';
 import { Maintenance } from './maintenance.js';
 import { privateRoot } from './private-files.js';
 import { retainRelease } from './release.js';
+import { installJsonTransport } from './json-transport.js';
 import { access,readFile } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,6 +86,7 @@ if (process.env.NODE_ENV === 'production') {
     },
   });
 }
+installJsonTransport(app);
 await collectionRoutes(app, writer);
 await labRoutes(app,writer,maintenance,storageRoot);
 app.addHook('onClose', async () => { await maintenance.close(); await writer.close(); });

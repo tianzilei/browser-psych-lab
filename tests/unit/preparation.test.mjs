@@ -36,10 +36,10 @@ test('original streams handle progress, stall, excess, truncation and parent can
   const bytes=await downloadOriginal(`${origin}/slow`,3,new AbortController().signal,n=>progress.push(n),{stall_ms:65,total_ms:200});
   assert.equal(new TextDecoder().decode(bytes),'abc');assert.equal(progress.at(-1),3);
   await assert.rejects(downloadOriginal(`${origin}/stall`,3,new AbortController().signal,()=>{},{stall_ms:30,total_ms:200}),/停滞/);
-  await assert.rejects(downloadOriginal(`${origin}/excess`,3,new AbortController().signal,()=>{}),/超出/);
+  await assert.rejects(downloadOriginal(`${origin}/excess`,3,new AbortController().signal,()=>{}),/大小与问卷配置不符/);
   await assert.rejects(downloadOriginal(`${origin}/truncated`,3,new AbortController().signal,()=>{}),/完整/);
   const aborted=new AbortController();aborted.abort(new Error('caller canceled'));await assert.rejects(downloadOriginal(`${origin}/slow`,3,aborted.signal,()=>{}),/caller canceled/);
-  await assert.rejects(downloadOriginal(`${origin}/slow`,3,new AbortController().signal,()=>{},{stall_ms:100,total_ms:30}),/预算/);
+  await assert.rejects(downloadOriginal(`${origin}/slow`,3,new AbortController().signal,()=>{},{stall_ms:100,total_ms:30}),/下载超时/);
 });
 test('HTTP overload retry preserves serialized idempotent bytes and refuses ambiguous fetch errors',async t=>{
   const attempts=[];let fail=false;

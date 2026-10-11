@@ -1,0 +1,1308 @@
+{
+  "date": "2026-10-11",
+  "head": "4f7a2123b55234190c842e4e0d4156acc9c3804a",
+  "files": [
+    {
+      "path": "src/shared/contract.ts",
+      "bytes": 6168,
+      "sha256": "78295d671694b3f98a6da03a90305da54424a1ab90a4da74228206992d2da4e1"
+    },
+    {
+      "path": "src/shared/lab-contract.ts",
+      "bytes": 4916,
+      "sha256": "742002ead93cf2962ac0811d5ebc9f9071d63a922c13a37ebbd9922564050bb7"
+    },
+    {
+      "path": "src/shared/protocol.ts",
+      "bytes": 29231,
+      "sha256": "86c5a34d23f2a1c44054af4a16ad8d493f9736d74fa922861e47d3d5195a9554"
+    },
+    {
+      "path": "src/shared/questionnaire-json.ts",
+      "bytes": 6356,
+      "sha256": "c4951b8689fdae6aa7235520befece8c4b74e95d822dfd16da8624d713f37fe6"
+    },
+    {
+      "path": "src/shared/download-estimate.ts",
+      "bytes": 734,
+      "sha256": "60c5bc063ff1a205f05b182f395ab5d3c69ad1ae6ce3fc6b749476e705300678"
+    },
+    {
+      "path": "src/shared/image-plan.ts",
+      "bytes": 9354,
+      "sha256": "6beec2cae06be22fd8138efb4dc3cde23dcc23607c0dd2de4ee331bdf7a829ba"
+    },
+    {
+      "path": "src/shared/interaction.ts",
+      "bytes": 1871,
+      "sha256": "5c131897f227f6941d9ea7ab75c9998c45d96362bd0aca43b6ca09ffbd1e83d0"
+    },
+    {
+      "path": "src/shared/prng.ts",
+      "bytes": 1870,
+      "sha256": "3ea35516889864f4bf13ff7fb6be6b9648e17ad3d477f901dc01494b086907ee"
+    },
+    {
+      "path": "src/shared/rating-replay.ts",
+      "bytes": 5718,
+      "sha256": "e634b7303d365c9fd11a7c369c68610ca7077c1eaac0cc4611094dddefb61f99"
+    },
+    {
+      "path": "src/shared/run-replay.ts",
+      "bytes": 9947,
+      "sha256": "fd03523e2824a1fc21f3cf71a2c3fd446ac730e8b54a1f17de6e01bdd1063bc8"
+    },
+    {
+      "path": "src/shared/scheduler.ts",
+      "bytes": 13261,
+      "sha256": "34821568df1806341f20fbdb400a0f0cbc77a18212b44922e15b8143dcfe511a"
+    },
+    {
+      "path": "src/shared/trial-design.ts",
+      "bytes": 5661,
+      "sha256": "774ca970418f24be2dd355ab6853219b5b82d91a774ea5775a215c99253dd9af"
+    },
+    {
+      "path": "src/shared/trial-sampling.ts",
+      "bytes": 2444,
+      "sha256": "27d6baa5706012c9561ef45f67e8fd6dfeb485092aff3eefdc8f1f0d9a648542"
+    },
+    {
+      "path": "src/server/database.ts",
+      "bytes": 1470,
+      "sha256": "da4bbebdbca0f99f5b28b1ad1c8a4456eabf5365089002207db324f3a915d122"
+    },
+    {
+      "path": "src/server/writer.ts",
+      "bytes": 6041,
+      "sha256": "52cffb492f17228b98a3eb39ea62263ad7b96adddf31dd54872b97c059b51657"
+    },
+    {
+      "path": "src/server/db-worker.ts",
+      "bytes": 2958,
+      "sha256": "322bd7612f494849eea64f12a3a74e0d44b16ffb2fbb2806b40f0afada817dd2"
+    },
+    {
+      "path": "src/server/lab-schema.ts",
+      "bytes": 12295,
+      "sha256": "922e99f1359948b0778c777fb398f42ff0e92a5f596a0368f517c970495e749d"
+    },
+    {
+      "path": "src/server/session-admission.ts",
+      "bytes": 6040,
+      "sha256": "f8292a2a21ec5c39b53ef4615e67ee020f649298be62dd59c0b324218e141ff0"
+    },
+    {
+      "path": "src/server/auth.ts",
+      "bytes": 1467,
+      "sha256": "93ae96078cc893bbacd65627be94336d9fdae653c09c164aa2c15d51ebe01733"
+    },
+    {
+      "path": "src/server/lab-store.ts",
+      "bytes": 64531,
+      "sha256": "2df709c61f3759f2a052e1bb730644d65e775ca96b348143c9ef4033cb1f9690"
+    },
+    {
+      "path": "src/server/main.ts",
+      "bytes": 5186,
+      "sha256": "059eb55f67307ae6bb8e2a8c367b6d8a661b833a20fba2d44e250e7f81df5c34"
+    },
+    {
+      "path": "src/server/lab-routes.ts",
+      "bytes": 21262,
+      "sha256": "a470b9578cd97395489c461424c48b790b7c66e481c00bcdf32a05aaa93d8eec"
+    },
+    {
+      "path": "src/server/preparation-queue.ts",
+      "bytes": 3416,
+      "sha256": "30abf1af9f113de073d5890cad6eb8e4f6a89c60229d2869e3d3e2f2072bb6ca"
+    },
+    {
+      "path": "src/server/maintenance.ts",
+      "bytes": 3877,
+      "sha256": "99f3706f046eedbf6e0b6a04bbd22530c8fdc4bfa7afa08765714212bc3269dc"
+    },
+    {
+      "path": "src/server/maintenance-worker.ts",
+      "bytes": 24671,
+      "sha256": "1aedd8e426e348befb44a08bf84544a83552ff7e8bfc30295b220185e8666c7c"
+    },
+    {
+      "path": "src/server/private-files.ts",
+      "bytes": 4192,
+      "sha256": "643e94897d35292215ffee60fb88f2c3dd051a8a639c7c9b28ae158212e789a1"
+    },
+    {
+      "path": "src/server/restore.ts",
+      "bytes": 5314,
+      "sha256": "bdd3794a4647892bf506c316d0804472368171c724310abb0a13b3231ebca925"
+    },
+    {
+      "path": "src/server/image-package.ts",
+      "bytes": 7357,
+      "sha256": "dffd13cb0cc7ce9fea1d6aa3657e6411f8182fddb4e2f3ecb2293280f03ccd8b"
+    },
+    {
+      "path": "src/server/offline-image.ts",
+      "bytes": 8379,
+      "sha256": "bc413c0ca477616dbd807dc662abdb3579d9208106b3ddf060c6a06c47f83c60"
+    },
+    {
+      "path": "src/server/release.ts",
+      "bytes": 4657,
+      "sha256": "a4d11c6d59fc84c444b7abfb329994909951f19fd32a9ffa0eb71daef5296a76"
+    },
+    {
+      "path": "src/server/runner-asset-policy.ts",
+      "bytes": 2649,
+      "sha256": "e026cdae0326a81b6df5bf83853ef715740eb4699c330af409a1fd54d844a619"
+    },
+    {
+      "path": "src/server/runner-encoding.ts",
+      "bytes": 950,
+      "sha256": "dd281589387ff70801e64b322dcc321dbb20ddca794e946e12dc8b98fa724942"
+    },
+    {
+      "path": "src/server/collection-store.ts",
+      "bytes": 26054,
+      "sha256": "0f4f530f7c3a825ce5e8ea5ec5f7c3d71c14eff3a9aad22eb80b588482c90617"
+    },
+    {
+      "path": "src/server/collection-routes.ts",
+      "bytes": 4369,
+      "sha256": "87ebe12ef44fc854b0a07a365c9ffec5825584c024a56637b5ed9031d3c68fdf"
+    },
+    {
+      "path": "src/web/p0.ts",
+      "bytes": 6238,
+      "sha256": "cd704b2049d4fdc7597a9b2a96b87df849434d8c47f1109df80c42714d609c15"
+    },
+    {
+      "path": "src/web/local-store.ts",
+      "bytes": 6084,
+      "sha256": "0109094100cf2a79ba4dffde7a9601687d069bfe89bdf076ca3af2262e30fbcc"
+    },
+    {
+      "path": "src/web/ledger.ts",
+      "bytes": 10278,
+      "sha256": "a8747a0460283841a2755835449f6fdabcebb3cae42afacf315ffaa3032cb53c"
+    },
+    {
+      "path": "src/web/participant-api.ts",
+      "bytes": 4653,
+      "sha256": "61a487a5b96bea98f644ef144bdf10381c357e4da18818b836a670d87de76d94"
+    },
+    {
+      "path": "src/web/participant.ts",
+      "bytes": 7595,
+      "sha256": "cce479557873648e78e53941af7215048492b4a86996fea567239cb5427c4b09"
+    },
+    {
+      "path": "src/web/session-gate.ts",
+      "bytes": 2237,
+      "sha256": "cfdcd2e3eebf6ce1bfe522af2a37f85d5f77fa77f3c52abe703bf5dd0eb6cbf9"
+    },
+    {
+      "path": "src/web/task-liveness.ts",
+      "bytes": 1582,
+      "sha256": "4aeab1af293bb7cd0765951bc00226eecee43dac90adafd9853ffabe435fda7f"
+    },
+    {
+      "path": "src/web/interaction-recorder.ts",
+      "bytes": 5417,
+      "sha256": "e62be992b9c1a828b8c2d5c37492e2e0cbf1e70b6bdc241371563baa1ed52392"
+    },
+    {
+      "path": "src/web/environment.ts",
+      "bytes": 6316,
+      "sha256": "5973ae2225c5ed7decfceda411114003e434a470998bffc25f1dd7744e07cd97"
+    },
+    {
+      "path": "src/web/consent-gate.ts",
+      "bytes": 1796,
+      "sha256": "994e5065c04dbd0ec61454d802903034d1e8dec6ee25d8b62ed8b7d408b9a789"
+    },
+    {
+      "path": "src/web/run.ts",
+      "bytes": 18085,
+      "sha256": "a6d50cbd560be1a853e65a4246d08c503a0391bd6d360295e5e345f53bf74e6a"
+    },
+    {
+      "path": "src/web/rating-run.ts",
+      "bytes": 12935,
+      "sha256": "8cc8d87e9aae4162998d911f716af3014a7b8452651c59abcb6c93582e30ee30"
+    },
+    {
+      "path": "src/web/prepare.ts",
+      "bytes": 5332,
+      "sha256": "eca19225bfc84cf269e2b897962bb5798f3b8faef556cb4ec28d7a1632b2675e"
+    },
+    {
+      "path": "src/web/preparation-gate.ts",
+      "bytes": 1893,
+      "sha256": "5875f93d9cc8fd3a56d5a6431b538e3a32ac74ca3517f6ed21e554cae409370c"
+    },
+    {
+      "path": "src/web/asset-download.ts",
+      "bytes": 3303,
+      "sha256": "0f5a261657b6508279efd1e159df0c6e4ed24171c769aa9448d311bfa7666177"
+    },
+    {
+      "path": "src/web/runner-input.ts",
+      "bytes": 3375,
+      "sha256": "99859d5df7d62c3a5ec73b75fdfdbaa25f53544aa4c42e72197b8badb1210b13"
+    },
+    {
+      "path": "src/web/stimulus.ts",
+      "bytes": 956,
+      "sha256": "b4d629c68eeec6209680e137607dd65fed773797bde7ea5749c788285a15938b"
+    },
+    {
+      "path": "src/web/admin.css",
+      "bytes": 300,
+      "sha256": "3006ee9a1f0bd9226531ccb06acb0debf73c6faab409e2af96cb9706e011ced8"
+    },
+    {
+      "path": "src/web/admin.html",
+      "bytes": 444,
+      "sha256": "d7b3e7d3d014ae7483965255c1b2c10fa6f820e3caa22ae000cf7e6a58167b25"
+    },
+    {
+      "path": "src/web/admin.ts",
+      "bytes": 10307,
+      "sha256": "14b7fe856eba5bd6f0a65d0f2536d513df2937db60eb2482febaf20c982c80c7"
+    },
+    {
+      "path": "src/web/compat.ts",
+      "bytes": 3288,
+      "sha256": "fe2467d5a9196858cf1489675dc052fac4c63e9b126c07bb7049643f3fefdf0f"
+    },
+    {
+      "path": "src/web/consent-page.ts",
+      "bytes": 2184,
+      "sha256": "1b268eb4bf7ecc0afcce92e308f4e0fc5681cdfb4a4dc1439cf1139cddcaa5dc"
+    },
+    {
+      "path": "src/web/diagnostics.html",
+      "bytes": 1020,
+      "sha256": "3d1ff754d8267e065a3c923a6aa2166722c9a98563a48a2250f823034ad0d9b6"
+    },
+    {
+      "path": "src/web/diagnostics.ts",
+      "bytes": 170,
+      "sha256": "be042939a93c974e6e2290aeea7003792bce823182402d3bc3e89327cd1aefa9"
+    },
+    {
+      "path": "src/web/dom.ts",
+      "bytes": 3070,
+      "sha256": "6b24b50f00adbe516b3b0f018d88773d7330a302df484fc79ad6df7bec53e8de"
+    },
+    {
+      "path": "src/web/ending-page.ts",
+      "bytes": 1700,
+      "sha256": "48ef0ca0e41e6c156144cff2d9785cd8d77bed4b1577a2a44739fcfec09a0dbf"
+    },
+    {
+      "path": "src/web/index.html",
+      "bytes": 576,
+      "sha256": "c393cda4c577880133326d92254973181d26e948f541fb76c513641f1b406db6"
+    },
+    {
+      "path": "src/web/main.ts",
+      "bytes": 2575,
+      "sha256": "ee16534bf897ea475a2b5b0213d4c135c62f6a77b168a6b27c085ebdff310971"
+    },
+    {
+      "path": "src/web/orientation-gate.ts",
+      "bytes": 3298,
+      "sha256": "d129eb57975229a9c3c63f3890f3c1b9fcf3c40fe0351dea8a83dbc78467cbef"
+    },
+    {
+      "path": "src/web/p0.html",
+      "bytes": 1226,
+      "sha256": "f79c314ba8396b0148f70ce27178bcc52bbfa2df361ca3bd4371b385a7dde85f"
+    },
+    {
+      "path": "src/web/participant-theme.ts",
+      "bytes": 1011,
+      "sha256": "493a97b83e6c0094b0a4780cc89084bacceff1c72deec3c94f80f98e2f1685eb"
+    },
+    {
+      "path": "src/web/participant.css",
+      "bytes": 10569,
+      "sha256": "aad8949361508e7a0f2e6ebd8580e8e29483f31fff9c0f74965c388828c663e9"
+    },
+    {
+      "path": "src/web/participate.html",
+      "bytes": 463,
+      "sha256": "f11cc775ad974be38ce98df10e86e875a2accf3dcdedebaa2df55282e306607d"
+    },
+    {
+      "path": "src/web/questionnaire-list.ts",
+      "bytes": 1021,
+      "sha256": "14842be44cb5696642194b5f32f948ebab8d3fb89f047f92996cd41b48308601"
+    },
+    {
+      "path": "src/web/replay.html",
+      "bytes": 385,
+      "sha256": "114eff2cdef2d0d78d302df3d16067d9d558f6cd6760930ec164c38e3cc83c17"
+    },
+    {
+      "path": "src/web/replay.ts",
+      "bytes": 4788,
+      "sha256": "cc99cf5390eb7c6141e6eb03d998baf5698e1972ab25ecc594ea2a17b57d2974"
+    },
+    {
+      "path": "src/web/run.html",
+      "bytes": 383,
+      "sha256": "8491b858c730b54a66a57e970c10c28c3dcc5eef303d5e37370a5fb59f960c73"
+    },
+    {
+      "path": "src/web/runner.css",
+      "bytes": 2984,
+      "sha256": "b401abc0885005f44250f84b2376143950ce9eebe72dd975e48d5795b462c404"
+    },
+    {
+      "path": "src/web/scale-input.ts",
+      "bytes": 2949,
+      "sha256": "907474b533b90162d80e1f0508ff05391283dfa63009d43e7e3a7154a31d99ec"
+    },
+    {
+      "path": "src/web/simulate.html",
+      "bytes": 374,
+      "sha256": "548f187c1b12004956eb4d9fe1a1aad4fb2ae36736f0e3277d215329de62e5b3"
+    },
+    {
+      "path": "src/web/simulate.ts",
+      "bytes": 4843,
+      "sha256": "208ac5b3b6bfeb19ff456c949314a01e60964dec91a0ed230bd00718881c74db"
+    },
+    {
+      "path": "src/web/style.css",
+      "bytes": 3107,
+      "sha256": "339df0c5b7389f478395be4a3aa8a75c6ffa86452fdb77e5dd82007c70591aaa"
+    },
+    {
+      "path": "src/web/survey-demo.ts",
+      "bytes": 740,
+      "sha256": "0f4ce734ac229055d3d293f12400965eae10babecf4e9393e07f5ea1d2c19b93"
+    },
+    {
+      "path": "src/web/survey-page.ts",
+      "bytes": 15378,
+      "sha256": "cae7047f412ead3b4ca91085cc9257a4494fd5905adb8c084d5297c67d069306"
+    },
+    {
+      "path": "src/web/text-pager.ts",
+      "bytes": 2892,
+      "sha256": "06250d4d369c45241b657978f0f785eebe88aa1bee5fe445841b4358dace346f"
+    },
+    {
+      "path": "src/web/viewport.ts",
+      "bytes": 1383,
+      "sha256": "a8c8e2abf2c64e658801e45b5786100f833fb8c540be00354b2f4c6ca61a93a8"
+    },
+    {
+      "path": "src/web/wait.ts",
+      "bytes": 681,
+      "sha256": "e9fdbe1cb66cef9fd91d9f6e5b313a66eb7da8d9ad5d64afa6d996c7df4455d9"
+    },
+    {
+      "path": "deploy/1c2g.conf",
+      "bytes": 338,
+      "sha256": "b4f72e92b9667bd21a6e387ca02f23226cc40ff0bed570e773b04431285b6c26"
+    },
+    {
+      "path": "deploy/Caddyfile",
+      "bytes": 710,
+      "sha256": "d65fede9d3f503e619da193fe503ae72bd8d1f9ebc1a6e891eb1edbe209526f6"
+    },
+    {
+      "path": "deploy/browser-psych-lab-backup.service",
+      "bytes": 377,
+      "sha256": "e0d0410a4907c639c6e8ac35ee7f639cd1e805d65ce6e55db1e773c3661fc650"
+    },
+    {
+      "path": "deploy/browser-psych-lab-backup.timer",
+      "bytes": 162,
+      "sha256": "5b0d80d54afbb964282b646d53115d57cafd84d06ed25eaeecf00208b92cf9d7"
+    },
+    {
+      "path": "deploy/browser-psych-lab.service",
+      "bytes": 668,
+      "sha256": "52ea2163b4217d96e2ad468423322b304ce764aa80f9ed7f043aa61a8ab63b40"
+    },
+    {
+      "path": "deploy/nginx.conf",
+      "bytes": 1257,
+      "sha256": "7b59f72e340ce3d5488e2b9461285b0f250230b588596cfc3447ef25bda02f77"
+    },
+    {
+      "path": "deploy/production.env.example",
+      "bytes": 855,
+      "sha256": "50e00aaf1813b495955bf8618d40dfd578de65d9f6551e8fa7f92654dcc1ab81"
+    },
+    {
+      "path": "scripts/auth-setup.mjs",
+      "bytes": 1568,
+      "sha256": "70bbd1c7d9378ded27087cf2cb00fb91f84398c86f895bd78725832019e28e84"
+    },
+    {
+      "path": "scripts/backup.mjs",
+      "bytes": 1369,
+      "sha256": "8ef6c3b8102c9c01c05b9c1a16e0c0c182a0bc62bff43a92aaa559cb986913a8"
+    },
+    {
+      "path": "scripts/browser-server.mjs",
+      "bytes": 904,
+      "sha256": "62b5623f7d15391553dd4b18548d8e5f65f351c159ac6232952050456e1df755"
+    },
+    {
+      "path": "scripts/capacity-probe-client.mjs",
+      "bytes": 11401,
+      "sha256": "7b24789e4a434d7034ab2f878d0ea387d21b68215a58485021209dd7190adf3c"
+    },
+    {
+      "path": "scripts/capacity-probe-seed.mjs",
+      "bytes": 3174,
+      "sha256": "5f39f4aa7bcafd632a3775d2a3030774fb396d80e4fcb4b013832479af43339a"
+    },
+    {
+      "path": "scripts/convert-formbricks-csv.mjs",
+      "bytes": 8545,
+      "sha256": "13ff4de0e0489ec1a6dc3efa777f7cb5011da724530452fae2da3d34014f63af"
+    },
+    {
+      "path": "scripts/dev.mjs",
+      "bytes": 1086,
+      "sha256": "f99a169afce749a499672d25c53a1f489ed6bf25a3521776b40088168fb85c9b"
+    },
+    {
+      "path": "scripts/doctor.mjs",
+      "bytes": 2736,
+      "sha256": "e53ff34e7d05eb1f056f97d9dc63f8df160bc5f1d78d6283279f019da40c7642"
+    },
+    {
+      "path": "scripts/image-output.mjs",
+      "bytes": 1431,
+      "sha256": "4b1feda8953992e840742654569bceaa6bf31c63177e9967c408aa46386bca8d"
+    },
+    {
+      "path": "scripts/lib.mjs",
+      "bytes": 634,
+      "sha256": "2222247e25eab5fcafec437134651769d58904814bb7c4a3671146bcc8805594"
+    },
+    {
+      "path": "scripts/precompress.mjs",
+      "bytes": 877,
+      "sha256": "819b3710894eae91a3ccc2dd238b8ade5a45e057b038abea1ffe44e0945ae68a"
+    },
+    {
+      "path": "scripts/prepare-images.mjs",
+      "bytes": 6108,
+      "sha256": "93638aa40c3624d34efa7f2ed6913a2bbe8cd45d325e32d053ea8ead2748424c"
+    },
+    {
+      "path": "scripts/preview-questionnaire.mjs",
+      "bytes": 15139,
+      "sha256": "8d569f35ac9852352ca402580a8b5bde420957bc1ad3d2313928b0acf5a9eb46"
+    },
+    {
+      "path": "scripts/preview-tls.mjs",
+      "bytes": 1949,
+      "sha256": "72ed02d4778a700ac1db87c71186d1e67319a281ec372c225e4aa74092c70975"
+    },
+    {
+      "path": "scripts/profile-bandwidth.mjs",
+      "bytes": 9317,
+      "sha256": "9f1b66b3dfd8015a46b084ac156c9b8a20e8012dbd1bcc03b3d2d3dd37e9862c"
+    },
+    {
+      "path": "scripts/profile-foundation.mjs",
+      "bytes": 3752,
+      "sha256": "effbfcff4a17ce0dca6ef8dee21c019d7006f04846ca985108abfa74b6bf2dad"
+    },
+    {
+      "path": "scripts/profile-frontend.mjs",
+      "bytes": 1972,
+      "sha256": "aed92237b7ec91d46cad9531a195973bfa5e2c1f40c2aae453e3ef289a5a9caf"
+    },
+    {
+      "path": "scripts/profile-mixed.mjs",
+      "bytes": 10816,
+      "sha256": "109d8cad26c78d9a6e80c590f1b02e457d7fd9ac92f9f7802f5152afd605a71b"
+    },
+    {
+      "path": "scripts/references.mjs",
+      "bytes": 2698,
+      "sha256": "9be61931e5a3ab993494e1d22eaca570493bf7ca8c50308120b7ab7d35256033"
+    },
+    {
+      "path": "scripts/release.mjs",
+      "bytes": 1839,
+      "sha256": "1c69f6065dd473216c827e6e40d3d36d77992802da85eab93d26ebef284334d1"
+    },
+    {
+      "path": "scripts/setup.mjs",
+      "bytes": 1235,
+      "sha256": "6ca6cc841b1471e86be439bb3fe49781b9583eba360c7206257f1d735a80c3f1"
+    },
+    {
+      "path": "scripts/smoke.mjs",
+      "bytes": 2509,
+      "sha256": "21912aa8a538cf8957bc79c42d0d6b4e1b2e256cdf9fb7cf24b807ee0bbce39b"
+    },
+    {
+      "path": "package.json",
+      "bytes": 2113,
+      "sha256": "d87ba83e32defc53a184f093af3484f5dd11e37968bbf184e1daec629ec1883c"
+    },
+    {
+      "path": "vite.config.ts",
+      "bytes": 1327,
+      "sha256": "8a3028ce39f3bfa45e284c7e07b58b81249fae4ed7a1d9fccda8d31fb97cdcb1"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "bytes": 253,
+      "sha256": "ef1a379f95d49cdb5256f976892abf72e8621bcf68a16a1c3dae68a990cb5f38"
+    },
+    {
+      "path": "tsconfig.server.json",
+      "bytes": 278,
+      "sha256": "b96af06e6e9c9720a1b265b1f7100eeec5b01ef5f64fc0b0fa0c79685b3bdb2d"
+    },
+    {
+      "path": "tsconfig.web.json",
+      "bytes": 323,
+      "sha256": "8338824353b27cb21582a5cdd8876c46ca49051277185e357b1cf19121516542"
+    },
+    {
+      "path": "playwright.config.ts",
+      "bytes": 570,
+      "sha256": "22a9dc31dbda77b7d6d220fc65dba56dfa6f17e4b54dbedd79c2699c37f3be9e"
+    },
+    {
+      "path": "tests/runner-browser.config.ts",
+      "bytes": 557,
+      "sha256": "a789de3d001b359a605e2e7e84871e822fd20f7b502731fd8c799789ed902f06"
+    },
+    {
+      "path": ".env.example",
+      "bytes": 387,
+      "sha256": "0ab965ca9415f5b6685a8fd0a4b44e069bebee8679251154be18dacc330e724f"
+    }
+  ],
+  "batches": [
+    {
+      "batch": 1,
+      "theme": "合同和问卷编译",
+      "sections": [
+        "### src/shared/contract.ts L1–L103",
+        "### src/shared/lab-contract.ts L1–L49",
+        "### src/shared/protocol.ts L1–L320",
+        "### src/shared/questionnaire-json.ts L1–L58"
+      ],
+      "chars": 46333
+    },
+    {
+      "batch": 2,
+      "theme": "随机化、动态补测及重放",
+      "sections": [
+        "### src/shared/download-estimate.ts L1–L10",
+        "### src/shared/image-plan.ts L1–L137",
+        "### src/shared/interaction.ts L1–L11",
+        "### src/shared/prng.ts L1–L41",
+        "### src/shared/rating-replay.ts L1–L63",
+        "### src/shared/run-replay.ts L1–L113",
+        "### src/shared/scheduler.ts L1–L217"
+      ],
+      "chars": 43293
+    },
+    {
+      "batch": 3,
+      "theme": "随机化、动态补测及重放",
+      "sections": [
+        "### src/shared/trial-design.ts L1–L89",
+        "### src/shared/trial-sampling.ts L1–L32"
+      ],
+      "chars": 8418
+    },
+    {
+      "batch": 4,
+      "theme": "数据库、RPC、认证及准入",
+      "sections": [
+        "### src/server/database.ts L1–L31",
+        "### src/server/writer.ts L1–L106",
+        "### src/server/db-worker.ts L1–L54",
+        "### src/server/lab-schema.ts L1–L96",
+        "### src/server/session-admission.ts L1–L61",
+        "### src/server/auth.ts L1–L25"
+      ],
+      "chars": 30754
+    },
+    {
+      "batch": 5,
+      "theme": "研究和参加者事务",
+      "sections": [
+        "### src/server/lab-store.ts L1–L392"
+      ],
+      "chars": 43197
+    },
+    {
+      "batch": 6,
+      "theme": "研究和参加者事务",
+      "sections": [
+        "### src/server/lab-store.ts L393–L575"
+      ],
+      "chars": 21835
+    },
+    {
+      "batch": 7,
+      "theme": "HTTP和资源授权",
+      "sections": [
+        "### src/server/main.ts L1–L98",
+        "### src/server/lab-routes.ts L1–L198",
+        "### src/server/preparation-queue.ts L1–L58"
+      ],
+      "chars": 30217
+    },
+    {
+      "batch": 8,
+      "theme": "维护、文件生命周期及恢复",
+      "sections": [
+        "### src/server/maintenance.ts L1–L43",
+        "### src/server/maintenance-worker.ts L1–L171",
+        "### src/server/private-files.ts L1–L46",
+        "### src/server/restore.ts L1–L42"
+      ],
+      "chars": 38463
+    },
+    {
+      "batch": 9,
+      "theme": "图片包及冻结发行",
+      "sections": [
+        "### src/server/image-package.ts L1–L65",
+        "### src/server/offline-image.ts L1–L119",
+        "### src/server/release.ts L1–L54",
+        "### src/server/runner-asset-policy.ts L1–L40",
+        "### src/server/runner-encoding.ts L1–L17"
+      ],
+      "chars": 24450
+    },
+    {
+      "batch": 10,
+      "theme": "P0诊断采集",
+      "sections": [
+        "### src/server/collection-store.ts L1–L351",
+        "### src/server/collection-routes.ts L1–L60",
+        "### src/web/p0.ts L1–L107"
+      ],
+      "chars": 36738
+    },
+    {
+      "batch": 11,
+      "theme": "本地账本与参加者生命周期",
+      "sections": [
+        "### src/web/local-store.ts L1–L99",
+        "### src/web/ledger.ts L1–L57",
+        "### src/web/participant-api.ts L1–L34",
+        "### src/web/participant.ts L1–L48",
+        "### src/web/session-gate.ts L1–L25",
+        "### src/web/task-liveness.ts L1–L19",
+        "### src/web/interaction-recorder.ts L1–L19",
+        "### src/web/environment.ts L1–L35",
+        "### src/web/consent-gate.ts L1–L26"
+      ],
+      "chars": 45486
+    },
+    {
+      "batch": 12,
+      "theme": "实验执行与准备",
+      "sections": [
+        "### src/web/run.ts L1–L128",
+        "### src/web/rating-run.ts L1–L39",
+        "### src/web/prepare.ts L1–L47",
+        "### src/web/preparation-gate.ts L1–L25",
+        "### src/web/asset-download.ts L1–L65",
+        "### src/web/runner-input.ts L1–L48",
+        "### src/web/stimulus.ts L1–L14"
+      ],
+      "chars": 44883
+    },
+    {
+      "batch": 13,
+      "theme": "页面交互和管理",
+      "sections": [
+        "### src/web/admin.css L1–L4",
+        "### src/web/admin.html L1–L3",
+        "### src/web/admin.ts L1–L67",
+        "### src/web/compat.ts L1–L30",
+        "### src/web/consent-page.ts L1–L27",
+        "### src/web/diagnostics.html L1–L4",
+        "### src/web/diagnostics.ts L1–L7",
+        "### src/web/dom.ts L1–L26",
+        "### src/web/ending-page.ts L1–L20",
+        "### src/web/index.html L1–L3",
+        "### src/web/main.ts L1–L59",
+        "### src/web/orientation-gate.ts L1–L40",
+        "### src/web/p0.html L1–L20",
+        "### src/web/participant-theme.ts L1–L19",
+        "### src/web/participant.css L1–L119",
+        "### src/web/participate.html L1–L2",
+        "### src/web/questionnaire-list.ts L1–L24",
+        "### src/web/replay.html L1–L2"
+      ],
+      "chars": 42594
+    },
+    {
+      "batch": 14,
+      "theme": "页面交互和管理",
+      "sections": [
+        "### src/web/replay.ts L1–L16",
+        "### src/web/run.html L1–L2",
+        "### src/web/runner.css L1–L40",
+        "### src/web/scale-input.ts L1–L46",
+        "### src/web/simulate.html L1–L2",
+        "### src/web/simulate.ts L1–L34",
+        "### src/web/style.css L1–L44",
+        "### src/web/survey-demo.ts L1–L17",
+        "### src/web/survey-page.ts L1–L234",
+        "### src/web/text-pager.ts L1–L58",
+        "### src/web/viewport.ts L1–L30",
+        "### src/web/wait.ts L1–L10"
+      ],
+      "chars": 40313
+    },
+    {
+      "batch": 15,
+      "theme": "运维工具和部署",
+      "sections": [
+        "### deploy/1c2g.conf L1–L8",
+        "### deploy/Caddyfile L1–L29",
+        "### deploy/browser-psych-lab-backup.service L1–L14",
+        "### deploy/browser-psych-lab-backup.timer L1–L9",
+        "### deploy/browser-psych-lab.service L1–L29",
+        "### deploy/nginx.conf L1–L37",
+        "### deploy/production.env.example L1–L20",
+        "### scripts/auth-setup.mjs L1–L18",
+        "### scripts/backup.mjs L1–L11",
+        "### scripts/browser-server.mjs L1–L17",
+        "### scripts/capacity-probe-client.mjs L1–L97",
+        "### scripts/capacity-probe-seed.mjs L1–L31",
+        "### scripts/convert-formbricks-csv.mjs L1–L187",
+        "### scripts/dev.mjs L1–L30",
+        "### scripts/doctor.mjs L1–L60",
+        "### scripts/image-output.mjs L1–L30",
+        "### scripts/lib.mjs L1–L18",
+        "### scripts/precompress.mjs L1–L21",
+        "### scripts/prepare-images.mjs L1–L92"
+      ],
+      "chars": 45052
+    },
+    {
+      "batch": 16,
+      "theme": "运维工具和部署",
+      "sections": [
+        "### scripts/preview-questionnaire.mjs L1–L131",
+        "### scripts/preview-tls.mjs L1–L27",
+        "### scripts/profile-bandwidth.mjs L1–L85",
+        "### scripts/profile-foundation.mjs L1–L81",
+        "### scripts/profile-frontend.mjs L1–L40",
+        "### scripts/profile-mixed.mjs L1–L51",
+        "### scripts/references.mjs L1–L55",
+        "### scripts/release.mjs L1–L23"
+      ],
+      "chars": 46241
+    },
+    {
+      "batch": 17,
+      "theme": "运维工具和部署",
+      "sections": [
+        "### scripts/setup.mjs L1–L22",
+        "### scripts/smoke.mjs L1–L51"
+      ],
+      "chars": 4027
+    },
+    {
+      "batch": 18,
+      "theme": "构建及配置",
+      "sections": [
+        "### package.json L1–L58",
+        "### vite.config.ts L1–L34",
+        "### tsconfig.base.json L1–L12",
+        "### tsconfig.server.json L1–L13",
+        "### tsconfig.web.json L1–L12",
+        "### playwright.config.ts L1–L18",
+        "### tests/runner-browser.config.ts L1–L7",
+        "### .env.example L1–L12"
+      ],
+      "chars": 6331
+    }
+  ],
+  "transport": [
+    {
+      "chunk": 1,
+      "source_batch": 1,
+      "theme": "合同和问卷编译",
+      "file": "chunk-01.prompt.md",
+      "chars": 14044
+    },
+    {
+      "chunk": 2,
+      "source_batch": 1,
+      "theme": "合同和问卷编译",
+      "file": "chunk-02.prompt.md",
+      "chars": 14040
+    },
+    {
+      "chunk": 3,
+      "source_batch": 1,
+      "theme": "合同和问卷编译",
+      "file": "chunk-03.prompt.md",
+      "chars": 14024
+    },
+    {
+      "chunk": 4,
+      "source_batch": 1,
+      "theme": "合同和问卷编译",
+      "file": "chunk-04.prompt.md",
+      "chars": 4574
+    },
+    {
+      "chunk": 5,
+      "source_batch": 2,
+      "theme": "随机化、动态补测及重放",
+      "file": "chunk-05.prompt.md",
+      "chars": 14111
+    },
+    {
+      "chunk": 6,
+      "source_batch": 2,
+      "theme": "随机化、动态补测及重放",
+      "file": "chunk-06.prompt.md",
+      "chars": 14103
+    },
+    {
+      "chunk": 7,
+      "source_batch": 2,
+      "theme": "随机化、动态补测及重放",
+      "file": "chunk-07.prompt.md",
+      "chars": 14080
+    },
+    {
+      "chunk": 8,
+      "source_batch": 2,
+      "theme": "随机化、动态补测及重放",
+      "file": "chunk-08.prompt.md",
+      "chars": 1366
+    },
+    {
+      "chunk": 9,
+      "source_batch": 3,
+      "theme": "随机化、动态补测及重放",
+      "file": "chunk-09.prompt.md",
+      "chars": 8346
+    },
+    {
+      "chunk": 10,
+      "source_batch": 4,
+      "theme": "数据库、RPC、认证及准入",
+      "file": "chunk-10.prompt.md",
+      "chars": 14127
+    },
+    {
+      "chunk": 11,
+      "source_batch": 4,
+      "theme": "数据库、RPC、认证及准入",
+      "file": "chunk-11.prompt.md",
+      "chars": 14140
+    },
+    {
+      "chunk": 12,
+      "source_batch": 4,
+      "theme": "数据库、RPC、认证及准入",
+      "file": "chunk-12.prompt.md",
+      "chars": 2716
+    },
+    {
+      "chunk": 13,
+      "source_batch": 5,
+      "theme": "研究和参加者事务",
+      "file": "chunk-13.prompt.md",
+      "chars": 14137
+    },
+    {
+      "chunk": 14,
+      "source_batch": 5,
+      "theme": "研究和参加者事务",
+      "file": "chunk-14.prompt.md",
+      "chars": 13981
+    },
+    {
+      "chunk": 15,
+      "source_batch": 5,
+      "theme": "研究和参加者事务",
+      "file": "chunk-15.prompt.md",
+      "chars": 13710
+    },
+    {
+      "chunk": 16,
+      "source_batch": 5,
+      "theme": "研究和参加者事务",
+      "file": "chunk-16.prompt.md",
+      "chars": 1719
+    },
+    {
+      "chunk": 17,
+      "source_batch": 6,
+      "theme": "研究和参加者事务",
+      "file": "chunk-17.prompt.md",
+      "chars": 14105
+    },
+    {
+      "chunk": 18,
+      "source_batch": 6,
+      "theme": "研究和参加者事务",
+      "file": "chunk-18.prompt.md",
+      "chars": 7798
+    },
+    {
+      "chunk": 19,
+      "source_batch": 7,
+      "theme": "HTTP和资源授权",
+      "file": "chunk-19.prompt.md",
+      "chars": 14102
+    },
+    {
+      "chunk": 20,
+      "source_batch": 7,
+      "theme": "HTTP和资源授权",
+      "file": "chunk-20.prompt.md",
+      "chars": 14023
+    },
+    {
+      "chunk": 21,
+      "source_batch": 7,
+      "theme": "HTTP和资源授权",
+      "file": "chunk-21.prompt.md",
+      "chars": 2307
+    },
+    {
+      "chunk": 22,
+      "source_batch": 8,
+      "theme": "维护、文件生命周期及恢复",
+      "file": "chunk-22.prompt.md",
+      "chars": 13738
+    },
+    {
+      "chunk": 23,
+      "source_batch": 8,
+      "theme": "维护、文件生命周期及恢复",
+      "file": "chunk-23.prompt.md",
+      "chars": 13861
+    },
+    {
+      "chunk": 24,
+      "source_batch": 8,
+      "theme": "维护、文件生命周期及恢复",
+      "file": "chunk-24.prompt.md",
+      "chars": 11087
+    },
+    {
+      "chunk": 25,
+      "source_batch": 9,
+      "theme": "图片包及冻结发行",
+      "file": "chunk-25.prompt.md",
+      "chars": 14102
+    },
+    {
+      "chunk": 26,
+      "source_batch": 9,
+      "theme": "图片包及冻结发行",
+      "file": "chunk-26.prompt.md",
+      "chars": 10424
+    },
+    {
+      "chunk": 27,
+      "source_batch": 10,
+      "theme": "P0诊断采集",
+      "file": "chunk-27.prompt.md",
+      "chars": 14026
+    },
+    {
+      "chunk": 28,
+      "source_batch": 10,
+      "theme": "P0诊断采集",
+      "file": "chunk-28.prompt.md",
+      "chars": 14088
+    },
+    {
+      "chunk": 29,
+      "source_batch": 10,
+      "theme": "P0诊断采集",
+      "file": "chunk-29.prompt.md",
+      "chars": 8835
+    },
+    {
+      "chunk": 30,
+      "source_batch": 11,
+      "theme": "本地账本与参加者生命周期",
+      "file": "chunk-30.prompt.md",
+      "chars": 14045
+    },
+    {
+      "chunk": 31,
+      "source_batch": 11,
+      "theme": "本地账本与参加者生命周期",
+      "file": "chunk-31.prompt.md",
+      "chars": 13875
+    },
+    {
+      "chunk": 32,
+      "source_batch": 11,
+      "theme": "本地账本与参加者生命周期",
+      "file": "chunk-32.prompt.md",
+      "chars": 14134
+    },
+    {
+      "chunk": 33,
+      "source_batch": 11,
+      "theme": "本地账本与参加者生命周期",
+      "file": "chunk-33.prompt.md",
+      "chars": 3813
+    },
+    {
+      "chunk": 34,
+      "source_batch": 12,
+      "theme": "实验执行与准备",
+      "file": "chunk-34.prompt.md",
+      "chars": 13659
+    },
+    {
+      "chunk": 35,
+      "source_batch": 12,
+      "theme": "实验执行与准备",
+      "file": "chunk-35.prompt.md",
+      "chars": 13928
+    },
+    {
+      "chunk": 36,
+      "source_batch": 12,
+      "theme": "实验执行与准备",
+      "file": "chunk-36.prompt.md",
+      "chars": 14098
+    },
+    {
+      "chunk": 37,
+      "source_batch": 12,
+      "theme": "实验执行与准备",
+      "file": "chunk-37.prompt.md",
+      "chars": 3560
+    },
+    {
+      "chunk": 38,
+      "source_batch": 13,
+      "theme": "页面交互和管理",
+      "file": "chunk-38.prompt.md",
+      "chars": 14078
+    },
+    {
+      "chunk": 39,
+      "source_batch": 13,
+      "theme": "页面交互和管理",
+      "file": "chunk-39.prompt.md",
+      "chars": 14113
+    },
+    {
+      "chunk": 40,
+      "source_batch": 13,
+      "theme": "页面交互和管理",
+      "file": "chunk-40.prompt.md",
+      "chars": 14139
+    },
+    {
+      "chunk": 41,
+      "source_batch": 13,
+      "theme": "页面交互和管理",
+      "file": "chunk-41.prompt.md",
+      "chars": 648
+    },
+    {
+      "chunk": 42,
+      "source_batch": 14,
+      "theme": "页面交互和管理",
+      "file": "chunk-42.prompt.md",
+      "chars": 14031
+    },
+    {
+      "chunk": 43,
+      "source_batch": 14,
+      "theme": "页面交互和管理",
+      "file": "chunk-43.prompt.md",
+      "chars": 14107
+    },
+    {
+      "chunk": 44,
+      "source_batch": 14,
+      "theme": "页面交互和管理",
+      "file": "chunk-44.prompt.md",
+      "chars": 12406
+    },
+    {
+      "chunk": 45,
+      "source_batch": 15,
+      "theme": "运维工具和部署",
+      "file": "chunk-45.prompt.md",
+      "chars": 14118
+    },
+    {
+      "chunk": 46,
+      "source_batch": 15,
+      "theme": "运维工具和部署",
+      "file": "chunk-46.prompt.md",
+      "chars": 14094
+    },
+    {
+      "chunk": 47,
+      "source_batch": 15,
+      "theme": "运维工具和部署",
+      "file": "chunk-47.prompt.md",
+      "chars": 14073
+    },
+    {
+      "chunk": 48,
+      "source_batch": 15,
+      "theme": "运维工具和部署",
+      "file": "chunk-48.prompt.md",
+      "chars": 3153
+    },
+    {
+      "chunk": 49,
+      "source_batch": 16,
+      "theme": "运维工具和部署",
+      "file": "chunk-49.prompt.md",
+      "chars": 14111
+    },
+    {
+      "chunk": 50,
+      "source_batch": 16,
+      "theme": "运维工具和部署",
+      "file": "chunk-50.prompt.md",
+      "chars": 14102
+    },
+    {
+      "chunk": 51,
+      "source_batch": 16,
+      "theme": "运维工具和部署",
+      "file": "chunk-51.prompt.md",
+      "chars": 14111
+    },
+    {
+      "chunk": 52,
+      "source_batch": 16,
+      "theme": "运维工具和部署",
+      "file": "chunk-52.prompt.md",
+      "chars": 4281
+    },
+    {
+      "chunk": 53,
+      "source_batch": 17,
+      "theme": "运维工具和部署",
+      "file": "chunk-53.prompt.md",
+      "chars": 3956
+    },
+    {
+      "chunk": 54,
+      "source_batch": 18,
+      "theme": "构建及配置",
+      "file": "chunk-54.prompt.md",
+      "chars": 6272
+    }
+  ],
+  "transport_instruction": "Segments 1-10 use their saved prompt verbatim. Segment 11 additionally introduces receive-only acknowledgments. Segments 12-54 prepend a receive-only, one-line acknowledgment instruction; substantive conclusions follow in synthesis/final prompts.",
+  "excluded": [
+    "private .env and credentials",
+    "runtime databases and research responses",
+    "node_modules and references/checkouts",
+    "generated dist"
+  ],
+  "first_party_scope": "118 source, script, page/style, deploy and build files; test titles are inventory only, not a full test-source audit. Final changed tests and new shared policy are discussed separately.",
+  "final_changed_files": [
+    {
+      "path": "package.json",
+      "sha256": "5daf6be924c704e6f1867bf6551baa6417e0977ca18c061014c420ee699d58ff"
+    },
+    {
+      "path": "scripts/profile-bandwidth.mjs",
+      "sha256": "8d63f26efb0ad75211496255e6427862b30cc0190707334bf7908c63fb668d8e"
+    },
+    {
+      "path": "scripts/profile-mixed.mjs",
+      "sha256": "8264bd1eacb0fba114ea2a0f6f747efa8de7c628f7f70a0e1c4d3091ee3210af"
+    },
+    {
+      "path": "scripts/release.mjs",
+      "sha256": "b74df70861528511c6f1ea16c4d854c28d550111dd70e6b56ba948a2682bd848"
+    },
+    {
+      "path": "src/server/db-worker.ts",
+      "sha256": "735bb239d64ec3c9947a8973eb5616ff7547911a284bfb48402f88aa697de415"
+    },
+    {
+      "path": "src/server/lab-routes.ts",
+      "sha256": "0ddc94540e080d61d9c3faa1a23badba6f58d57b6ce819c849f68a96e40ec7ee"
+    },
+    {
+      "path": "src/server/lab-store.ts",
+      "sha256": "8d67b4ca7404f14cc3d1bc9a93cf809003524fe83c1cd41941c9056191c6e3ff"
+    },
+    {
+      "path": "src/server/runner-asset-policy.ts",
+      "sha256": "713ba15354584195014aaa5212bc4eb0aed6f15c3536381b31069ee37fb47b60"
+    },
+    {
+      "path": "src/web/participant.ts",
+      "sha256": "d737d1c8036b2c33ee187a56fc51ebeac24d79beaeb648691a096f372c62beca"
+    },
+    {
+      "path": "src/web/run.ts",
+      "sha256": "ef16ca316ed66bac33f93aa1f4412892e79a3b62683da3203ad46896884fdb36"
+    },
+    {
+      "path": "src/web/task-liveness.ts",
+      "sha256": "1ce321b1601f076bc3e91ce2d61b69f783dccbac3a7a0341e9e925654c69c79f"
+    },
+    {
+      "path": "tests/browser/lab.spec.ts",
+      "sha256": "353709999413a2693c3d822c8c434c4d648280ff28000d6f1ab5262f96124461"
+    },
+    {
+      "path": "tests/runner-browser/runner.spec.ts",
+      "sha256": "42bfadc38c3a13b88f4943fd439f1a4b5c667893c405ad74b6cc5d42aa1e2491"
+    },
+    {
+      "path": "tests/unit/runner-release.test.mjs",
+      "sha256": "48edf0bff5224df95aaa0237ff72955335f0f9b398b0db574926d083a8b040d4"
+    },
+    {
+      "path": "tests/unit/task-liveness.test.mjs",
+      "sha256": "4e55f6c3e29a388216a74c2624692c443458b94cb011447a1eeb217a90761cf1"
+    },
+    {
+      "path": "tests/unit/writer.test.mjs",
+      "sha256": "b838138b2f8076094e808eb40a202319535578cfedb3d7e4781599bb052b988c"
+    },
+    {
+      "path": "src/shared/task-policy.ts",
+      "sha256": "d8753bfd9dc58eaa772adf37e09eacb792124842d4a281c9499b6da7bda49881"
+    }
+  ],
+  "conversation_url": "https://gemini.google.com/app/40a1fe9e41989eac",
+  "discussion_results": 65,
+  "final_patch_review": "res_274eaeda5879a85bc850",
+  "final_nonfunctional_clarifications": [
+    "Diagram links backup to persisted task data rather than CSV",
+    "Mixed probe scope explicitly excludes browser decoding"
+  ]
+}

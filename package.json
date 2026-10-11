@@ -26,11 +26,12 @@
     "test:browser": "playwright test",
     "test:runner": "playwright test --config tests/runner-browser.config.ts",
     "test:unit": "node --import tsx --test tests/unit/*.test.mjs",
-    "check": "npm run typecheck && npm run build && npm run smoke && npm run test:unit && npm run test:browser",
+    "check": "npm run typecheck && npm run build && npm run smoke && npm run test:unit && npm run test:browser && npm run test:runner",
     "backup": "node scripts/backup.mjs",
     "restore": "node dist/server/restore.js",
     "profile:mixed": "node --import tsx scripts/profile-mixed.mjs",
-    "profile:bandwidth": "node --import tsx scripts/profile-bandwidth.mjs"
+    "profile:bandwidth": "node --import tsx scripts/profile-bandwidth.mjs",
+    "profile:transport": "node --import tsx scripts/profile-transport.mjs"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",

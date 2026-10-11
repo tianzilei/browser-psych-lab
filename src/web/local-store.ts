@@ -10,8 +10,9 @@ interface LocalSchema extends DBSchema {
   outbox: { key: string; value: WireEvent };
   meta: { key: string; value: LocalState };
 }
-export async function sha256(text: string) {
-  const bytes = new TextEncoder().encode(text);
+const encoder = new TextEncoder();
+export async function sha256(text: string | Uint8Array<ArrayBuffer>) {
+  const bytes = typeof text === 'string' ? encoder.encode(text) : text;
   const result = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(result), byte => byte.toString(16).padStart(2, '0')).join('');
 }

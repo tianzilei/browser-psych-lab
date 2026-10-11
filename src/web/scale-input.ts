@@ -1,5 +1,6 @@
 import type { Question, Answer, ScaleAxis } from '../shared/protocol.js';
 import { el } from './dom.js';
+import {ui} from './participant-ui.js';
 
 // Discrete axis, with no implicit answer at the initial thumb position.
 export function scaleInput(q: Question | (ScaleAxis & {required:boolean}), answer: Answer | undefined, save: (answer: number|null) => void) {
@@ -13,14 +14,16 @@ export function scaleInput(q: Question | (ScaleAxis & {required:boolean}), answe
   track.append(range, ticks);
   const bottom = el('div', undefined, 'axis-bottom'), output = el('output');
   output.id = `axis-value-${q.id}`; range.setAttribute('aria-describedby', output.id);
+  output.setAttribute('aria-live','off');
   bottom.append(output); control.append(ends, track, bottom);
   function sync(value: Answer | undefined) {
     const chosen = typeof value === 'number';
     range.value = String(chosen ? value : Math.round((q.min! + q.max!) / 2));
     range.dataset.answered = String(chosen);
-    const label = chosen ? q.labels?.[value-q.min!] ?? (value===q.min?q.min_label:value===q.max?q.max_label:'两端之间') : '';
-    range.setAttribute('aria-valuetext', chosen ? label! : '尚未作答');
-    output.textContent = chosen ? `已选：${label}` : '点击或拖动坐标轴选择';
+    const label = chosen ? q.labels?.[value-q.min!] ?? (value===q.min?q.min_label:value===q.max?q.max_label:String(value)) : '';
+    const display=chosen&&!q.labels?`${value}${label===String(value)?'':` · ${label}`}`:label;
+    range.setAttribute('aria-valuetext', chosen ? display! : '尚未作答');
+    output.textContent = chosen ? `已选择：${display}` : ui.scaleHint;
     output.dataset.answered=String(chosen);
     for(const [index,tick]of Array.from(ticks.children).entries())(tick as HTMLElement).dataset.selected=String(chosen&&index===value-q.min!);
   }
@@ -39,7 +42,7 @@ export function scaleInput(q: Question | (ScaleAxis & {required:boolean}), answe
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) commit(Number(range.value));
   });
   if (!q.required) {
-    const clear = el('button', '清除'); clear.type = 'button'; clear.addEventListener('click', () => commit(null)); bottom.append(clear);
+    const clear = el('button', '清除选择'); clear.type = 'button'; clear.addEventListener('click', () => commit(null)); bottom.append(clear);
   }
   sync(answer); return control;
 }

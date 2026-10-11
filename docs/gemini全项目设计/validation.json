@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-11",
+  "mode": "LOCAL_TEST_ONLY",
+  "check": {
+    "command": "npm run check",
+    "exit_code": 0,
+    "typecheck": "PASS",
+    "build": "PASS",
+    "smoke": "PASS",
+    "unit": {
+      "passed": 109,
+      "failed": 0
+    },
+    "browser": {
+      "passed": 37,
+      "failed": 0
+    },
+    "runner": {
+      "passed": 5,
+      "failed": 0
+    },
+    "log_sha256": "04c024c81f7217379e4b95ae24f0496ef677225aa062432d0fe09157c4161913"
+  },
+  "targeted": {
+    "passed": 20,
+    "failed": 0
+  },
+  "baseline": {
+    "unit": {
+      "passed": 104,
+      "failed": 1
+    },
+    "failure": "Fault fixture startup exceeded its 1000ms budget under suite concurrency; production timeout unchanged."
+  },
+  "runner_fixture_repairs": [
+    "GB18030 source converted to UTF-8 preserving Chinese strings",
+    "Invalid test-image bytes replaced with actual PNG from sharp",
+    "Legacy score buttons replaced with real touch interaction on current range slider"
+  ],
+  "mixed": {
+    "report": "mixed-v3.json",
+    "schema": "mixed-load-v3",
+    "scope": "loopback HTTP; offered waves 1/5/10/20 with immediate task/preparation capacity rejection and no waiting polling; separate admitted fault/reconciliation probe; synthetic software records, real SQLite/resources/replay/export/backup; original byte/hash verification without browser decoding; no mobile or physical timing claim",
+    "offered_wave_counts": [
+      1,
+      5,
+      10,
+      20
+    ],
+    "outcomes": {
+      "COMPLETED": 4,
+      "PREPARATION_CAPACITY_FULL": 3,
+      "SESSION_CAPACITY_FULL": 29
+    },
+    "fault_probe": {
+      "outcome": "TERMINATED"
+    },
+    "maximum_active": 2,
+    "limit": 2,
+    "final_admission": {
+      "active": 0,
+      "unlimited_active": 0,
+      "limited_active": 0,
+      "queued": 0,
+      "limit": 2,
+      "capacity": 2,
+      "over_limit": 0,
+      "pinned": 0
+    },
+    "export_rows": 684,
+    "backup_independent": false
+  },
+  "bandwidth": {
+    "report": "bandwidth-v3.json",
+    "schema": "shaped-preparation-v3",
+    "participants": 20,
+    "outcomes": {
+      "prepared": 1,
+      "capacity_rejected": 19
+    },
+    "maximum_streams": 1,
+    "maximum_active": 2,
+    "final_admission": {
+      "active": 0,
+      "unlimited_active": 0,
+      "limited_active": 0,
+      "queued": 0,
+      "limit": 2,
+      "capacity": 2,
+      "over_limit": 0,
+      "pinned": 0
+    },
+    "final_preparation": {
+      "active": 0,
+      "queued": 0,
+      "streams": 0,
+      "limit": 1,
+      "capacity": 1
+    }
+  },
+  "boundaries": [
+    "Chromium and touch simulation, not physical device timing validation",
+    "Synthetic software traces and loopback bandwidth shaping, not new ECS capacity evidence",
+    "Backup independent=false; no claim of independent recovery acceptance",
+    "No deployment, collection gate change, or actual research data modification",
+    "CLI probes validate bytes/hashes but do not exercise browser ImageBitmap decoding."
+  ],
+  "gemini": {
+    "source_files": 118,
+    "source_chunks": 54,
+    "recorded_complete_results": 65,
+    "review": "Static design discussion; final response reports no definite blocking issue."
+  }
+}

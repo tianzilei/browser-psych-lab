@@ -38,7 +38,7 @@ async function req(path,data,cookie=adminCookie,admin=true){
   let response;
   try{response=await fetch(`${origin}${path}`,{method:data===undefined?'GET':'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json',...(admin?{'X-CSRF-Token':csrf}:{})},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(15000)});}
   catch(error){throw new Error(`SHAPED_REQUEST_FAILED: ${path}`,{cause:error});}
-  const value=await response.json();if(!response.ok)throw new Error(`${path}: ${value.code}`);return {value,cookie:response.headers.get('set-cookie')?.split(';')[0]};
+  const value=await response.json();if(!response.ok)throw Object.assign(new Error(`${path}: ${value.code}`),{status:response.status,code:value.code});return {value,cookie:response.headers.get('set-cookie')?.split(';')[0]};
 }
 try{
   const hash=await passwordHash('TEST_ONLY-bandwidth-password');
@@ -56,27 +56,31 @@ try{
     return {path,cookie:session.cookie};
   }));
   const admitted=[],finished=[],sessionAdmitted=[],started=performance.now(),bodyStart=shapedBytes;let maximumStreams=0,liveStreams=0,maximumActive=0;
-  const results=await Promise.all(sessions.map(async(s,index)=>{
+  const results=await Promise.all(sessions.map(async(s,index)=>{try{
     const admissionTicket=randomUUID();let admission=(await req(`${s.path}/admission`,{action:'join',ticket_id:admissionTicket},s.cookie,false)).value;
     sessionAdmitted.push({index,position:admission.position,status:admission.status});
-    for(let i=0;admission.status==='QUEUED';i++){if(i>=600)throw new Error('SESSION_WAIT_EXCEEDED');await new Promise(r=>setTimeout(r,1000));admission=(await req(`${s.path}/admission`,{action:'touch',ticket_id:admissionTicket},s.cookie,false)).value;}
     if(admission.status!=='ACTIVE')throw new Error('SESSION_NOT_ADMITTED');const status=(await req('/api/lab/operations')).value.state.admission;maximumActive=Math.max(maximumActive,status.active);if(status.active>sessionLimit)throw new Error('SESSION_LIMIT_VIOLATED');
     const writer_id=randomUUID(),claim=await req(`${s.path}/claim`,{request_id:randomUUID(),writer_id},s.cookie,false);s.fence={writer_id,writer_epoch:claim.value.writer_epoch};
     await req(`${s.path}/reserve`,{request_id:randomUUID(),...s.fence},s.cookie,false);
-    const ticket_id=randomUUID(),body=action=>({action,ticket_id,...s.fence}),joined=await req(`${s.path}/preparation`,body('join'),s.cookie,false);admitted.push({index,position:joined.value.position,status:joined.value.status});let ticket=joined.value;
-    while(ticket.status!=='READY'){await new Promise(r=>setTimeout(r,ticket.poll_ms));ticket=(await req(`${s.path}/preparation`,body('touch'),s.cookie,false)).value;}
+    const ticket_id=randomUUID(),body=action=>({action,ticket_id,...s.fence}),joined=await req(`${s.path}/preparation`,body('join'),s.cookie,false);admitted.push({index,position:joined.value.position,status:joined.value.status});
+    if(joined.value.status!=='READY')throw new Error('PREPARATION_NOT_ADMITTED');
     const waiting=performance.now()-started;liveStreams++;maximumStreams=Math.max(maximumStreams,liveStreams);
     try{const response=await fetch(`${origin}${s.path}/assets/${asset.result.asset_id}`,{headers:{Cookie:s.cookie,'X-Preparation-Ticket':ticket_id,'X-Writer-Id':s.fence.writer_id,'X-Writer-Epoch':String(s.fence.writer_epoch)},signal:AbortSignal.timeout(60000)});
       if(!response.ok)throw new Error('DOWNLOAD_REJECTED');if(digest(Buffer.from(await response.arrayBuffer()))!==digest(png))throw new Error('IMAGE_HASH_MISMATCH');
     }finally{liveStreams--;await req(`${s.path}/preparation`,body('release'),s.cookie,false);}
     await req(`${s.path}/terminate`,{request_id:randomUUID(),reason:'TEST_ONLY_PREPARATION_COMPLETE'},s.cookie,false);
-    finished.push(index);return {index,wait_ms:waiting,complete_ms:performance.now()-started};
+    finished.push(index);return {index,status:'PREPARED',wait_ms:waiting,complete_ms:performance.now()-started};
+    }catch(error){
+      if(error.status!==409||!['SESSION_CAPACITY_FULL','PREPARATION_CAPACITY_FULL'].includes(error.code))throw error;
+      await req(`${s.path}/terminate`,{request_id:randomUUID(),reason:'TEST_ONLY_CAPACITY_REJECTED',evidence:{code:error.code}},s.cookie,false);
+      return {index,status:'REJECTED',reason:error.code,retry_after_seconds:1800};
+    }
   }));
   const operations=(await req('/api/lab/operations')).value;
-  const report={schema:'shaped-preparation-v2',mode:'TEST_ONLY',scope:'loopback HTTP aggregate response bodies capped at 125000 B/s; whole-session admission with 1s synthetic polling and explicit TEST_ONLY termination after preparation; headers/TLS/real ECS excluded; no trial timing or formal capacity claim',configured_mbps:1,session_concurrency:sessionLimit,maximum_observed_active_sessions:maximumActive,admission_queue:operations.state.admission,session_admitted:sessionAdmitted,participants:20,image_bytes:png.length,source_hash:digest(png),maximum_simultaneous_asset_streams:maximumStreams,admitted,finished,results,elapsed_ms:performance.now()-started,shaped_body_bytes:shapedBytes-bodyStart,queue:operations.preparation};
+  const report={schema:'shaped-preparation-v3',admission_mode:'reject_when_full',outcomes:{prepared:finished.length,capacity_rejected:results.filter(r=>r.status==='REJECTED').length},mode:'TEST_ONLY',scope:'loopback HTTP aggregate response bodies capped at 125000 B/s; immediate task/preparation capacity rejection without waiting polling and explicit TEST_ONLY termination after preparation; headers/TLS/real ECS excluded; no trial timing or formal capacity claim',configured_mbps:1,session_concurrency:sessionLimit,maximum_observed_active_sessions:maximumActive,admission_queue:operations.state.admission,session_admitted:sessionAdmitted,participants:20,image_bytes:png.length,source_hash:digest(png),maximum_simultaneous_asset_streams:maximumStreams,admitted,finished,results,elapsed_ms:performance.now()-started,shaped_body_bytes:shapedBytes-bodyStart,queue:operations.preparation};
   if(maximumStreams!==1||report.queue.active||report.queue.queued)throw new Error('QUEUE_BOUND_VIOLATED');
   if(report.admission_queue.active||report.admission_queue.queued)throw new Error('SESSION_QUEUE_NOT_EMPTY');
-  if(JSON.stringify(finished)!==JSON.stringify(admitted.map(a=>a.index)))throw new Error('FIFO_ORDER_VIOLATED');
+  if(finished.length!==admitted.length||admitted.some(a=>!finished.includes(a.index)))throw new Error('ADMITTED_DOWNLOAD_INCOMPLETE');
   const json=JSON.stringify(report,null,2)+'\n';if(process.argv[2])await writeFile(resolve(process.argv[2]),json);console.log(json);
 }finally{
   if(child&&child.exitCode===null){const ended=new Promise(r=>child.once('exit',r));child.kill('SIGTERM');await ended;}

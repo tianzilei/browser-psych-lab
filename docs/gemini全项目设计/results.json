@@ -1,0 +1,392 @@
+[
+  {
+    "request_id": "bpl-design-20261011-init",
+    "stage": "COMPLETED",
+    "result_id": "res_61e40f8c06459252098d",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-01",
+    "stage": "COMPLETED",
+    "result_id": "res_2c2236ff99e29bf57262",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-02",
+    "stage": "COMPLETED",
+    "result_id": "res_9d5d2e13b5b509d47d20",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-03",
+    "stage": "COMPLETED",
+    "result_id": "res_13fff7bdae1ef5288aba",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-04",
+    "stage": "COMPLETED",
+    "result_id": "res_94362a0e72c85ad185a4",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-05",
+    "stage": "COMPLETED",
+    "result_id": "res_ca75cafe8ffff87fdece",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-06",
+    "stage": "COMPLETED",
+    "result_id": "res_9358d0f787d72bc199f6",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-07",
+    "stage": "COMPLETED",
+    "result_id": "res_7daece78b2cd4a465f61",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-08",
+    "stage": "COMPLETED",
+    "result_id": "res_65892357bc31b761b5c6",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-09",
+    "stage": "COMPLETED",
+    "result_id": "res_b013a582ff3d8f270ee9",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-10",
+    "stage": "COMPLETED",
+    "result_id": "res_78c1a45a118dff4cbfe1",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-11",
+    "stage": "COMPLETED",
+    "result_id": "res_102ea5b570a56b591799",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-12",
+    "stage": "COMPLETED",
+    "result_id": "res_438fc5a654a2478f2d1b",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-13",
+    "stage": "COMPLETED",
+    "result_id": "res_12bb0dc7c7c2f36115a9",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-14",
+    "stage": "COMPLETED",
+    "result_id": "res_39aab6c4984b3f4ec365",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-15",
+    "stage": "COMPLETED",
+    "result_id": "res_fe719b9cddce27dd8140",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-16",
+    "stage": "COMPLETED",
+    "result_id": "res_c99540836650bf69475c",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-17",
+    "stage": "COMPLETED",
+    "result_id": "res_4dbddb3a2b58be7da69d",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-18",
+    "stage": "COMPLETED",
+    "result_id": "res_9a1c26d13034135db6a9",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-19",
+    "stage": "COMPLETED",
+    "result_id": "res_e91d1f6bc56524569ce3",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-20",
+    "stage": "COMPLETED",
+    "result_id": "res_f4b60a26fdd0aaec86bf",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-21",
+    "stage": "COMPLETED",
+    "result_id": "res_8c6a91c60dcb8b94d465",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-22",
+    "stage": "COMPLETED",
+    "result_id": "res_9de25265693e647ceb78",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-23",
+    "stage": "COMPLETED",
+    "result_id": "res_749091cba4b5892b22ae",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-24",
+    "stage": "COMPLETED",
+    "result_id": "res_bd1d3742a4ffcdc59dcc",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-25",
+    "stage": "COMPLETED",
+    "result_id": "res_a78c420f03a52b91ad91",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-26",
+    "stage": "COMPLETED",
+    "result_id": "res_e79f26c7ad2a08f96608",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-27",
+    "stage": "COMPLETED",
+    "result_id": "res_887a3f9e59103b80d068",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-28",
+    "stage": "COMPLETED",
+    "result_id": "res_d1b0ff3ca68294d80260",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-29",
+    "stage": "COMPLETED",
+    "result_id": "res_1e0dea9da355f800049d",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-30",
+    "stage": "COMPLETED",
+    "result_id": "res_ffd1a6ea4e64ffbd45f2",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-31",
+    "stage": "COMPLETED",
+    "result_id": "res_76aeff8c09da830b6dd9",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-32",
+    "stage": "COMPLETED",
+    "result_id": "res_060a618bb53d866409f9",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-33",
+    "stage": "COMPLETED",
+    "result_id": "res_a8b877f131915ae2a7c9",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-34",
+    "stage": "COMPLETED",
+    "result_id": "res_323fcd502bc277ddc7b5",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-35",
+    "stage": "COMPLETED",
+    "result_id": "res_440303339be3bb1db856",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-36",
+    "stage": "COMPLETED",
+    "result_id": "res_f6c6ef08301085d63f81",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-37",
+    "stage": "COMPLETED",
+    "result_id": "res_6931f1f016cc2e8c2df0",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-38",
+    "stage": "COMPLETED",
+    "result_id": "res_7ca23affdfd32f31b316",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-39",
+    "stage": "COMPLETED",
+    "result_id": "res_b43c3e2bf6919ebb973c",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-40",
+    "stage": "COMPLETED",
+    "result_id": "res_9171184f1f20064b1f0d",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-41",
+    "stage": "COMPLETED",
+    "result_id": "res_f338fa23de0e1d625228",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-42",
+    "stage": "COMPLETED",
+    "result_id": "res_a9e18d77b3a540b8116d",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-43",
+    "stage": "COMPLETED",
+    "result_id": "res_f9893189a91d433782bd",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-44",
+    "stage": "COMPLETED",
+    "result_id": "res_2452fa3a2c91275aa338",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-45",
+    "stage": "COMPLETED",
+    "result_id": "res_669761092238b5fe382a",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-46",
+    "stage": "COMPLETED",
+    "result_id": "res_3499ef19871024a1abc1",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-47",
+    "stage": "COMPLETED",
+    "result_id": "res_33e12ef77bd8e11fdb5f",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-48",
+    "stage": "COMPLETED",
+    "result_id": "res_5f77020b9b15b242c5b2",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-49",
+    "stage": "COMPLETED",
+    "result_id": "res_7fed9341181634df5073",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-50",
+    "stage": "COMPLETED",
+    "result_id": "res_193bcc43e9d4905db36c",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-51",
+    "stage": "COMPLETED",
+    "result_id": "res_e69a3feb8f257d890df8",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-52",
+    "stage": "COMPLETED",
+    "result_id": "res_74538b400d58520e5364",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-53",
+    "stage": "COMPLETED",
+    "result_id": "res_622a618a8c22aaa05103",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-chunk-54",
+    "stage": "COMPLETED",
+    "result_id": "res_67a51f7b5dddb8eca669",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-synthesis",
+    "stage": "COMPLETED",
+    "result_id": "res_5a260f71f3a7d78e0052",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-final",
+    "stage": "COMPLETED",
+    "result_id": "res_1050350c182fd8452c86",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-01",
+    "stage": "COMPLETED",
+    "result_id": "res_b0e306abdcfee6d4ce80",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-02",
+    "stage": "COMPLETED",
+    "result_id": "res_03cf796e63ec9cb876a2",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-03",
+    "stage": "COMPLETED",
+    "result_id": "res_7e47afebb5c3df6e8bf5",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-04",
+    "stage": "COMPLETED",
+    "result_id": "res_2dcafe871c104c569534",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-05",
+    "stage": "COMPLETED",
+    "result_id": "res_eb8936b0b4c13df42f7c",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-06",
+    "stage": "COMPLETED",
+    "result_id": "res_b20bf53a0821fb27ca21",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-07",
+    "stage": "COMPLETED",
+    "result_id": "res_7a235bd2451b47771da4",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-design-20261011-patch-final",
+    "stage": "COMPLETED",
+    "result_id": "res_274eaeda5879a85bc850",
+    "completeness": "complete"
+  }
+]

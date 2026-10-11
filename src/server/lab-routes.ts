@@ -12,6 +12,8 @@ import {digest} from './collection-store.js';
 import {verifyPassword,RateLimits} from './auth.js';
 import {ContractError,id,object} from '../shared/contract.js';
 import {receiveUpload,assetPath,openPrivate,safeDownload,fileHash,privateRoot} from './private-files.js';
+import {TASK_ACTIVITY_POLICY} from '../shared/task-policy.js';
+import {jsonReceiveCharge} from './json-transport.js';
 export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,maintenance:Maintenance,root:string){
   const preparation=new PreparationQueue(Number(process.env.PREPARATION_CONCURRENCY??1)),assetPolicy=new RunnerAssetPolicy(root);
   app.addHook('onClose',async()=>preparation.close());
@@ -29,7 +31,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
       if(request.headers.origin!==expected)throw new ContractError('ORIGIN_REJECTED',403);
       const upload=request.routeOptions.url?.endsWith('/upload')||request.routeOptions.url?.endsWith('/package');const declared=Number(request.headers['content-length']??(upload?8*1024*1024:1024*1024));
       const max=upload?8*1024*1024:1024*1024;if(!Number.isSafeInteger(declared)||declared<0||declared>max)throw new ContractError('REQUEST_TOO_LARGE',413);
-      const bytes=declared*2+1024;if(receiving>=32||receivingBytes+bytes>20*1024*1024)throw new ContractError('RECEIVE_QUEUE_FULL',503);
+      const bytes=upload?declared*2+1024:jsonReceiveCharge(request,declared);if(receiving>=32||receivingBytes+bytes>20*1024*1024)throw new ContractError('RECEIVE_QUEUE_FULL',503);
       receiving++;receivingBytes+=bytes;charged.set(request.id,bytes);
       if(!upload&&!request.headers['content-type']?.startsWith('application/json'))throw new ContractError('JSON_REQUIRED',415);
     }
@@ -146,7 +148,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     const data=object(request.body);delete data.proof_job_id;
     if(op==='permit'){
       const session=await participant(request,'view') as {frozen:{runner_hash:string}};
-      if(await assetPolicy.requiresActivity(session.frozen.runner_hash))object(data.readiness).activity_policy='idle120-offline300-v1';
+      if(await assetPolicy.requiresActivity(session.frozen.runner_hash))object(data.readiness).activity_policy=TASK_ACTIVITY_POLICY.id;
     }
     if(op==='seal'&&String(object(data.manifest).scope).startsWith('g-')){
       const params=request.params as {session:string};await participant(request,'admission.check');

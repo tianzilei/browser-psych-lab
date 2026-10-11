@@ -1,0 +1,221 @@
+## tests/audit/reproduce-2026-10-09.mjs
+
+
+## tests/browser/collection.spec.ts
+test('reliable questionnaire completes with immutable local raw retained after custody/seal', async ({ page }) => {
+test('offline submission keeps raw/outbox atomically, then reload recovers the same identity', async ({ page, context }) => {
+test('lost ACK after server commit retries exact bytes and keeps receipt identity', async ({ page }) => {
+test('a second tab stays read-only without terminating the active session', async ({ page, context }) => {
+for (const operation of ['seal', 'finalize']) test(`lost ${operation} ACK recovers the original durable result`, async ({ page }) => {
+test('aborted local submission leaves neither raw nor outbox nor pending page state', async ({ page }) => {
+test('cross-origin writes and unauthenticated session reads take no custody', async ({ request }) => {
+
+## tests/browser/environment.spec.ts
+test('authenticated diagnostics keep native DB, SurveyJS, IndexedDB and frame checks off the home page', async ({ page,context }) => {
+test('development database and private storage are not served', async ({ request }) => {
+test('public bundles use precompression and separate cache rules from HTML/API', async ({ request }) => {
+
+## tests/browser/lab.spec.ts
+  if(!/^lab_[a-f0-9-]{36}$/.test(cookie.name))continue;
+test('admin logs in with only a password using Enter or click and can log out',async({page,context})=>{
+test('research cards and finite survey recover offline exact revisions and reject a second tab',async({page,context})=>{
+test('button wizard preserves branches, optional empty choice and numeric zero without scrolling',async({page,context})=>{
+test('long instructions retain IME input; long choices remain together and require enough space',async({page,context})=>{
+test('viewport layouts expose every option and rapid navigation seals only one snapshot',async({page,context})=>{
+test('axis has explicit endpoints, no default answer, mouse and keyboard scores, clearing and reload',async({page,context,browser})=>{
+test('twenty single-choice options stay on one screen or stop instead of paging',async({page,context})=>{
+test('multiple axes stay together, restore independent drafts, confirm endings and download a fresh export from home',async({page,context})=>{
+test('six axes use a wide grid and block undersized screens without paging or scrolling',async({page,context})=>{
+test('long ending text is button-paged without scroll and failed finalization never shows it',async({page,context})=>{
+test('JSON replaces content, previews locally, freezes versions, opens, hides and soft deletes',async({page,context})=>{
+test('orientation blocks full session loading and keyboard resizing preserves it; covariates persist once',async({page,context})=>{
+test('orientation metadata failure can retry without consuming a session',async({page,context})=>{
+test('ZIP and JSON upload preserve private image bytes and run the mobile image sample',async({page,context})=>{
+test('task capacity rejects later participants with a 30-minute suggestion and no polling or auto-start',async({page,context,browser})=>{
+test('frozen private image runner seals a fixed Canvas group without group-time HTTP calls',async({page,context})=>{
+test('misses consume exactly K=2 extra candidates; reload of an unclosed run only terminates UNKNOWN',async({page,context})=>{
+test('mobile touch emulation stops on geometry change and keeps historical raw',async({browser,context})=>{
+test('full image preparation rejects without polling; download shows only percentage and retry is manual',async({page,context,browser})=>{
+ const fresh=await browser.newContext();try{const next=await fresh.newPage();let transfers=0;next.on('request',r=>{if(/\/sessions\/[^/]+\/assets\//.test(r.url()))transfers++;});
+test('frozen runner uses precompressed code and respects encoding refusal',async({context})=>{
+test('canceling active preparation frees capacity without issuing a run',async({page,context})=>{
+test('orientation precedes paged consent; decline has no session or covariates; agreement persists across reload and exports',async({page,context})=>{
+  expect(await sessions()).toHaveLength(0);expect(requests.filter(url=>/\/sessions$|\/covariates$/.test(url))).toEqual([]);
+test('short consent fits portrait and landscape devices and server refuses direct consent bypass',async({page,context})=>{
+test('rating axes keep stable image geometry, age stays separate, RT actions replay and terminated sessions restart',async({page,context})=>{
+test('terminated questionnaire reanswers in a fresh associated session and keeps old local records',async({page,context})=>{
+test('mobile rating range follows real touch drag and cancels without scroll',async({context,browser})=>{
+
+## tests/fixtures/stalled-worker.mjs
+
+
+## tests/fixtures/writer-process.mjs
+
+
+## tests/helpers/lab-fixture.mjs
+
+
+## tests/helpers/run-trace.mjs
+
+
+## tests/runner-browser.config.ts
+
+
+## tests/runner-browser/layout.spec.ts
+test('document pages scroll on touch, wrap titles, and use the configured selected-option color',async({page})=>{
+test('missing native Web Locks stops admission before creating a participant session',async({page})=>{
+
+## tests/runner-browser/runner.spec.ts
+test('image click visibly confirms first answer; right click, repeated key, and changed second answer are excluded',async({page})=>{
+test('mobile touch held through ISI never answers the next stimulus until release and a new press',async({browser})=>{
+test('self-paced rating requires selection and submit, clears image, then waits a full 3-second ISI',async({browser})=>{
+
+## tests/unit/admin-auth.test.mjs
+test('legacy role tokens migrate once with millisecond expiry and unified permissions',t=>{
+test('password-only HTTP login keeps cookie, Origin, CSRF, logout and login limits',async t=>{
+
+## tests/unit/asset-compatibility.test.mjs
+test('frozen legacy GET remains private and shares capacity; new runner cannot omit a ticket',async t=>{
+
+## tests/unit/collection.test.mjs
+test('exact bytes survive retries/reopen; custody is stable and completion uses exact seals', t => {
+test('conflicting bytes have independent custody and block normal seal', t => {
+test('whole-batch transport validation and injected failure roll back raw and receipts together', t => {
+test('paused admission still allows existing credentials, while new identities are blocked', t => {
+test('out-of-order execution gets pending custody then a new disposition version', t => {
+test('unclosed permit blocks a second writer even after lease expiry; explicit unknown close is final', t => {
+test('old writer data is preserved after a fenced takeover and cannot seal the current page', t => {
+test('session authorization rejects foreign bodies without persisting them', t => {
+
+## tests/unit/compat.test.mjs
+test('HTTP crypto fallback hashes only supplied bytes and never fabricates Web Locks',async()=>{
+
+## tests/unit/consent.test.mjs
+test('consent is bounded plain text, strict and absent from historical frozen shapes',()=>{
+test('server requires explicit agreement to the frozen document before session and covariates, preserves idempotency and immutable consent',t=>{
+
+## tests/unit/image-optimization.test.mjs
+test('DPR policy, aspect ratio buckets, and hard pixel limits',()=>{
+test('common ratios keep original framing in contain and never upscale',()=>{
+test('cover protects whole subject region and falls back for text or severe unknown crops',()=>{
+test('long image tiles cover source rows exactly once without enlargement',()=>{
+test('actual encoder normalizes EXIF, strips metadata and emits acceptable ZIP',async()=>{
+test('text stays lossless at impossible byte budget and transparency survives',async()=>{
+test('photo byte search respects quality floor and JPEG/PNG stay accepted',async()=>{
+test('real long image output keeps every row and does not create full-height bitmap assets',async()=>{
+test('real crop preserves red subject and independent variants keep same source hash',async()=>{
+test('offline CLI produces uploadable package, report, and never overwrites masters or prior output',async t=>{
+test('runtime options reject null, wrong types and overflow before decoding',async()=>{
+test('protected edge tolerates numerical noise and overrides conflicting focus safely',()=>{
+test('fractional-scale tiles equal a single Lanczos resize at every pixel without seams',async()=>{
+test('all eight EXIF orientations crop in normalized coordinates',async()=>{
+test('explicit P3 to sRGB transform strips ICC and quality retries reuse one raster',async()=>{
+test('ZIP rejects wrong extension, case collisions and Windows device paths',async()=>{
+test('atomic publisher cleans handled failures, allows retry and preserves prior empty directories',async t=>{
+test('CLI rejects invalid plans before opening missing sources and groups repeated source reads',async t=>{
+
+## tests/unit/interaction-reanswer.test.mjs
+test('more than 64 pure questionnaires admit immediately without taking timed task slots',t=>{
+test('reanswer keeps original evidence, creates one linked marked session and retries with the same credential',t=>{
+test('screen and action batches retain coordinates and RT separately from page seals',t=>{
+
+## tests/unit/lab.test.mjs
+test('new publication requires personal input purpose and legacy protocol parsing stays exact',t=>{
+test('axis endpoints are explicit at publication, legacy scales parse exactly and scores stay discrete',t=>{
+test('draft concurrency, frozen versions, CSRF, admission retry and finite conditions',t=>{
+test('revision history, out-of-order custody, exact page seal, finalization and raw immutability',t=>{
+test('conditional skip ignores hidden values and actual path excludes skipped pages',t=>{
+test('byte conflict has independent receipt, durable diagnosis and prevents completion',t=>{
+test('terminal historical upload remains raw and reconciliation never enables cleanup',t=>{
+test('resource barrier, immutable history, single maintenance and independent restore gate',t=>{
+test('readiness cannot omit storage or geometry, allocation is once, unclosed permits outlive the writer lease',t=>{
+
+## tests/unit/maintenance.test.mjs
+test('exclusive durable publication refuses different bytes and symlinks',async t=>{
+test('header validation, blocked recovery, snapshot CSV, joint backup and closed-gate restore preserve exact files',async t=>{
+
+## tests/unit/multi-scale.test.mjs
+test('multi-axis JSON, selectors and ending are strict; legacy protocol hashes keep their shape',()=>{
+test('axis answers preserve zero, require each mandatory dimension and normalize optional missing values',()=>{
+test('partial axis revisions persist but final seals require complete mandatory axes',t=>{
+
+## tests/unit/preparation.test.mjs
+test('preparation rejects full capacity without a queue and releases only after actual stream exit',()=>{
+test('abandoned preparation expires and hard deadline cancels real streams',()=>{
+test('legacy assets reject immediately at capacity and release their streams exactly once',async()=>{
+test('download budgets tolerate low bandwidth while bounding total time',()=>{
+test('original streams handle progress, stall, excess, truncation and parent cancellation',async t=>{
+test('HTTP overload retry preserves serialized idempotent bytes and refuses ambiguous fetch errors',async t=>{
+test('asset overload retry remains inside the same transfer budget and preserves ticket headers',async t=>{
+
+## tests/unit/process-crash.test.mjs
+test('whole-process crash preserves exact custody and unclosed permit; restart cannot grant a second run', async t => {
+
+## tests/unit/questionnaire-json.test.mjs
+test('human readable JSON is strict, compiles labels and image references, forbids ordinary text',()=>{
+test('text input matching is strict, bounded and enforced in final snapshots',()=>{
+  assert.equal(inputMatchRegex(text.input_match).test('ABC123'),true);
+  assert.equal(inputMatchRegex(text.input_match).test('ABC-123'),false);
+test('ZIP produced by Python preserves bytes; rejects traversal, duplicate, forged CRC, symlink and pixel bombs',async t=>{
+test('JSON import freezes new versions atomically and soft deletion keeps originals and rejects admission',t=>{
+
+## tests/unit/rating.test.mjs
+test('rating sampling is reproducible, without replacement, and balances factors in the test case',()=>{
+test('invalid sampling, non-neutral answers, repeated ratings and wrong choices fail import',()=>{
+test('response-contingent replay waits indefinitely for a score then enforces full ISI from image clearing',()=>{
+test('replay rejects skipped, uncommitted, duplicated and unanswered rating trials',()=>{
+test('32 complete rating trials replay to scored results with labels and image/category references',()=>{
+test('selection history separates first choice RT and submission RT and checks the committed value',()=>{
+test('server freezes selection before download; reserve renewal and expired reservations never redraw images',t=>{
+
+## tests/unit/run-replay.test.mjs
+test('hundreds of seeded fixed/dynamic traces independently replay cap, gap, intent and draw evidence',()=>{
+test('forged random evidence, timing, watermark, answer and omission cannot close normally',()=>{
+test('held touch and release cannot answer next image; epoch timestamps normalize, later correct does not replace first',()=>{
+test('late earlier legal correction cancels only an unstarted proposal; staged correction terminates',()=>{
+
+## tests/unit/runner-release.test.mjs
+test('runner content negotiation honors q, wildcard, identity and refusal',()=>{
+test('archived representations match canonical code and restart skips existing disk writes',async t=>{
+test('runner capability is canonical, bounded and rejects corrupt or unsupported declarations',async t=>{
+test('concurrent policy reads share validated I/O and failed reads can retry',async t=>{
+  assert.equal(reads,2);assert.ok(failed.every(r=>r.status==='rejected'&&/HASH_MISMATCH/.test(r.reason.message)));
+test('distinct runner policy loads have a finite budget without blocking shared reads',async t=>{
+
+## tests/unit/scheduler.test.mjs
+test('TS unsigned PRNG matches every locked C golden output and little-endian seed', () => {
+test('bounded draws reject the biased tail, have a finite budget and consume nothing for M=1', () => {
+test('K=0/1/2 consume each fixed candidate once and end after the exact cap', () => {
+test('no zero/short ISI in dynamic mode, and a late tail cannot stretch fixed phases', () => {
+test('safe suffix choice preserves original order and prefers three other instances', () => {
+test('effective queue changes only after notified commit; delayed notifications permanently terminate', () => {
+test('queued correction cancels before earliest shifted boundary, allows a NEW proposal for an unused candidate', () => {
+test('STAGED correction terminates, after-onset correction preserves complete phases and stops repeats', () => {
+test('crash with pending intention is UNKNOWN, cannot reuse a candidate or reopen a closing group', () => {
+
+## tests/unit/session-admission.test.mjs
+test('task sessions reject at limit without a waiting ticket; direct starts also reject',t=>{
+test('nonce fences stale cancellation and active renewals coalesce',t=>{
+test('restart retires legacy waiting entries and expiry preserves answer history',t=>{
+test('activity lease tolerates transient loss, expires after five minutes and releases a pinned run',t=>{
+test('measured limits above two work; excess offers never accumulate',t=>{
+
+## tests/unit/task-liveness.test.mjs
+test('idle limit interrupts after two minutes; one tiny renewal per minute and cleanup stops timers',async t=>{
+test('active disconnected task tolerates short loss and interrupts after five minutes',async t=>{
+
+## tests/unit/trial-design.test.mjs
+test('general jitter balances requested durations for small/odd/even trial counts and seeds reproduce',()=>{
+test('item timing excludes overrides from each balance pool, frame ceiling is explicit, normalized protocol is idempotent',()=>{
+test('fixed, image shuffle, category blocks and balanced interleaving retain every stimulus exactly once',()=>{
+test('invalid ranges, ambiguous stimuli, key maps and minimum repeat ISI fail at import',()=>{
+test('service stores an immutable seeded text plan with no image references; response and feedback replay normally',t=>{
+test('keyboard mapping is audited; held or second response cannot replace the first',()=>{
+test('group overrides inherit other phases; item-only timings survive serialization and ordering does not resample timing',()=>{
+test('unequal category counts remain feasible at the max-run boundary and invalid designs fail at import',()=>{
+test('published example compiles with a ZIP reference and keeps item overrides out of balance pools',()=>{
+
+## tests/unit/writer.test.mjs
+test('single worker commits then acknowledges and rejects a second process owner', async t => {
+test('bounded queues distinguish never sent from an unknown commit and preserve identities on restart', async t => {
+test('byte budget rejects an oversized request before any RPC', async t => {

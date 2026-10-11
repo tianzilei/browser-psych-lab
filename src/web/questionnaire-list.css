@@ -1,0 +1,10 @@
+body.questionnaire-list main { width: min(100%,920px); display: block; padding-top: max(32px,env(safe-area-inset-top)); }
+body.questionnaire-list header { margin-bottom: 24px; gap: 8px; }
+body.questionnaire-list h1 { font-size: 22px; font-weight: 600; }
+#questionnaires { display: grid; gap: 12px; }
+article { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; }
+article h2 { margin: 0; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+.questionnaire-link { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 16px; border-radius: 8px; color: var(--background); background: var(--foreground); text-decoration: none; font-size: 14px; }
+.questionnaire-link:focus-visible { outline: 2px solid var(--foreground); outline-offset: 3px; }
+#list-actions:not(:empty) { margin-bottom: 24px; }
+@media (max-width:480px) { article { grid-template-columns: minmax(0,1fr); gap: 12px; padding: 16px; } .questionnaire-link { justify-self: start; } }

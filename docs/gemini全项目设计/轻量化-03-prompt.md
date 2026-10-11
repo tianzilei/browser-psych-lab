@@ -1,0 +1,1 @@
+上一条静态复审在桥接保存中只返回到 X-Uncompressed-，会话读取随后多了一部分，仍在“高频 scroll”处截断。请不要继续长文。用不超过600汉字直接给出本轮实现的剩余确定问题及必要修正，最后输出独立标记 LIGHT_REVIEW_DONE。重点：错误分支 payload.resume() 应改为 pause()+Connection close并在响应finish销毁未完成request，确保先写出4xx后不无界消费；现有 bounded 已捕获 sync throw/reject所以不必强求allSettled；TypeError状态保持blocked-or-error，不假定unsupported。保守预算decoded*2保持，不承诺硬实时。只做静态意见，不声称测试执行。

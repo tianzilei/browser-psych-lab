@@ -1,0 +1,10 @@
+继续前面的 browser-psych-lab 工程讨论。用户新要求：保持轻量化，尽可能采集浏览器允许范围内的信息，采用低开销压缩/校验。只讨论这次具体设计，不搜索外部资料，不编造文件或测试结果。当前已采用 idle120/offline300、单活进程writer、立即409准入，须保留精确原始raw、SHA256事件链、ACK/封存、旧runner兼容。
+
+当前环境environment-v1：同意后只采一次；UA/CH/语言时区，CPU内存触摸，screen/viewport/DPR，17媒体查询、network、security、capabilities、navigation基础，WebGL renderer有限查询并loseContext；高熵CH/storage.estimate/persisted/battery Promise并行250ms bounded，不请求额外授权。想扩展无权限提示的document focus/fullscreen/pictureInPicture/scroll/viewport、navigation各阶段+paint、PerformanceObserver支持类型、压缩/解压/输入API能力、locale calendario numberingSystem等；动态网络/焦点/visibility/pagehide/pageshow/freeze/resume/orientation/visualViewport变化由interaction独立诊断链按事件记录。不循环storage/battery、不罗列设备ID、不额外字体/canvas/audio指纹、不打开摄像麦克风定位传感器。
+
+当前交互interaction-v1：事件每100ms/64条/90KB刷IDB；每条raw<=128KB；每批上传16条或256KB raw；screen每非move事件queueMicrotask全节点rect/computedstyle并JSON签名去重；pointermove全部coalesced样本，函数调用2次且每样本重读targetrect/context；仅pressure缺pen tilt twist contact size、modifier key、keyboard repeat/location/composition、input.data等；窗口resize/scroll/visibility只触发screen没保存状态转换事件。拟每派发事件只读一次target/context并保留全部coalesced；共用TextEncoder；screen请求合并每帧最多一次，显式页面切换screen仍同步；添加被动输入和稀疏生命周期/networkchange状态事件，不保存复制粘贴剪贴板内容；兼容旧schema额外可选字段，浏览器没提供保持缺失。Lifecycle pagehide flush仅尝试IDB，本机持久化+后续恢复，不保证页面销毁最后事件。
+
+拟gzip传输：只participate ingest/covariates，大于8KiB且native CompressionStream存在、gzip<=原文87.5%才用；准备一次并在503/429重试重用同一字节/ID；failure或不支持明文兼容。Content-Type application/json; Content-Encoding gzip; X-Uncompressed-Length准确UTF8长度。服务器Fastify onRequest只允许上述POST路由gzip，长度头要求整数<=1MiB；接受旧plain；preParsing Node异步stream gunzip，同时硬限wire1MiB/decoded1MiB并精确核对申报decoded长度；给Fastify transformedstream维护receivedEncodedLength避免Content-Length不匹配；onRequest接收预算按decoded*2+wire预算+1024预占，before decode，保持32/20MiB已有budget；成功/abort/error释放并销毁相关streams。gzip内部CRC32由原生检查损坏，解压JSON原raw strings字节不改；SHA256保持custody与篡改/身份校验，不额外手写xxhash/CRC。小请求和已压缩图片不压缩，不实时响应压缩。
+拟缓存event row UTF8 byte_length和environment SHA256避免重复编码/hash，旧IDB行fallback计算，不升级数据库对象仓库。
+
+请挑战设计：具体遗漏的浏览器低成本信息、帧合并snapshot风险、Fastify解压生命周期/内存预算漏洞、阈值/校验取舍。用可执行的建议和必须保留的约束回复，不声称实际代码审阅或运行。

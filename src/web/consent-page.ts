@@ -8,6 +8,7 @@ export function mountConsent(content:HTMLElement,document:NonNullable<Protocol['
   const reading=el('div',undefined,'consent-reading-nav'),decisions=el('div',undefined,'consent-decisions');
   const previous=el('button','阅读上一段'),next=el('button','阅读下一段'),reject=el('button','不同意并退出'),agree=el('button','我已阅读并同意');
   for(const b of [previous,next,reject,agree])b.type='button';
+  agree.className='primary';
   reading.append(previous,next);decisions.append(reject,agree);page.append(text,reading,decisions);content.replaceChildren(page);
   const pager=new TextPager(`${document.title}\n\n${document.text}`,text,true);
   let disposed=false,frame=0,fits=false;
@@ -22,5 +23,5 @@ export function mountConsent(content:HTMLElement,document:NonNullable<Protocol['
 
 export function showConsentDeclined(content:HTMLElement,reread:()=>void){
   const page=el('section',undefined,'consent-declined');
-  page.append(el('p','你未同意参加，本次不会创建作答会话。可以关闭此页面退出。'),button('重新阅读知情同意书',reread));content.replaceChildren(page);
+  page.append(el('p','你未同意参加，本次不会开始作答。可以关闭此页面，或重新阅读知情同意书。'),button('重新阅读知情同意书',reread));content.replaceChildren(page);
 }

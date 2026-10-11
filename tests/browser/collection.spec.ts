@@ -33,7 +33,7 @@ test('reliable questionnaire completes with immutable local raw retained after c
 test('offline submission keeps raw/outbox atomically, then reload recovers the same identity', async ({ page, context }) => {
   await page.goto('/p0.html'); await expect(page.locator('#status')).toHaveText('可以作答。');
   await context.setOffline(true); await answer(page);
-  await expect(page.getByRole('button', { name: '重试保存与核对' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重试保存' })).toBeVisible();
   const saved = await evidence(page); expect(saved).toMatchObject({ raw: 1, queued: 1, pending: true });
   await context.setOffline(false); await page.reload();
   await expect(page.locator('#status')).toContainText('保存完成');
@@ -50,9 +50,9 @@ test('lost ACK after server commit retries exact bytes and keeps receipt identit
     if (requests === 1) { firstReceipt = body.receipts[0]!.receipt_id; await route.abort(); }
     else { expect(body.receipts[0]!.receipt_id).toBe(firstReceipt); await route.fulfill({ response }); }
   });
-  await answer(page); await expect(page.getByRole('button', { name: '重试保存与核对' })).toBeVisible();
+  await answer(page); await expect(page.getByRole('button', { name: '重试保存' })).toBeVisible();
   const pending = await evidence(page); expect(pending.queued).toBe(1);
-  await page.getByRole('button', { name: '重试保存与核对' }).click();
+  await page.getByRole('button', { name: '重试保存' }).click();
   await expect(page.locator('#status')).toContainText('保存完成'); expect(requests).toBe(2);
   expect((await evidence(page)).eventId).toBe(pending.eventId);
 });
@@ -74,9 +74,9 @@ for (const operation of ['seal', 'finalize']) test(`lost ${operation} ACK recove
     if (attempts === 1) { originalId = receiptId; await route.abort(); }
     else { expect(receiptId).toBe(originalId); await route.fulfill({ response }); }
   });
-  await answer(page); await expect(page.getByRole('button', { name: '重试保存与核对' })).toBeVisible();
+  await answer(page); await expect(page.getByRole('button', { name: '重试保存' })).toBeVisible();
   const saved = await evidence(page); expect(saved).toMatchObject({ raw: 1, queued: 0 });
-  await page.getByRole('button', { name: '重试保存与核对' }).click();
+  await page.getByRole('button', { name: '重试保存' }).click();
   await expect(page.locator('#status')).toContainText('保存完成');
   expect((await evidence(page)).eventId).toBe(saved.eventId); expect(originalId).toBeTruthy();
 });
@@ -98,7 +98,7 @@ test('aborted local submission leaves neither raw nor outbox nor pending page st
     } as typeof original;
   });
   await page.goto('/p0.html'); await expect(page.locator('#status')).toHaveText('可以作答。');
-  await answer(page); await expect(page.getByRole('button', { name: '重试保存与核对' })).toBeVisible();
+  await answer(page); await expect(page.getByRole('button', { name: '重试保存' })).toBeVisible();
   expect(await evidence(page)).toMatchObject({ raw: 0, queued: 0, pending: false });
 });
 test('cross-origin writes and unauthenticated session reads take no custody', async ({ request }) => {

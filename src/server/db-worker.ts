@@ -3,6 +3,7 @@ import { openDatabase } from './database.js';
 import { CollectionStore, type Command } from './collection-store.js';
 import { ContractError } from '../shared/contract.js';
 import { LabStore } from './lab-store.js';
+import { TASK_ACTIVITY_POLICY } from '../shared/task-policy.js';
 
 const port = parentPort!;
 const db = openDatabase(workerData.path as string);
@@ -19,8 +20,9 @@ db.transaction(() => {
     if (previous.owner !== owner) {
       let alive = true;
       try { process.kill(previous.pid, 0); } catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-      const heartbeatAt=Number((previous as {heartbeat_at?:number}).heartbeat_at??0);
-      if (alive && heartbeatAt>0 && Date.now()-heartbeatAt<30000) throw new Error('DATABASE_ALREADY_OWNED');
+      // A stale heartbeat is not evidence of process exit. Native work or a
+      // suspended process can resume; only ESRCH allows another owner to start.
+      if (alive) throw new Error('DATABASE_ALREADY_OWNED');
     }
   }
   heartbeat();
@@ -28,7 +30,7 @@ db.transaction(() => {
 const lab = new LabStore(db, workerData.runnerHash as string | undefined,Date.now,workerData.sessionConcurrency as number|undefined);
 lab.execute({operation:'lab/internal.job.interrupted',data:{}});
 lab.expireTaskActivity();
-const activityTimer=setInterval(()=>{try{lab.expireTaskActivity();}catch{}},30000);
+const activityTimer=setInterval(()=>{try{lab.expireTaskActivity();}catch{}},TASK_ACTIVITY_POLICY.server_scan_interval_ms);
 port.postMessage({ ready: true });
 port.on('message', (message: { id: number; command: Command | null }) => {
   if (message.command !== null) heartbeat();

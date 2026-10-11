@@ -1,0 +1,180 @@
+{
+  "schema": "shaped-preparation-v3",
+  "admission_mode": "reject_when_full",
+  "outcomes": {
+    "prepared": 1,
+    "capacity_rejected": 19
+  },
+  "mode": "TEST_ONLY",
+  "scope": "loopback HTTP aggregate response bodies capped at 125000 B/s; immediate task/preparation capacity rejection without waiting polling and explicit TEST_ONLY termination after preparation; headers/TLS/real ECS excluded; no trial timing or formal capacity claim",
+  "configured_mbps": 1,
+  "session_concurrency": 2,
+  "maximum_observed_active_sessions": 2,
+  "admission_queue": {
+    "active": 0,
+    "unlimited_active": 0,
+    "limited_active": 0,
+    "queued": 0,
+    "limit": 2,
+    "capacity": 2,
+    "over_limit": 0,
+    "pinned": 0
+  },
+  "session_admitted": [
+    {
+      "index": 0,
+      "position": 0,
+      "status": "ACTIVE"
+    },
+    {
+      "index": 1,
+      "position": 0,
+      "status": "ACTIVE"
+    }
+  ],
+  "participants": 20,
+  "image_bytes": 197301,
+  "source_hash": "fd157eadf157be2bb8248bd948e96873923be4fbbc7f0b83f174793d282ef18b",
+  "maximum_simultaneous_asset_streams": 1,
+  "admitted": [
+    {
+      "index": 0,
+      "position": 0,
+      "status": "READY"
+    }
+  ],
+  "finished": [
+    0
+  ],
+  "results": [
+    {
+      "index": 0,
+      "status": "PREPARED",
+      "wait_ms": 531.8230830000002,
+      "complete_ms": 2263.175292
+    },
+    {
+      "index": 1,
+      "status": "REJECTED",
+      "reason": "PREPARATION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 2,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 3,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 4,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 5,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 6,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 7,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 8,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 9,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 10,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 11,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 12,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 13,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 14,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 15,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 16,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 17,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 18,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    },
+    {
+      "index": 19,
+      "status": "REJECTED",
+      "reason": "SESSION_CAPACITY_FULL",
+      "retry_after_seconds": 1800
+    }
+  ],
+  "elapsed_ms": 2299.618958,
+  "shaped_body_bytes": 243229,
+  "queue": {
+    "active": 0,
+    "queued": 0,
+    "streams": 0,
+    "limit": 1,
+    "capacity": 1
+  }
+}

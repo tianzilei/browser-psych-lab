@@ -14,12 +14,12 @@ export function downloadBudget(bytes: number) {
 export async function downloadOriginal(url: string, expectedBytes: number, signal: AbortSignal,
   progress: (bytes: number) => void, policy = {stall_ms: DOWNLOAD_POLICY.stall_ms, total_ms: downloadBudget(expectedBytes)}, headers:Record<string,string>={}) {
   if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 1 || expectedBytes > 8 * 1024 * 1024)
-    throw new Error('图片字节预算无效。');
+    throw new Error('图片大小配置无效，请联系研究者。');
   const controller = new AbortController();
   const abort = () => controller.abort(signal.reason);
   signal.addEventListener('abort', abort, {once: true});
   if (signal.aborted) abort();
-  const total = setTimeout(() => controller.abort(new Error('图片下载超过准备预算，请重试或联系研究者。')), policy.total_ms);
+  const total = setTimeout(() => controller.abort(new Error('图片下载超时，请检查网络后重新准备。')), policy.total_ms);
   let idle: ReturnType<typeof setTimeout> | undefined;
   const activity = () => {
     clearTimeout(idle);
@@ -46,11 +46,11 @@ export async function downloadOriginal(url: string, expectedBytes: number, signa
       controller.signal.throwIfAborted();
       if (part.done) break;
       if (!part.value.byteLength) continue;
-      if (received + part.value.byteLength > expectedBytes) throw new Error('图片字节数超出清单。');
+      if (received + part.value.byteLength > expectedBytes) throw new Error('图片大小与问卷配置不符，请联系研究者。');
       bytes.set(part.value, received); received += part.value.byteLength;
       activity(); progress(received);
     }
-    if (received !== expectedBytes) throw new Error('图片未完整下载。');
+    if (received !== expectedBytes) throw new Error('图片未完整下载，请重新准备任务。');
     return bytes;
   } catch (error) {
     controller.abort(error);

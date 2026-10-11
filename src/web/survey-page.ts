@@ -2,6 +2,7 @@ import { evaluate, copyAnswer, axisAnswers, answerMissing, inputMatchRegex, inpu
 import { el } from './dom.js';
 import { TextPager } from './text-pager.js';
 import { scaleInput } from './scale-input.js';
+import { pageIntroduction } from './participant-ui.js';
 
 type Answers = Record<string, Answer>;
 const copy = copyAnswer;
@@ -43,7 +44,9 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   const saved = sessionStorage.getItem(options.key);
   if (saved) { const index = page.questions.findIndex(q => q.id === saved); if (visible.includes(index)) current = index; }
   const question = () => page.questions[current];
-  const intro = [options.title, page.title, page.instruction].filter(Boolean).join('\n\n');
+  const intro = pageIntroduction(options.title,page.title,page.instruction);
+  if(current<0&&!intro&&visible.length)current=visible[0]!;
+  next.className='primary';
   const choices = (q: Question) => q.choices ?? [];
   function selected(q: Question, label: string) {
     const value = answers[q.id];
@@ -69,7 +72,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   function makePager() {
     const q = question();
-    const text = q ? `${q.required ? '（必答）' : '（可选）'}${q.type === 'multi' ? ' 可多选' : ''}${q.type==='scales'?'':'\n'}${q.title}` : intro;
+    const text = q ? q.title : intro;
     pager = new TextPager(text, reading);
   }
   function input(q: Question) {
@@ -101,11 +104,15 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     next.textContent = typing ? '完成输入' : pager.more ? '阅读下一段'
       : !q ? visible.length ? '开始作答' : '提交本页' : last ? '提交本页' : '下一题';
     back.textContent = pager.back ? '阅读上一段' : current < 0 ? '上一段' : '上一题';
-    back.disabled = submitting || navigating || (current < 0 && !pager.back);
+    back.hidden = !pager.back&&(current<0||!intro&&current===visible[0]);
+    nav.classList.toggle('single-action',back.hidden);
+    back.disabled = submitting || navigating || back.hidden;
     next.disabled = submitting || navigating || !fits;
   }
   function controlsFit(nodes: HTMLElement[]) {
     const area = answerArea.getBoundingClientRect();
+    const bounds = screen.getBoundingClientRect();
+    if(area.left<bounds.left-1||area.right>bounds.right+1||area.top<bounds.top-1||area.bottom>bounds.bottom+1)return false;
     return nodes.every(node => {
       const r = node.getBoundingClientRect();
       return r.left >= area.left - 1 && r.right <= area.right + 1 && r.top >= area.top - 1 && r.bottom <= area.bottom + 1
@@ -141,8 +148,8 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     screen.classList.toggle('multi-axis-question', q?.type === 'scales');
     fits = pager.show();
     if (layoutProblem) { message.textContent = ''; layoutProblem = false; }
-    progress.textContent = !q ? `研究说明 · 第 ${pager.number} 段`
-      : `题目 ${visible.indexOf(current) + 1}/${visible.length}${pager.more || pager.back ? ` · 题干第 ${pager.number} 段` : ''}`;
+    progress.textContent = !q ? `作答说明${pager.more || pager.back ? ` · 第 ${pager.number} 段` : ''}`
+      : `第 ${visible.indexOf(current) + 1}/${visible.length} 题 · ${q.required?'必答':'可选'}${q.type==='multi'?' · 可多选':''}${pager.more || pager.back ? ` · 题干第 ${pager.number} 段` : ''}`;
     const reuse=controlQuestion===q&&fits&&!pager.more&&(q?.type==='scale'||q?.type==='scales')&&!!answerArea.querySelector('.axis-control');
     if(!reuse)answerArea.replaceChildren();answerArea.className = 'answer-area';
     answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
@@ -163,8 +170,8 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
       } else fits = renderChoices(q);
     }
     if (!fits) {
-      layoutProblem = true; message.textContent = '内容放不下，请调整设备或缩短文字。';
-      answerArea.replaceChildren(el('p', '请调整设备方向或联系研究者。所有选项须在同一屏完整显示。'));
+      layoutProblem = true; message.textContent = '当前屏幕无法完整显示本题。';
+      answerArea.replaceChildren(el('p', '请调整设备尺寸；若仍无法作答，请联系研究者。'));
       answerArea.className = 'answer-area';
       answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
     }
@@ -179,7 +186,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   function validate(index: number) {
     const q = page.questions[index];
-    if (q?.required && answerMissing(q,answers[q.id])) { message.textContent = q.type==='scales'?'请完成每个坐标轴后继续。':q.type === 'scale' ? '请选择分值后继续。' : q.type === 'text' ? '请填写个人信息后继续。' : '请选择答案后继续。'; return false; }
+    if (q?.required && answerMissing(q,answers[q.id])) { message.textContent = q.type==='scales'?'请完成每项评分后继续。':q.type === 'scale' ? '请选择评分后继续。' : q.type === 'text' ? '请填写答案后继续。' : '请选择答案后继续。'; return false; }
     if (q?.type === 'text' && typeof answers[q.id] === 'string' && (answers[q.id] as string).length > q.max_length!) {
       message.textContent = `最多 ${q.max_length} 个字符。`; return false;
     }

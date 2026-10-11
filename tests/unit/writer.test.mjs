@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseWriter } from '../../dist/server/writer.js';
-import { digest } from '../../dist/server/collection-store.js';
+import { CollectionStore, digest } from '../../dist/server/collection-store.js';
 import { openDatabase } from '../../dist/server/database.js';
 
 async function fixture(t, options) {
@@ -25,7 +25,7 @@ test('single worker commits then acknowledges and rejects a second process owner
 test('bounded queues distinguish never sent from an unknown commit and preserve identities on restart', async t => {
   const { writer, path } = await fixture(t, {
     workerUrl: new URL('../fixtures/stalled-worker.mjs', import.meta.url), workerData: { delay_ms: 500 },
-    maxRequests: 3, maxBytes: 4096, controlReserve: 1, timeoutMs: 1000,
+    maxRequests: 3, maxBytes: 4096, controlReserve: 1,
   });
   // Use a shorter RPC timeout after startup, which otherwise depends on machine load.
   writer.options.timeoutMs = 150;
@@ -42,10 +42,26 @@ test('bounded queues distinguish never sent from an unknown commit and preserve 
   const db = openDatabase(path);
   let original;
   try { original = db.prepare('SELECT session_id FROM p0_sessions').get().session_id; } finally { db.close(); }
-  writer.options.workerUrl = new URL('../../dist/server/db-worker.js', import.meta.url); writer.options.timeoutMs = 1000;
+  writer.options.workerUrl = new URL('../../dist/server/db-worker.js', import.meta.url); delete writer.options.timeoutMs;
   await writer.start();
   assert.equal((await writer.request({ operation: 'create', data })).session_id, original);
 });
+for (const [name, heartbeat] of [['stale', { heartbeat_at: Date.now() - 60_000 }], ['missing', {}]]) {
+  test(`living database owner with ${name} heartbeat cannot be replaced`, async t => {
+    const directory = await mkdtemp(join(tmpdir(), 'bpl-owner-')); const path = join(directory, 'db.sqlite');
+    const db = openDatabase(path); new CollectionStore(db);
+    const record = JSON.stringify({ pid: process.pid, owner: 'previous-live-owner', ...heartbeat });
+    db.prepare("INSERT OR REPLACE INTO p0_meta VALUES ('app_instance',?)").run(record);
+    db.close();
+    const replacement = new DatabaseWriter(path);
+    t.after(async () => { await replacement.close(); await rm(directory, { recursive: true, force: true }); });
+    await assert.rejects(replacement.start(), /DATABASE_ALREADY_OWNED/);
+    await replacement.waitForExit();
+    const reopened = openDatabase(path);
+    try { assert.equal(reopened.prepare("SELECT value FROM p0_meta WHERE key='app_instance'").get().value, record); }
+    finally { reopened.close(); }
+  });
+}
 test('byte budget rejects an oversized request before any RPC', async t => {
   const { writer } = await fixture(t, { maxBytes: 100 });
   await assert.rejects(writer.request({ operation: 'create', data: { huge: 'x'.repeat(200) } }), e => e.ingestion === 'NOT_INGESTED');

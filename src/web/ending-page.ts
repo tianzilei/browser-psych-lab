@@ -1,11 +1,12 @@
 import type {Protocol} from '../shared/protocol.js';
 import {el} from './dom.js';
 import {TextPager} from './text-pager.js';
+import {ui} from './participant-ui.js';
 
 export function mountEnding(content:HTMLElement,ending:Protocol['ending'],restart?:()=>void){
-  const e=ending??{title:'感谢参与',text:'你的答案已保存。感谢你的时间，现在可以关闭页面。'};
+  const e=ending??{title:'感谢参与',text:'现在可以关闭页面，或返回主页。'};
   const page=el('section',undefined,'ending-page'),title=el('h2',e.title,'ending-title'),text=el('div',undefined,'reading-text ending-text'),nav=el('div',undefined,'ending-nav');
-  text.tabIndex=-1;const previous=el('button','阅读上一段'),next=el('button','阅读下一段'),home=el('button','回到主页');previous.type=next.type=home.type='button';nav.append(previous,next,home);
+  text.tabIndex=-1;const previous=el('button','阅读上一段'),next=el('button','阅读下一段'),home=el('button',ui.home,'primary');previous.type=next.type=home.type='button';nav.append(previous,next,home);
   home.addEventListener('click',()=>{window.location.assign('/');});
   if(restart){const reset=el('button','重新模拟');reset.type='button';reset.addEventListener('click',restart);nav.append(reset);}
   page.append(title,text,nav);content.replaceChildren(page);

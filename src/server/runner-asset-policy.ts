@@ -2,6 +2,7 @@ import {join} from 'node:path';
 import {digest} from './collection-store.js';
 import {openPrivate} from './private-files.js';
 import {ContractError} from '../shared/contract.js';
+import {TASK_ACTIVITY_POLICY} from '../shared/task-policy.js';
 type AssetPolicy='legacy'|'ticket';
 export class RunnerAssetPolicy {
   private cache=new Map<string,AssetPolicy>();
@@ -31,7 +32,10 @@ export class RunnerAssetPolicy {
       if(digest(bytes)!==contracts[0]!.hash)throw new Error('RUNNER_CONTRACT_HASH_MISMATCH');
       const contract=JSON.parse(bytes.toString()) as {schema:string;preparation_queue:boolean;task_activity?:string};
       if(contract.schema!=='runner-assets-v1'||contract.preparation_queue!==true)throw new Error('UNSUPPORTED_RUNNER_CONTRACT');policy='ticket';
-      if(contract.task_activity==='idle120-offline300-v1')this.activity.add(hash);
+      if(contract.task_activity!==undefined){
+        if(contract.task_activity!==TASK_ACTIVITY_POLICY.id)throw new Error('UNSUPPORTED_TASK_ACTIVITY_POLICY');
+        this.activity.add(hash);
+      }
     }
     if(this.cache.size>=64){const evicted=this.cache.keys().next().value!;this.cache.delete(evicted);this.activity.delete(evicted);}this.cache.set(hash,policy);return policy;
   }

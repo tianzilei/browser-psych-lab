@@ -1,6 +1,7 @@
 import './style.css';
 import { LocalStore } from './local-store.js';
 import type { Receipt, Seal, SessionView } from '../shared/contract.js';
+import {participantError,isConnectionFailure} from './participant-ui.js';
 
 const status = document.querySelector<HTMLParagraphElement>('#status')!;
 const evidence = document.querySelector<HTMLParagraphElement>('#evidence')!;
@@ -10,7 +11,7 @@ const unknownClose = document.querySelector<HTMLButtonElement>('#unknown-close')
 const writer = sessionStorage.getItem('p0-writer') ?? crypto.randomUUID();
 sessionStorage.setItem('p0-writer', writer);
 const clock = crypto.randomUUID();
-let local: LocalStore; let session: SessionView; let ownsLock = false; let busy = false;
+let local: LocalStore; let session: SessionView; let ownsLock = false; let busy = false;let waitingForRecovery=false;
 async function api<T>(path: string, data?: unknown): Promise<T> {
   const response = await fetch(path, data === undefined ? { signal: AbortSignal.timeout(10_000) } : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
@@ -25,8 +26,9 @@ const fence = () => ({ writer_id: writer, writer_epoch: session.writer_epoch });
 function failed(error: unknown) {
   form.hidden = true; retry.hidden = !ownsLock;
   const code = error instanceof Error ? error.message : 'SAVE_FAILED';
-  status.textContent = code === 'RUN_LOCKED' ? '另一个页面持有运行权。此页只读，不能作答。'
-    : '保存尚未完成。已提交的本地答案会保留，联网后可重试核对。';
+  waitingForRecovery=isConnectionFailure(error);
+  status.textContent = code === 'RUN_LOCKED' ? '此问卷已在其他页面打开。请回到原页面继续，此页只读。'
+    : participantError(error);
   unknownClose.hidden = code !== 'RUN_LOCKED' || session?.permit?.state !== 'ISSUED';
   evidence.textContent = `状态：${code}`;
 }
@@ -68,6 +70,7 @@ async function restore() {
 }
 async function run(action: () => Promise<void>) {
   if (busy) return; busy = true; retry.disabled = true;
+  waitingForRecovery=false;
   try { await action(); } catch (error) { failed(error); }
   finally { busy = false; retry.disabled = false; }
 }
@@ -84,7 +87,7 @@ unknownClose.addEventListener('click', () => { void run(async () => {
   session = await api<SessionView>(path('terminate'), { request_id: crypto.randomUUID(), reason: 'UNKNOWN_RUN' });
   await local.session(session); unknownClose.hidden = true; status.textContent = '旧运行已关闭，会话已终止。';
 }); });
-window.addEventListener('online', () => { if (ownsLock) void run(restore); });
+window.addEventListener('online', () => { if (ownsLock&&waitingForRecovery) void run(restore); });
 window.addEventListener('pagehide', () => {
   if (ownsLock && session?.state === 'ACTIVE' && session.permit?.state !== 'ISSUED') {
     void fetch(path('release'), { method: 'POST', headers: { 'Content-Type': 'application/json' },

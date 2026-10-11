@@ -45,6 +45,13 @@ test('runner capability is canonical, bounded and rejects corrupt or unsupported
   async function archive(contract){const bytes=JSON.stringify(contract),files=[{path:'runner-contract.json',hash:digest(bytes)}],runnerHash=digest(JSON.stringify(files));
     await writeFile(join(dist,'web/runner-contract.json'),bytes);await writeFile(join(dist,'release.json'),JSON.stringify({runnerHash,runnerVersion:'canvas-v1',files}));await retainRelease(root,dist);return runnerHash;}
   const hash=await archive({schema:'runner-assets-v1',preparation_queue:true});assert.equal(await new RunnerAssetPolicy(root).get(hash),'ticket');
+  assert.equal(await new RunnerAssetPolicy(root).requiresActivity(hash),false);
+  const active=await archive({schema:'runner-assets-v1',preparation_queue:true,task_activity:'idle120-offline300-v1'});
+  assert.equal(await new RunnerAssetPolicy(root).requiresActivity(active),true);
+  for(const task_activity of ['future-policy',null,false]){
+    const unknown=await archive({schema:'runner-assets-v1',preparation_queue:true,task_activity});
+    await assert.rejects(new RunnerAssetPolicy(root).get(unknown),/UNSUPPORTED_TASK_ACTIVITY_POLICY/);
+  }
   const unsupported=await archive({schema:'future-schema',preparation_queue:true});await assert.rejects(new RunnerAssetPolicy(root).get(unsupported),/UNSUPPORTED/);
   await writeFile(join(root,'research-assets/runners',hash,'runner-contract.json'),'tampered');await assert.rejects(new RunnerAssetPolicy(root).get(hash),/HASH_MISMATCH/);
   await assert.rejects(new RunnerAssetPolicy(root).get('../unsafe'),/INVALID_RUNNER/);

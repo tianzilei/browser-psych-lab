@@ -17,7 +17,7 @@ export async function requireConsent(ledger:Ledger):Promise<ConsentReceipt|undef
   try{
     await new Promise<void>((resolve,reject)=>{
       cancel=()=>{dispose();reject(new Error('页面已关闭。'));};window.addEventListener('pagehide',cancel,{once:true});
-      const read=()=>{dispose();status.textContent='参加前请阅读知情同意书。';dispose=mountConsent(content,consent.document,resolve,()=>{dispose();status.textContent='未同意参加';showConsentDeclined(content,read);});};read();
+      const read=()=>{dispose();status.textContent='参加前请阅读知情同意书。';dispose=mountConsent(content,consent.document,resolve,()=>{dispose();status.textContent='未同意参加。';showConsentDeclined(content,read);});};read();
     });
   }finally{dispose();window.removeEventListener('pagehide',cancel);}
   const receipt:ConsentReceipt={accepted:true,document_hash:consent.document_hash};
