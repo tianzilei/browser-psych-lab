@@ -38,6 +38,16 @@ export function recordInteractions(root:HTMLElement,context:()=>InteractionConte
     if (frame!==undefined) {cancelAnimationFrame(frame);frame=undefined;}
     microtask=false;
     const at=performance.now(),c=current(),nodes:ScreenNode[]=[];let truncated=false;
+    const state=browserState(),base={context:c,width:state.width,height:state.height,dpr:state.dpr,scroll_x:state.scroll_x,scroll_y:state.scroll_y,
+      visual_viewport:state.visual_viewport,background:getComputedStyle(document.documentElement).backgroundColor};
+    // A single screen must fit in a diagnostic batch and its 128 KiB ledger
+    // envelope. Bound encoded bytes as well as node count; input samples remain intact.
+    let snapshotBytes=encoder.encode(JSON.stringify({type:'screen',at,...base,nodes:[],nodes_truncated:false,capture})).length;
+    const appendNode=(node:ScreenNode)=>{
+      const size=encoder.encode(JSON.stringify(node)).length+(nodes.length?1:0);
+      if(nodes.length>=1900||snapshotBytes+size>75000){truncated=true;return false;}
+      nodes.push(node);snapshotBytes+=size;return true;
+    };
     elements: for (const e of root.querySelectorAll<HTMLElement>('*')) {
       const r=box(e),computed=getComputedStyle(e);
       if (!r.width||!r.height||computed.visibility!=='visible'||computed.display==='none'||e.closest('[style*="opacity: 0"]')) continue;
@@ -49,14 +59,13 @@ export function recordInteractions(root:HTMLElement,context:()=>InteractionConte
       } else if (e instanceof HTMLTextAreaElement||e instanceof HTMLSelectElement) {node.value=e.value;node.disabled=e.disabled;}
       if (e instanceof HTMLButtonElement) node.disabled=e.disabled;
       if (e instanceof HTMLCanvasElement) {node.asset_id=c.asset_id;node.text=c.stimulus_text??'';}
-      if (nodes.length>=1900) {truncated=true;break;}nodes.push(node);
+      if (!appendNode(node)) break;
       for (const child of e.childNodes) if (child.nodeType===Node.TEXT_NODE&&child.textContent?.trim()) {
         const range=document.createRange();range.selectNodeContents(child);const rect=range.getBoundingClientRect();
-        if (nodes.length>=1900) {truncated=true;break elements;}nodes.push({x:rect.x,y:rect.y,width:rect.width,height:rect.height,tag:'text',text:child.textContent,style});
+        if (!appendNode({x:rect.x,y:rect.y,width:rect.width,height:rect.height,tag:'text',text:child.textContent,style})) break elements;
       }
     }
-    const state=browserState(),snapshot={context:c,width:state.width,height:state.height,dpr:state.dpr,scroll_x:state.scroll_x,scroll_y:state.scroll_y,
-      visual_viewport:state.visual_viewport,background:getComputedStyle(document.documentElement).backgroundColor,nodes,nodes_truncated:truncated};
+    const snapshot={...base,nodes,nodes_truncated:truncated};
     const signature=JSON.stringify(snapshot);if (signature===lastScreen) return;lastScreen=signature;
     add({type:'screen',at,...snapshot,capture});
   }

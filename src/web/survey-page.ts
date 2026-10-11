@@ -56,7 +56,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     const old = answers[q.id];
     const changed = Array.isArray(answer) ? !Array.isArray(old) || answer.length !== old.length || answer.some((a, i) => a !== old[i])
       : answer&&typeof answer==='object'?Object.keys(answer).some(key=>answer[key]!==axisAnswers(old)[key])||Object.keys(answer).length!==Object.keys(axisAnswers(old)).length:answer !== old;
-    if (!changed || submitting) return;
+    if (!changed || submitting || disposed) return;
     answers[q.id] = copy(answer); message.textContent = '';
     revision(q.id, copy(answer), snapshot(answers));
     if (!composing) visibility();
@@ -190,7 +190,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     if (q?.type === 'text' && typeof answers[q.id] === 'string' && (answers[q.id] as string).length > q.max_length!) {
       message.textContent = `最多 ${q.max_length} 个字符。`; return false;
     }
-    if (q?.type === 'text' && typeof answers[q.id] === 'string' && q.input_match && !inputMatchRegex(q.input_match).test(answers[q.id] as string)) {
+    if (q?.type === 'text' && typeof answers[q.id] === 'string' && !answerMissing(q,answers[q.id]) && q.input_match && !inputMatchRegex(q.input_match).test(answers[q.id] as string)) {
       message.textContent = inputMatchMessage(q.input_match); return false;
     }
     return true;
@@ -213,7 +213,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     show(visible.filter(i => i < current).at(-1) ?? -1);
   }
   function navigate(action: () => void) {
-    if (submitting || navigating || composing) return;
+    if (disposed || submitting || navigating || composing) return;
     navigating = true; action(); if (disposed) return; navigation();
     unlock = setTimeout(() => { navigating = false; if (!disposed) navigation(); }, 200);
   }

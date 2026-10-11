@@ -12,7 +12,7 @@ import {stableJSON} from '../../src/shared/protocol.js';
 import sharp from 'sharp';
 import {gunzipSync} from 'node:zlib';
 
-async function start(page:Page,rating=false,age=false){
+async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<typeof compileQuestionnaire>)=>void){
   const root=mkdtempSync(join(tmpdir(),'bpl-runner-')),db=openDatabase(join(root,'db.sqlite')),store=new LabStore(db,digest('runner'));
   const token=digest('admin'),csrf=randomUUID();store.execute({operation:'lab/admin.issue',data:{token_hash:token,csrf}});
   const admin=(operation:string,data:Record<string,unknown>={})=>store.execute({operation:`lab/${operation}`,credential_hash:token,data:{csrf,...data}}) as any;
@@ -26,6 +26,7 @@ async function start(page:Page,rating=false,age=false){
     trials:[{root_id:'image',asset_id:asset.asset_id,correct:'Left'},{root_id:'text',text:'HELLO',correct:'Right'}]}]});
   if(rating&&age){p.groups[0]!.rating={...p.groups[0]!.rating!,age_prompt:'你的年龄是？',age_min:18,age_max:65};p.groups[0]!.trials.splice(1);p.variants[0]!.trial_order.ratings=['first'];}
   else if(rating){const second=admin('asset.begin',{request_id:randomUUID(),study_id:study.study_id,name:'second.png'});p.groups[0]!.trials[1]!.asset_id=second.asset_id;store.execute({operation:'lab/internal.asset.ready',data:{asset_id:second.asset_id,info:{hash:digest(png),bytes:png.length,width:1080,height:720,format:'png'}}});}
+  configure?.(p);
   const saved=admin('study.save',{request_id:randomUUID(),revision:1,study_id:study.study_id,protocol:p});
   const version=admin('study.publish',{request_id:randomUUID(),revision:saved.revision,study_id:study.study_id});
   admin('study.admission',{request_id:randomUUID(),study_id:study.study_id,paused:false});
@@ -62,7 +63,7 @@ async function start(page:Page,rating=false,age=false){
   await page.goto(`/run.html?version=${version.version_id}`);
   await expect(page.getByRole('button',{name:'开始本组'})).toBeVisible();
   return {view:()=>call('view'),records:()=>db.prepare("SELECT envelope FROM lab_events WHERE session_id=? AND kind='GROUP_RECORD' ORDER BY sequence").all(sid).map((e:any)=>JSON.parse(e.envelope).payload.record),
-    requests:()=>groupCalls,downloads:()=>assetCalls,close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+    requests:()=>groupCalls,downloads:()=>assetCalls,scopeEvents:(scope:string)=>db.prepare('SELECT envelope FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,scope).map((row:any)=>JSON.parse(row.envelope)),close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
 }
 
 test('image click visibly confirms first answer; right click, repeated key, and changed second answer are excluded',async({page})=>{
@@ -132,5 +133,76 @@ test('one rating plus age advances before submitting and honors frozen age bound
     await age.press('5');await expect(age).toHaveAttribute('aria-invalid','true');await expect(page.getByRole('button',{name:'提交评分'})).toBeDisabled();
     await age.press('Backspace');await age.press('1');await age.press('8');await expect(page.getByRole('button',{name:'提交评分'})).toBeEnabled();expect(await page.locator('#stimulus').boundingBox()).toEqual(before);
     await page.getByRole('button',{name:'提交评分'}).click();await expect(page.locator('#done')).toBeVisible({timeout:10000});expect(f.records().find((r:any)=>r.type==='RATING').values).toEqual([9,18]);expect(f.view().diagnostics).toHaveLength(0);expect(f.view().permit.state).toBe('CLOSED_NORMAL');
+  }finally{f.close();}
+});
+
+test('releasing a captured rating drag after advancing cannot answer the age question',async({page})=>{
+  const f=await start(page,true,true),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  try{
+    await page.getByRole('button',{name:'开始本组'}).click();
+    const range=page.getByRole('slider',{name:'测试项目'});await expect(range).toBeVisible();
+    const rect=(await range.boundingBox())!;
+    await page.mouse.move(rect.x+11,rect.y+rect.height/2);await page.mouse.down();
+    const next=page.getByRole('button',{name:'下一题',exact:true});await expect(next).toBeEnabled();
+    await next.focus();await page.keyboard.press('Enter');
+    const age=page.getByRole('textbox',{name:'你的年龄是？'});await expect(age).toBeVisible();await expect(age).toBeFocused();
+    await page.mouse.move(rect.x+rect.width-11,rect.y+rect.height/2);await page.mouse.up();
+    await expect(page.getByRole('button',{name:'提交评分'})).toBeDisabled();
+    await age.press('1');await age.press('8');await page.getByRole('button',{name:'提交评分'}).click();
+    await expect(page.locator('#done')).toBeVisible({timeout:10000});
+    expect(errors).toEqual([]);expect(f.records().find((r:any)=>r.type==='RATING').values).toEqual([1,18]);
+    expect(f.view().permit.state).toBe('CLOSED_NORMAL');
+  }finally{f.close();}
+});
+
+test('a held rating drag cannot leak into another axis or the next image',async({page})=>{
+  const f=await start(page,true,false,p=>{p.groups[0]!.rating!.items=['第一项','第二项'];});
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  try{
+    await page.getByRole('button',{name:'开始本组'}).click();
+    const first=page.getByRole('slider',{name:'第一项'}),second=page.getByRole('slider',{name:'第二项'});
+    await expect(first).toBeVisible();const rect=(await first.boundingBox())!;
+    await page.mouse.move(rect.x+11,rect.y+rect.height/2);await page.mouse.down();
+    const next=page.getByRole('button',{name:'下一题',exact:true});await next.focus();await page.keyboard.press('Enter');
+    await expect(second).toBeVisible();await expect(second).toBeFocused();await page.mouse.move(rect.x+rect.width-11,rect.y+rect.height/2);await page.mouse.up();
+    await expect(second).toHaveAttribute('data-answered','false');await expect(page.getByRole('button',{name:'提交评分'})).toBeDisabled();
+    const secondRect=(await second.boundingBox())!;
+    await page.mouse.move(secondRect.x+11+(secondRect.width-22)/4,secondRect.y+secondRect.height/2);await page.mouse.down();
+    const submit=page.getByRole('button',{name:'提交评分'});await submit.focus();await page.keyboard.press('Enter');
+    await expect(page.locator('#stimulus')).toBeHidden();await expect(page.locator('#status')).toContainText('第 2/2 张',{timeout:5000});
+    await page.mouse.move(rect.x+rect.width-11,rect.y+rect.height/2);await page.mouse.up();
+    await expect(first).toHaveAttribute('data-answered','false');await expect(next).toBeDisabled();
+    await first.press('Space');await next.click();await second.press('End');await submit.click();
+    await expect(page.locator('#done')).toBeVisible({timeout:10000});
+    expect(errors).toEqual([]);expect(f.records().filter((r:any)=>r.type==='RATING').map((r:any)=>r.values)).toEqual([[1,3],[5,9]]);
+    expect(f.records().filter((r:any)=>r.type==='RATING_CHANGE')).toHaveLength(4);
+  }finally{f.close();}
+});
+
+test('a layout change while the permit request is pending stops before any stimulus',async({page})=>{
+  const f=await start(page);let release!:()=>void,received!:()=>void;
+  const blocked=new Promise<void>(resolve=>release=resolve),incoming=new Promise<void>(resolve=>received=resolve);
+  await page.route('**/api/participate/sessions/*/permit',async route=>{received();await blocked;await route.fallback();});
+  try{
+    await page.getByRole('button',{name:'开始本组'}).click();await incoming;
+    await page.setViewportSize({width:430,height:844});release();
+    await expect(page.getByRole('button',{name:'返回问卷'})).toBeVisible();
+    expect(f.view().state).toBe('TERMINATED');expect(f.records().filter((r:any)=>r.type==='ONSET')).toHaveLength(0);
+  }finally{release();f.close();}
+});
+
+test('a failed group seal removes task input before the retry interface is used',async({page})=>{
+  const f=await start(page);let attempts=0;
+  await page.route('**/api/participate/sessions/*/seal',async route=>{
+    if(++attempts===1)await route.fulfill({status:400,json:{code:'TEST_SEAL_FAILED'}});else await route.fallback();
+  });
+  try{
+    await page.getByRole('button',{name:'开始本组'}).click();
+    await expect(page.getByRole('button',{name:'重试保存'})).toBeVisible({timeout:10000});
+    const scope=`d-${f.view().permit.scope}`,before=f.scopeEvents(scope).length;
+    await page.keyboard.press('f');await page.getByRole('button',{name:'重试保存'}).click();
+    await expect(page.locator('#done')).toBeVisible();
+    expect(f.scopeEvents(scope)).toHaveLength(before);expect(f.view().permit.state).toBe('CLOSED_NORMAL');
+    expect(attempts).toBe(2);
   }finally{f.close();}
 });

@@ -99,6 +99,27 @@ test('research cards and finite survey recover offline exact revisions and rejec
   },version.version_id);
   await context.setOffline(false);await page.reload();await expect(page.locator('#status')).toContainText('研究已完成');const after=await local(page);expect(after.raw).toBe(before.raw);expect(after.queued).toBe(0);
 });
+test('a duplicate participant tab can retry after the original closes and restore durable answers',async({page,context})=>{
+  const {version,study}=await setup(context);await page.goto(`/participate.html?version=${version.version_id}`);await begin(page);
+  await page.getByRole('button',{name:'是',exact:true}).click();await expect.poll(async()=>(await local(page)).raw).toBeGreaterThan(0);
+  const sid=(await (await context.request.get(`/api/lab/studies/${study.study_id}/sessions`)).json()).sessions[0].session_id;
+  const original=await (await context.request.get(`/api/lab/sessions/${sid}`)).json();
+  // Legacy ledgers have no explicit writer_id metadata. Their saved session
+  // still identifies the writer of the immutable pending answer chain.
+  await page.evaluate(async version=>{
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('browser-psych-lab-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    try{await new Promise<void>((resolve,reject)=>{const tx=db.transaction('meta','readwrite'),store=tx.objectStore('meta'),r=store.get(version);r.onsuccess=()=>{const row=r.result;delete row.writer_id;store.put(row,version);};tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}finally{db.close();}
+  },version.version_id);
+  const second=await context.newPage();
+  await second.goto(`/participate.html?version=${version.version_id}`);await expect(second.locator('#status')).toContainText('只读');
+  await expect(second.getByRole('button',{name:'重新尝试',exact:true})).toBeVisible();
+  await second.getByRole('button',{name:'重新尝试',exact:true}).click();await expect(second.locator('#status')).toContainText('只读');
+  await page.close();await second.getByRole('button',{name:'重新尝试',exact:true}).click();await begin(second);
+  await expect(second.getByRole('button',{name:'是',exact:true})).toHaveAttribute('aria-pressed','true');
+  await second.getByRole('button',{name:'提交本页'}).click();await expect(second.locator('#status')).toContainText('研究已完成');
+  const restored=await (await context.request.get(`/api/lab/sessions/${sid}`)).json();
+  expect(restored.writer_id).toBe(original.writer_id);expect(restored.writer_epoch).toBe(original.writer_epoch);
+});
 test('button wizard preserves branches, optional empty choice and numeric zero without scrolling',async({page,context})=>{
   const {version,study}=await setup(context,false,0,p=>{
     p.layout.background='#202020';p.pages[0]!.instruction='按钮作答';p.pages[0]!.questions=[
@@ -442,7 +463,9 @@ test('native compressed diagnostics preserve coalesced pen samples, key/input me
   const samples:any[]=[];let after=0;
   for(;;){const part=await (await context.request.get(`/api/lab/sessions/${sid}/actions?after=${after}`)).json();samples.push(...part.batches.flatMap((batch:any)=>batch.samples));if(!part.more)break;after=part.next;}
   const pens=samples.filter(s=>s.type==='pointermove'&&s.pointer_type==='pen');expect(pens).toHaveLength(100);
-  expect(pens.map(s=>s.x)).toEqual(Array.from({length:100},(_,i)=>i+1));expect(pens[99]).toMatchObject({pressure:measured.pressure,twist:99,width:2,height:3,tilt_y:-10,shift_key:true,coalesced:true,trusted:false});
+  // This endpoint paginates by server receipt rowid. Outbox UUID order can
+  // deliver whole batches out of capture order; every original point survives.
+  expect(pens.map(s=>s.x).sort((a,b)=>a-b)).toEqual(Array.from({length:100},(_,i)=>i+1));expect(pens.find(s=>s.x===100)).toMatchObject({pressure:measured.pressure,twist:99,width:2,height:3,tilt_y:-10,shift_key:true,coalesced:true,trusted:false});
   expect(samples).toEqual(expect.arrayContaining([expect.objectContaining({type:'keydown',code:'ShiftLeft',repeat:true,location:1,shift_key:true}),expect.objectContaining({type:'beforeinput',data:'测试',is_composing:true}),expect.objectContaining({type:'wheel',delta_x:2,delta_y:3,delta_mode:1,ctrl_key:true}),expect.objectContaining({type:'offline',state:expect.objectContaining({focused:expect.any(Boolean)})}),expect.objectContaining({type:'pageshow',state:expect.objectContaining({persisted:true})})]));
   expect(compressed.some(url=>url.endsWith('/ingest'))).toBe(true);
   const records=await page.evaluate(async()=>{

@@ -1,0 +1,185 @@
+[
+  {
+    "request_id": "bpl-interaction-audit-20261011-00",
+    "result_id": "res_f47fe907cb81c2d7f0a9",
+    "stage": "COMPLETED",
+    "completeness": "complete"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-01",
+    "stage": "COMPLETED",
+    "result_id": "res_9b05ee451796183e41d4",
+    "completeness": "complete",
+    "chunk": "chunk-01"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-02",
+    "stage": "COMPLETED",
+    "result_id": "res_af4d984239342c085c30",
+    "completeness": "complete",
+    "chunk": "chunk-02"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-03",
+    "stage": "COMPLETED",
+    "result_id": "res_95f50bb6b5909daf38e8",
+    "completeness": "complete",
+    "chunk": "chunk-03"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-04",
+    "stage": "COMPLETED",
+    "result_id": "res_04b84427b9336aa6c963",
+    "completeness": "complete",
+    "chunk": "chunk-04"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-05",
+    "stage": "COMPLETED",
+    "result_id": "res_5a9e020a951a817e0192",
+    "completeness": "complete",
+    "chunk": "chunk-05"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-06",
+    "stage": "COMPLETED",
+    "result_id": "res_ebfc4aeeeb78f3bfce62",
+    "completeness": "complete",
+    "chunk": "chunk-06"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-07",
+    "stage": "COMPLETED",
+    "result_id": "res_7269f9d1abb5cbddef6b",
+    "completeness": "complete",
+    "chunk": "chunk-07"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-08",
+    "stage": "COMPLETED",
+    "result_id": "res_06bcf3faed23c171b983",
+    "completeness": "complete",
+    "chunk": "chunk-08"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-09",
+    "stage": "COMPLETED",
+    "result_id": "res_5792c434603923a86b22",
+    "completeness": "complete",
+    "chunk": "chunk-09"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-10",
+    "stage": "COMPLETED",
+    "result_id": "res_c5ac235c8c673cea96fc",
+    "completeness": "complete",
+    "chunk": "chunk-10"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-11",
+    "stage": "COMPLETED",
+    "result_id": "res_86d5420b3469d8f39cd9",
+    "completeness": "complete",
+    "chunk": "chunk-11"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-12",
+    "stage": "COMPLETED",
+    "result_id": "res_b872159b95dbf3b064a5",
+    "completeness": "complete",
+    "chunk": "chunk-12"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-13",
+    "stage": "COMPLETED",
+    "result_id": "res_377c0920b8c71be6663a",
+    "completeness": "complete",
+    "chunk": "chunk-13"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-14",
+    "stage": "COMPLETED",
+    "result_id": "res_4bb18b93fa7526bf0789",
+    "completeness": "complete",
+    "chunk": "chunk-14"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-15",
+    "stage": "WAITING_REPLY",
+    "error": {
+      "code": "TIMEOUT",
+      "message": "MCP wait expired; query with request_id",
+      "request_id": "bpl-interaction-audit-20261011-15",
+      "retryable": false
+    },
+    "chunk": "chunk-15"
+  },
+  {
+    "chunk": "chunk-15",
+    "request_id": "bpl-interaction-audit-20261011-15",
+    "request_stage": "PENDING_VERIFICATION",
+    "result_id": "res_3c5642fb001e5759eb09",
+    "source": "late read_conversation",
+    "snapshot_completeness": "complete",
+    "stopped": false,
+    "content_note": "Returned a substantive eight-finding audit instead of an ACK; recovered from the final conversation turn."
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-synthesis-02",
+    "stage": "COMPLETED",
+    "result_id": "res_fddb0085b04186ecc942",
+    "completeness": "complete",
+    "source": "synthesis"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-patch-1",
+    "stage": "COMPLETED",
+    "result_id": "res_e9e54cc518b6818e2258",
+    "completeness": "complete",
+    "source": "patch-01"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-patch-2",
+    "stage": "COMPLETED",
+    "result_id": "res_f997f1885a71e992db05",
+    "completeness": "complete",
+    "source": "patch-02"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-patch-3",
+    "stage": "COMPLETED",
+    "result_id": "res_b7556a85ce1a04e3ab3a",
+    "completeness": "complete",
+    "source": "patch-03"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-patch-4",
+    "stage": "COMPLETED",
+    "result_id": "res_7fd9b41e287994903ec7",
+    "completeness": "complete",
+    "source": "patch-04"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-patch-5",
+    "stage": "COMPLETED",
+    "result_id": "res_854defab308e854ea484",
+    "completeness": "complete",
+    "source": "patch-05"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-final",
+    "stage": "COMPLETED",
+    "result_id": "res_d1e0499a2ad715324342",
+    "completeness": "complete",
+    "source": "final"
+  },
+  {
+    "request_id": "bpl-interaction-audit-20261011-synthesis",
+    "stage": "NOT_SENT",
+    "error": {
+      "code": "BUSY",
+      "message": "another request is active"
+    },
+    "source": "transport retry; synthesis-02 completed later"
+  }
+]

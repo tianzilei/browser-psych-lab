@@ -7,7 +7,7 @@ import type {ConsentReceipt} from './consent-gate.js';
 interface EventRow extends WireEvent {session_id:string;scope:string;sequence:number;receipt:Receipt|null;byte_length?:number}
 const encoder=new TextEncoder();
 export interface PendingSeal {request_id:string;manifest:Manifest;seal:Seal|null}
-export interface SessionMeta {version_id:string;request_id:string;credential:string;session:LabSession|null;
+export interface SessionMeta {version_id:string;request_id:string;credential:string;session:LabSession|null;writer_id?:string;
   heads:Record<string,{sequence:number;previous:EventRef|null}>;pending:Record<string,PendingSeal>;finalize_id:string;page_values:Record<string,Record<string,Answer>>;
   reanswer?:{request_id:string;credential:string};reconciliations?:Record<string,{request_id:string;manifest:Manifest;unknown:string[]}>;termination?:{request_id:string;reason:string;evidence:unknown};consent?:ConsentReceipt;environment?:{request_id:string;sample_id:string;raw:string;hash?:string;received:boolean}}
 interface LedgerSchema extends DBSchema {events:{key:string;value:EventRow;indexes:{session:string;scope:string}};
@@ -18,14 +18,31 @@ export class Ledger {
   private failure:unknown=null;
   private diagnosticCount=0;
   constructor(readonly db:IDBPDatabase<LedgerSchema>,readonly version:string,readonly writer:string,readonly clock=crypto.randomUUID()){}
-  static async open(version:string,writer:string){return new Ledger(await openDB<LedgerSchema>('browser-psych-lab-v1',1,{upgrade(db){const e=db.createObjectStore('events',{keyPath:'event_id'});e.createIndex('session','session_id');e.createIndex('scope','scope');const o=db.createObjectStore('outbox',{keyPath:'event_id'});o.createIndex('session','session_id');db.createObjectStore('meta');}}),version,writer);}
-  async state(){let m=await this.db.get('meta',this.version);if(!m){m={version_id:this.version,request_id:crypto.randomUUID(),credential:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join(''),session:null,heads:{},pending:{},finalize_id:crypto.randomUUID(),page_values:{}};await this.db.add('meta',m,this.version);}return m;}
+  static async open(version:string,writer:string,resumeWriter=false){
+    const db=await openDB<LedgerSchema>('browser-psych-lab-v1',1,{upgrade(db){const e=db.createObjectStore('events',{keyPath:'event_id'});e.createIndex('session','session_id');e.createIndex('scope','scope');const o=db.createObjectStore('outbox',{keyPath:'event_id'});o.createIndex('session','session_id');db.createObjectStore('meta');}});
+    // Only resume an identity after acquiring this version's native Web Lock.
+    // A new tab must not advance the epoch of still-pending original events.
+    const prior=resumeWriter?await db.get('meta',version):undefined;
+    return new Ledger(db,version,prior?.writer_id??prior?.session?.writer_id??writer);
+  }
+  async state(){
+    let m=await this.db.get('meta',this.version);
+    if(!m){
+      m={version_id:this.version,request_id:crypto.randomUUID(),credential:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join(''),session:null,writer_id:this.writer,heads:{},pending:{},finalize_id:crypto.randomUUID(),page_values:{}};
+      await this.db.add('meta',m,this.version);
+    }else if(!m.writer_id){
+      const tx=this.db.transaction('meta','readwrite',{durability:'strict'});
+      m=(await tx.store.get(this.version))!;m.writer_id??=this.writer;
+      await tx.store.put(m,this.version);await tx.done;
+    }
+    return m;
+  }
   private serialized<T>(fn:()=>Promise<T>):Promise<T>{if(this.queued>=64){this.failure=new Error('LOCAL_QUEUE_BUDGET_EXCEEDED');return Promise.reject(this.failure);}this.queued++;const next=this.chain.then(fn).finally(()=>{this.queued--;});this.chain=next.catch(error=>{this.failure=error;});return next;}
   session(session:LabSession){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;m.session=session;await tx.store.put(m,this.version);await tx.done;});}
   consent(receipt:ConsentReceipt){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;m.consent=receipt;await tx.store.put(m,this.version);await tx.done;});}
   environment(raw?:string){return this.serialized(async()=>{const hash=raw===undefined?undefined:await sha256(raw);const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;if(raw!==undefined)m.environment??={request_id:crypto.randomUUID(),sample_id:crypto.randomUUID(),raw,hash:hash!,received:false};else if(m.environment)m.environment.received=true;await tx.store.put(m,this.version);await tx.done;});}
   reanswerRequest(){return this.serialized(async()=>{const m=await this.state();m.reanswer??={request_id:crypto.randomUUID(),credential:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('')};await this.db.put('meta',m,this.version);return m.reanswer;});}
-  restart(session:LabSession,credential:string){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;await tx.store.put(m,`archive:${m.session!.session_id}`);await tx.store.put({version_id:this.version,request_id:crypto.randomUUID(),credential,session,heads:{},pending:{},finalize_id:crypto.randomUUID(),page_values:{},...(m.consent?{consent:m.consent}:{})},this.version);await tx.done;});}
+  restart(session:LabSession,credential:string){return this.serialized(async()=>{const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const m=(await tx.store.get(this.version))!;await tx.store.put(m,`archive:${m.session!.session_id}`);await tx.store.put({version_id:this.version,request_id:crypto.randomUUID(),credential,session,writer_id:this.writer,heads:{},pending:{},finalize_id:crypto.randomUUID(),page_values:{},...(m.consent?{consent:m.consent}:{})},this.version);await tx.done;});}
   append(scope:string,kind:LabEvent['kind'],payload:Record<string,unknown>,pendingPath?:string[],pageValues?:Record<string,Answer>){return this.serialized(async()=>{
     const m=await this.state(),s=m.session;if(!s)throw new Error('NO_LOCAL_SESSION');if(m.pending[scope]&&kind!=='INPUT_DIAGNOSTIC')throw new Error('SCOPE_ALREADY_PENDING');
     const head=m.heads[scope]??{sequence:0,previous:null};if(head.sequence>=5000)throw new Error('LOCAL_SCOPE_EVENT_BUDGET_EXCEEDED');const e:LabEvent={event_schema_version:LAB_SCHEMA,event_id:crypto.randomUUID(),session_id:s.session_id,version_id:s.frozen.version_id,protocol_hash:s.frozen.hash,

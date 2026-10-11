@@ -26,7 +26,8 @@ export class ParticipantAPI {
   async terminate(reason:string,evidence:unknown={}){return request<LabSession>(this.path('terminate'),await this.ledger.termination(reason,evidence));}
   async reconcile(){await this.sync();const m=await this.ledger.state();for(const scope of Object.keys(m.heads)){const report=await request<{status:string;cleanup_allowed:boolean}>(this.path('reconcile'),await this.ledger.reconciliation(scope,this.session.path));if(report.status!=='RECONCILED'||report.cleanup_allowed!==false)throw new Error('RECONCILIATION_MISMATCH');}}
   async reanswer(){await this.reconcile();const data=await this.ledger.reanswerRequest();const result=await request<LabSession>(this.path('reanswer'),data);await this.ledger.restart(result,data.credential);return result;}
-  static async open(version:string,writer:string){await requireOrientation(version);const ledger=await Ledger.open(version,writer),m=await ledger.state();
+  static async open(version:string,writer:string){await requireOrientation(version);const ledger=await Ledger.open(version,writer,true),m=await ledger.state();
+    sessionStorage.setItem(`lab-writer-${version}`,ledger.writer);
     const {requireConsent}=await import('./consent-gate.js'),consent=await requireConsent(ledger);
     if(!m.environment){const {collectEnvironment}=await import('./environment.js');await ledger.environment(JSON.stringify(await collectEnvironment()));}
     await requireOrientation(version);const initial=m.session?await request<LabSession>(`/api/participate/sessions/${m.session.session_id}/resume`,{credential:m.credential}):await request<LabSession>('/api/participate/sessions',{request_id:m.request_id,version_id:version,credential:m.credential,...(consent?{consent}:{})});const api=new ParticipantAPI(ledger,initial);await api.refresh();await api.syncEnvironment();return api;}

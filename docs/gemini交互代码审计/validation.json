@@ -1,0 +1,55 @@
+{
+  "verified_at": "2026-10-11T13:57:22.588577+08:00",
+  "command": "npm run check",
+  "exit_code": 0,
+  "typecheck": "passed",
+  "production_build": "passed",
+  "sqlite_smoke": "passed",
+  "unit": {
+    "passed": 119,
+    "failed": 0
+  },
+  "http_chromium_browser": {
+    "passed": 43,
+    "failed": 0
+  },
+  "runner_browser": {
+    "passed": 12,
+    "failed": 0
+  },
+  "total_passed": 174,
+  "new_regression_cases": 7,
+  "full_log": "/Users/zileitian/Documents/GitHub/browser-psych-lab/.local/interaction-audit-check-final.log",
+  "full_log_sha256": "6db2df1338b33dbc225c96f72f0f53da0c0eeb2107ecabc474cd4bc15eadd64b",
+  "regressions_reproduced_before_fix": [
+    "optional formatted text remains blocked after clearing",
+    "captured rating pointerup after moving to age reads undefined.dataset",
+    "layout changes during pending permit still start the task",
+    "new tab changes writer epoch and cannot seal pending old answers"
+  ],
+  "first_full_check": {
+    "exit_code": 1,
+    "unit_passed": 119,
+    "browser_passed": 40,
+    "browser_failed": 3,
+    "failure_causes": [
+      "duplicate-tab writer identity defect",
+      "production login rate limit after failed-test worker restart",
+      "test incorrectly assumed capture order from receipt-rowid pagination"
+    ],
+    "log": "/Users/zileitian/Documents/GitHub/browser-psych-lab/.local/interaction-audit-check.log"
+  },
+  "final_static_review": {
+    "request_id": "bpl-interaction-audit-20261011-final",
+    "result_id": "res_d1e0499a2ad715324342",
+    "end_marker": "INTERACTION_PATCH_REVIEW_DONE",
+    "status": "No new blocking defect reported; static model opinion"
+  },
+  "boundaries": [
+    "isolated TEST_ONLY data",
+    "Chromium and touch emulation; no real-phone acceptance",
+    "no deployment or formal admission change",
+    "no raw-event rewrite or backend fence relaxation",
+    "screen snapshots may explicitly truncate DOM nodes; raw input samples retain existing event/queue budgets"
+  ]
+}

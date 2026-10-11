@@ -1,4 +1,4 @@
-import {el} from './dom.js';
+import {el,button} from './dom.js';
 import {RequestError} from './request-error.js';
 
 export const ui={
@@ -9,6 +9,11 @@ export const ui={
   duplicateTab:'此问卷已在其他页面打开。请回到原页面继续作答，此页只读。',
   scaleHint:'点击或拖动滑块选择评分',
 } as const;
+
+export function showDuplicateTab(status:HTMLElement,content:HTMLElement){
+  status.textContent=ui.duplicateTab;
+  content.replaceChildren(button('重新尝试',()=>location.reload(),'primary'));
+}
 
 const errors:Record<string,string>={
   SESSION_CAPACITY_FULL:ui.capacity,PREPARATION_CAPACITY_FULL:ui.capacity,

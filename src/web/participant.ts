@@ -9,7 +9,7 @@ import {mountEnding} from './ending-page.js';
 import {recordInteractions} from './interaction-recorder.js';
 import {downloadEstimate,downloadSize} from '../shared/download-estimate.js';
 import type {Answer} from '../shared/protocol.js';
-import {ui,participantError,errorDetails,errorCode,isConnectionFailure} from './participant-ui.js';
+import {ui,participantError,errorDetails,errorCode,isConnectionFailure,showDuplicateTab} from './participant-ui.js';
 const version=new URLSearchParams(location.search).get('version')??'';
 const title=document.querySelector<HTMLHeadingElement>('#title')!,status=document.querySelector<HTMLParagraphElement>('#status')!,content=document.querySelector<HTMLDivElement>('#content')!;
 const writer=sessionStorage.getItem(`lab-writer-${version}`)??uid();sessionStorage.setItem(`lab-writer-${version}`,writer);let api:ParticipantAPI|null=null,owned=false,busy=false;
@@ -27,10 +27,10 @@ function recovery(error:unknown){
   const retry=button(capacity?'稍后重试':!api||admissionController?.signal.aborted?'重新进入':ui.retrySave,()=>action(restore),'primary');
   const actions=el('div',undefined,'recovery-actions');actions.append(retry,errorDetails(error));content.replaceChildren(actions);
 }
-async function action(fn:()=>Promise<void>){if(busy)return;busy=true;try{await fn();}catch(error){recovery(error);}finally{busy=false;}}async function restore(){waitingForRecovery=false;recoverOnOnline=false;recorder?.stop();recorder=undefined;disposePage?.();disposePage=undefined;if(!owned){status.textContent=ui.duplicateTab;content.replaceChildren();return;}api??=await ParticipantAPI.open(version,writer);await api.stopAdmission();await api.refresh();const s=api.session;applyParticipantBackground(s.frozen.protocol.layout.background);title.textContent=s.frozen.protocol.title;
+async function action(fn:()=>Promise<void>){if(busy)return;busy=true;try{await fn();}catch(error){recovery(error);}finally{busy=false;}}async function restore(){waitingForRecovery=false;recoverOnOnline=false;recorder?.stop();recorder=undefined;disposePage?.();disposePage=undefined;if(!owned){showDuplicateTab(status,content);return;}api??=await ParticipantAPI.open(version,writer);await api.stopAdmission();await api.refresh();const s=api.session;applyParticipantBackground(s.frozen.protocol.layout.background);title.textContent=s.frozen.protocol.title;
   if(s.state==='COMPLETED'){await api.sync();status.textContent=ui.completed;disposePage=mountEnding(content,s.frozen.protocol.ending);return;}
   if(s.state==='TERMINATED'){status.textContent='本次作答已中断，正在保存已有记录…';await api.reconcile();status.textContent='本次作答已中断，已有记录已保存。';const again=button('重新作答',()=>action(async()=>{await api!.reanswer();for(const key of Object.keys(sessionStorage))if(key.startsWith(`lab-step-${version}-`))sessionStorage.removeItem(key);location.reload();}),'primary');content.replaceChildren(again,el('p','重新作答将创建新答卷，原答卷及其关联记录会保留。','support-text'));return;}
-  if(!owned){status.textContent=ui.duplicateTab;content.replaceChildren();return;}
+  if(!owned){showDuplicateTab(status,content);return;}
   if(s.permit?.state==='ISSUED'&&!(await api.ledger.state()).pending[s.permit.scope]){if(s.task_activity){status.textContent='任务已中断，正在保存已有记录…';await api.terminate('UNKNOWN_RUN');await api.sync();await restore();return;}status.textContent='上次任务未正常结束，请先结束该任务并保存已有记录。';content.replaceChildren(button('结束中断的任务',()=>action(async()=>{await api!.terminate('UNKNOWN_RUN');await api!.sync();await restore();})));return;}
   admissionController=new AbortController();const controller=admissionController;
   status.textContent='正在准备问卷…';content.replaceChildren(button(ui.cancel,()=>{cancelAdmission(controller);location.assign('/');}));
