@@ -1,5 +1,7 @@
 # Gemini bridge 图片代码审查（2026-10-10）
 
+> 归档说明（2026-10-11）：本目录的原始输入、模型回复和 JSON／测量原件保留原时点，不随文档同步改写。现行准入与并发以 [并发设计与容量验收](../并发设计与容量验收.md) 为准；旧 FIFO、组内零 HTTP、角色／数据库建议按本目录取舍阅读。
+
 审查范围：image-plan.ts、offline-image.ts、prepare-images.mjs、image-output.mjs 和图片优化单元测试。仅本地上传前生成固定资产，生产上传/计时合同保持不变。
 
 通过当前 [Gemini 会话](https://gemini.google.com/app/e7df010d227238a1) 完成两轮初审和一轮补丁复审。原文保留，不将 Gemini 的“确定”标签直接视为已确认缺陷。

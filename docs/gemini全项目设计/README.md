@@ -1,5 +1,7 @@
 # Gemini 全项目逻辑与设计讨论
 
+> 归档说明（2026-10-11）：本目录的原始输入、模型回复和 JSON／测量原件保留原时点，不随文档同步改写。现行准入与并发以 [并发设计与容量验收](../并发设计与容量验收.md) 为准；旧 FIFO、组内零 HTTP、角色／数据库建议按本目录取舍阅读。
+
 用户随后要求保持轻量化、扩大浏览器可用信息采集并采用低开销压缩/校验。后续实施见 [浏览器轻量采集与传输设计](../浏览器轻量采集与传输设计.md)，验证与测量见 [轻量化-validation.json](轻量化-validation.json) / [transport-profile.json](transport-profile.json)。后续记录独立于下文 109/37/5 的前轮基线。
 
 后续三次讨论使用相同 Gemini 会话：`lightweight-design-20261011-01` / `res_930d6ad30a8e2f6258ac` 为设计挑战，`-02` / `res_fe4d5ba9dfed246563ff` 为代码输入后静态复审，`-03` / `res_ca04eb9c9f1248e0df9b` 为短文收敛。输入/返回保存为 `轻量化-01` 至 `轻量化-03` 文件。第二轮发送返回虽标 complete，但原文在 `X-Uncompressed-` 处截断；后续读取会话 `res_c635b7d4bc0ada7b43b7` 保存更多内容，仍在 `高频 scroll` 处结束，归为不完整 snapshot，不视为完整复审。第三轮带 `LIGHT_REVIEW_DONE` 结束标记后再收敛。

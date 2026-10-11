@@ -1,5 +1,7 @@
 # 参考代码入口
 
+> 本目录为锁定的参考源码，不属于生产运行栈。当前项目使用单 Fastify、SQLite 单数据库 worker 和两级业务准入，运行预算见 [并发设计与容量验收](../docs/并发设计与容量验收.md)；参考项目中的并发机制不直接作为本项目配置。
+
 核对日期：2026-10-08（Asia/Shanghai）。源码位于 `references/checkouts/`，该目录已加入 `.gitignore`。提交、许可证文件和 SHA-256 摘要保存在 [manifest.lock.json](manifest.lock.json)，许可证原文副本保存在 `licenses/`。`npm run references:fetch` 可重建源码；有本地修改或不同提交时会拒绝覆盖。
 
 已独立下载并核对下表源码身份与许可证文件。核对范围是来源、固定身份与许可证文本，不代表完整源码审计、兼容验收或法律意见。参考仓库不执行自己的 install/build 脚本，运行依赖来自本项目 npm 锁文件。
