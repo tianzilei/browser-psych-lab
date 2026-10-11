@@ -11,6 +11,8 @@ import { stableJSON,pageSnapshot,evaluate,type Protocol,type Answer } from '../s
 import { RunReplay } from '../shared/run-replay.js';
 import { parseLabEvent,type GroupPlan,type RunRecord } from '../shared/lab-contract.js';
 import { id,object } from '../shared/contract.js';
+import {answerColumns,trajectoryColumns,csvRow} from './export-csv.js';
+import {validInteractionBatch} from '../shared/interaction.js';
 
 const config=workerData as {path:string;root:string;job:string;kind:string;config:Record<string,unknown>};
 const phase=(phase:string,data?:unknown)=>parentPort!.postMessage({phase,data});
@@ -110,12 +112,20 @@ async function run(){
     if(config.kind==='EXPORT'){
       const sid=id(config.config.study_id);const target=await privateRoot(join(config.root,'research-exports',config.job));
       const output=join(target,'data.csv');const fd=openSync(output,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL,0o600);
-      const snapshot=randomUUID(),started=Date.now(),source=createHash('sha256');let bytes=0,rows=0;const tables:Record<string,number>={};
+      const descriptors=[fd],files:Record<string,{rows:number;bytes:number;hash?:string;columns:readonly string[]}>={};
+      const snapshot=randomUUID(),started=Date.now(),source=createHash('sha256');let bytes=0,totalBytes=0,rows=0,flatRows=0;const tables:Record<string,number>={};
       const cell=(x:string)=>`"${x.replaceAll('"','""')}"`;
-      const emit=(text:string)=>{bytes+=Buffer.byteLength(text);if(bytes>100*1024*1024||Date.now()-started>30000)throw new Error('EXPORT_BUDGET_EXCEEDED');writeSync(fd,text);};
-      db.exec('BEGIN');const readPoint=db.prepare('SELECT study_id FROM lab_studies WHERE study_id=?').get(sid);if(!readPoint)throw new Error('STUDY_NOT_FOUND');
-      const actualReadAt=new Date().toISOString();
+      const charge=(text:string)=>{totalBytes+=Buffer.byteLength(text);if(totalBytes>100*1024*1024||Date.now()-started>30000)throw new Error('EXPORT_BUDGET_EXCEEDED');};
+      const emit=(text:string)=>{charge(text);bytes+=Buffer.byteLength(text);writeSync(fd,text);};
+      const flatFile=(name:string,columns:readonly string[])=>{
+        const descriptor=openSync(join(target,name),constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL,0o600);descriptors.push(descriptor);
+        const info=files[name]={rows:0,bytes:0,columns},header='\uFEFF'+columns.join(',')+'\r\n';charge(header);info.bytes+=Buffer.byteLength(header);writeSync(descriptor,header);
+        return (row:Record<string,unknown>)=>{if(++flatRows+rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');const text=csvRow(columns,row);charge(text);info.bytes+=Buffer.byteLength(text);info.rows++;writeSync(descriptor,text);};
+      };
       try{
+        const answerRow=flatFile('answers.csv',answerColumns),trajectoryRow=flatFile('trajectories.csv',trajectoryColumns);
+        db.exec('BEGIN');const study=db.prepare('SELECT study_id,title FROM lab_studies WHERE study_id=?').get(sid) as {study_id:string;title:string}|undefined;if(!study)throw new Error('STUDY_NOT_FOUND');
+        const actualReadAt=new Date().toISOString();
         emit('table,data_json\r\n');
         const queries:Record<string,string>={
           studies:'SELECT study_id,title,draft,revision,admission,created_at FROM lab_studies WHERE study_id=?',
@@ -124,6 +134,7 @@ async function run(){
           slots:'SELECT a.* FROM lab_slots a JOIN lab_versions v USING(version_id) WHERE v.study_id=?',
         };
         queries.questionnaire_sources='SELECT * FROM lab_questionnaire_sources WHERE study_id=?';queries.packages='SELECT * FROM lab_packages WHERE study_id=?';queries.package_images='SELECT * FROM lab_package_images WHERE study_id=?';
+        queries.study_order='SELECT * FROM lab_study_order WHERE study_id=?';
         queries.reanswer_links='SELECT a.* FROM lab_reanswer_links a JOIN lab_sessions s ON s.session_id=a.new_session_id WHERE s.study_id=?';
         for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents','group_selections'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
         queries.dispositions='SELECT d.* FROM lab_dispositions d JOIN lab_raw r USING(receipt_id) JOIN lab_sessions s USING(session_id) WHERE s.study_id=?';
@@ -132,8 +143,20 @@ async function run(){
             if(Buffer.isBuffer(row.raw)){row.raw_utf8=(row.raw as Buffer).toString('utf8');delete row.raw;}const encoded=stableJSON(row);source.update(`${table}\0${encoded}\n`);emit(`${cell(table)},${cell(encoded)}\r\n`);tables[table]++;}
         }
         // Derived trial rows are recomputed from the same read view, including interrupted histories.
-        for(const row of db.prepare("SELECT e.session_id,e.event_id,e.envelope FROM lab_events e JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND e.kind='INPUT_DIAGNOSTIC' AND e.scope LIKE 'd-ui-%' ORDER BY e.rowid").iterate(sid) as Iterable<{session_id:string;event_id:string;envelope:string}>){const batch=object(parseLabEvent(row.envelope).payload.interaction);for(const sample of batch.samples as Record<string,unknown>[]){const encoded=stableJSON({session_id:row.session_id,event_id:row.event_id,time_origin:batch.time_origin,...sample});if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');emit(`${cell('interaction_actions')},${cell(encoded)}\r\n`);source.update(`interaction_actions\0${encoded}\n`);tables.interaction_actions=(tables.interaction_actions??0)+1;}}
-        for(const session of db.prepare('SELECT s.session_id,s.version_id,s.page_index,s.path,v.protocol FROM lab_sessions s JOIN lab_versions v USING(version_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;version_id:string;page_index:number;path:string;protocol:string}>){
+        for(const row of db.prepare("SELECT e.session_id,e.event_id,e.envelope FROM lab_events e JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND e.kind='INPUT_DIAGNOSTIC' AND e.scope LIKE 'd-ui-%' ORDER BY e.rowid").iterate(sid) as Iterable<{session_id:string;event_id:string;envelope:string}>){const batch=parseLabEvent(row.envelope).payload.interaction;if(!validInteractionBatch(batch))continue;for(const sample of batch.samples){const encoded=stableJSON({session_id:row.session_id,event_id:row.event_id,time_origin:batch.time_origin,...sample});if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');emit(`${cell('interaction_actions')},${cell(encoded)}\r\n`);source.update(`interaction_actions\0${encoded}\n`);tables.interaction_actions=(tables.interaction_actions??0)+1;}}
+        for(const row of db.prepare("SELECT e.envelope,e.disposition,e.reason,r.received_at,s.state FROM lab_events e JOIN lab_sessions s USING(session_id) JOIN lab_raw r USING(session_id,event_id,hash) WHERE s.study_id=? AND e.kind IN ('INPUT_DIAGNOSTIC','GROUP_RECORD') ORDER BY s.rowid,e.scope,e.sequence,e.rowid").iterate(sid) as Iterable<{envelope:string;disposition:string;reason:string;received_at:number;state:string}>){
+          const event=parseLabEvent(row.envelope),common={snapshot_id:snapshot,study_id:sid,session_id:event.session_id,version_id:event.version_id,session_state:row.state,event_id:event.event_id,scope:event.scope,sequence:event.sequence,writer_epoch:event.writer_epoch,clock_epoch:event.clock_epoch,event_kind:event.kind,disposition:row.disposition,reason:row.reason,received_at:row.received_at,event_time_ms:event.time_ms};
+          const interaction=event.payload.interaction;
+          if(validInteractionBatch(interaction)){
+            for(const [index,item]of interaction.samples.entries()){
+              const sample=object(item),context=sample.context&&!Array.isArray(sample.context)?object(sample.context):{};
+              trajectoryRow({...common,sample_index:index,time_origin:interaction.time_origin,at:sample.at,event_type:sample.type,page_id:context.page_id,question_id:context.question_id,target:sample.target,x:sample.x,y:sample.y,key:sample.key,code:sample.code,value:sample.value,payload_json:stableJSON(sample)});
+            }
+          }else if(event.kind==='GROUP_RECORD'&&event.payload.record&&typeof event.payload.record==='object'&&!Array.isArray(event.payload.record)){
+            const record=object(event.payload.record);trajectoryRow({...common,sample_index:0,time_origin:record.time_origin,clock_origin:record.clock_origin,at:record.at,event_type:record.type,x:record.x,y:record.y,code:record.key_code,value:record.answer??record.choice,payload_json:stableJSON(record)});
+          }else trajectoryRow({...common,sample_index:0,event_type:'diagnostic',payload_json:stableJSON(event.payload)});
+        }
+        for(const session of db.prepare('SELECT s.session_id,s.version_id,s.state,s.created_at,s.page_index,s.path,v.protocol FROM lab_sessions s JOIN lab_versions v USING(version_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;version_id:string;state:string;created_at:number;page_index:number;path:string;protocol:string}>){
           const protocol=JSON.parse(session.protocol) as Protocol,path=JSON.parse(session.path) as string[],answers:Record<string,Answer>={},states:Record<string,unknown>={};
           for(const [index,page]of protocol.pages.entries()){
             if(path.includes(page.id)){const event=db.prepare("SELECT envelope FROM lab_events WHERE session_id=? AND scope=? AND kind='PAGE_SNAPSHOT' AND disposition='ACCEPTED' ORDER BY sequence DESC LIMIT 1").get(session.session_id,page.id) as {envelope:string}|undefined;if(!event)throw new Error('EXPORTED_PAGE_EVIDENCE_MISSING');const snapshot=pageSnapshot(page,answers,object(parseLabEvent(event.envelope).payload.answers) as Record<string,Answer>);for(const [q,state]of Object.entries(snapshot)){states[q]={page_id:page.id,...state};answers[q]=state.answer;}}
@@ -141,6 +164,17 @@ async function run(){
             else for(const q of page.questions)states[q.id]={page_id:page.id,state:index===session.page_index?'UNCONFIRMED':'NOT_REACHED',answer:null};
           }
           const json=stableJSON({session_id:session.session_id,states});emit(`${cell('question_states')},${cell(json)}\r\n`);source.update(`question_states\0${json}\n`);rows++;tables.question_states=(tables.question_states??0)+1;
+          for(const page of protocol.pages)for(const q of page.questions){
+            const parent=object(states[q.id]),common={snapshot_id:snapshot,study_id:sid,study_title:study.title,session_id:session.session_id,version_id:session.version_id,protocol_title:protocol.title,session_state:session.state,session_created_at:session.created_at,page_id:page.id,question_id:q.id,question_title:q.title,question_type:q.type};
+            if(q.type==='scales'){
+              const answer=parent.answer&&typeof parent.answer==='object'?object(parent.answer):{};
+              for(const axis of q.axes!){const value=typeof answer[axis.id]==='number'?answer[axis.id] as number:null;
+                answerRow({...common,axis_id:axis.id,axis_title:axis.title,answer_state:value!==null?'ANSWERED':['ANSWERED','UNANSWERED'].includes(String(parent.state))?'UNANSWERED':parent.state,answer_numeric:value,answer_json:stableJSON(value),scale_label:value===null?null:axis.labels[value-axis.min]});
+              }
+            }else{
+              const value=parent.answer??null;answerRow({...common,answer_state:parent.state,answer_numeric:typeof value==='number'?value:null,answer_text:typeof value==='string'?value:Array.isArray(value)?stableJSON(value):null,answer_json:stableJSON(value),scale_label:q.type==='scale'&&typeof value==='number'?q.labels?.[value-q.min!]:null});
+            }
+          }
           for(const page of protocol.pages)for(const q of page.questions)if(q.type==='scales'){
             const parent=object(states[q.id]),answer=parent.answer&&typeof parent.answer==='object'?object(parent.answer):{};
             for(const axis of q.axes!){const value=typeof answer[axis.id]==='number'?answer[axis.id] as number:null;
@@ -158,11 +192,14 @@ async function run(){
         for(const audit of db.prepare('SELECT * FROM lab_audit WHERE subject=? OR subject IN (SELECT version_id FROM lab_versions WHERE study_id=?) OR subject IN (SELECT session_id FROM lab_sessions WHERE study_id=?)').iterate(sid,sid,sid)){const json=stableJSON(audit);emit(`${cell('audit')},${cell(json)}\r\n`);source.update(`audit\0${json}\n`);rows++;tables.audit=(tables.audit??0)+1;}
         const refs=db.prepare('SELECT r.* FROM lab_asset_refs r JOIN lab_assets a USING(asset_id) WHERE a.study_id=?').all(sid);
         const refsJson=stableJSON(refs);emit(`${cell('asset_refs')},${cell(refsJson)}\r\n`);source.update(`asset_refs\0${refsJson}\n`);rows++;tables.asset_refs=1;db.exec('COMMIT');
-        try{fsyncSync(fd);}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}
+        if(rows+flatRows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');
+        for(const descriptor of descriptors)try{fsyncSync(descriptor);}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}
+        for(const [name,info]of Object.entries(files))info.hash=await fileHash(join(target,name));
         const manifest={schema:'export-v1',snapshot_id:snapshot,study_id:sid,actual_read_at:actualReadAt,algorithm:'single-read-view-v1',source_hash:source.digest('hex'),tables,rows,bytes,csv_hash:await fileHash(output),raw_encoding:'exact UTF-8 in raw_utf8 cells',all_session_states:true,
+          files,csv_text_policy:'UTF-8 BOM in answers/trajectories; formula-like text prefixed with apostrophe; answer_json/payload_json preserve exact values',answers_policy:'One row per question or axis; only sealed page answers are confirmed; UNCONFIRMED and NOT_REACHED have null answers',trajectory_policy:'One row per interaction sample or GROUP_RECORD, including diagnostic/blocked events with disposition/reason; at and time_origin retained when present; clock_epoch/clock_origin required to compare different run clocks; row order is not a global chronology',
           dictionary:{consents:'Explicit agreement to frozen consent document; SHA-256 of stableJSON(consent); accepted_at is server Unix milliseconds; join sessions/version protocol for exact text',event_schema:'lab-events-v1',runner:'canvas-v1',axis_answers:'One row per axis; integer value and configured label; null means unanswered; skipped/unconfirmed/not-reached states retained',question_states:{ANSWERED:'sealed valid answer',UNANSWERED:'sealed visible optional empty answer',SKIPPED:'verified branch hidden',UNCONFIRMED:'no sealed final snapshot for current page',NOT_REACHED:'page position not reached'},software_quality:'SOFTWARE_ONLY; physical display/input timing unverified',human_marks:'append-only annotations; never rewrite raw or system diagnosis'}};
         await writeDurable(join(target,'manifest.json'),stableJSON(manifest));await syncDirectory(target);return manifest;
-      }finally{closeSync(fd);if(db.inTransaction)db.exec('ROLLBACK');}
+      }finally{for(const descriptor of descriptors)closeSync(descriptor);if(db.inTransaction)db.exec('ROLLBACK');}
     }
     throw new Error('UNSUPPORTED_MAINTENANCE_JOB');
   }finally{db.close();}

@@ -31,6 +31,12 @@ export class LabStore {
       this.run('INSERT INTO lab_admin_tokens_new SELECT token_hash,csrf,expires_at FROM lab_admin_tokens WHERE expires_at>=?',now());
       db.exec('DROP TABLE lab_admin_tokens; ALTER TABLE lab_admin_tokens_new RENAME TO lab_admin_tokens');
     }).immediate();
+    // Seed legacy installations once, retaining their existing admin list order.
+    db.transaction(()=>{
+      let position=this.get<{n:number}>('SELECT coalesce(max(position),-1)+1 AS n FROM lab_study_order')!.n;
+      for(const row of this.all<{study_id:string}>('SELECT study_id FROM lab_studies WHERE study_id NOT IN (SELECT study_id FROM lab_study_order) ORDER BY rowid DESC'))
+        this.run('INSERT INTO lab_study_order VALUES (?,?)',row.study_id,position++);
+    }).immediate();
     this.admission=new SessionAdmission(db,sessionConcurrency,now);
   }
   get<T>(sql: string, ...args: unknown[]): T | undefined { return this.db.prepare(sql).get(...args) as T | undefined; }
@@ -185,7 +191,7 @@ export class LabStore {
     }
     if(op==='version.public') return this.frozen(id(d.version_id));
     if(op==='questionnaires.public') {
-      const rows=this.all<{version_id:string;title:string}>('SELECT v.version_id,s.title FROM lab_versions v JOIN lab_studies s ON s.study_id=v.study_id WHERE s.admission=\'OPEN\' AND v.rowid=(SELECT v2.rowid FROM lab_versions v2 WHERE v2.study_id=v.study_id ORDER BY v2.rowid DESC LIMIT 1) ORDER BY v.rowid DESC');
+      const rows=this.all<{version_id:string;title:string}>('SELECT v.version_id,s.title FROM lab_versions v JOIN lab_studies s ON s.study_id=v.study_id JOIN lab_study_order o ON o.study_id=s.study_id WHERE s.admission=\'OPEN\' AND NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) AND v.rowid=(SELECT v2.rowid FROM lab_versions v2 WHERE v2.study_id=v.study_id ORDER BY v2.rowid DESC LIMIT 1) ORDER BY o.position,s.rowid DESC');
       return {questionnaires:rows.map(row=>({version_id:row.version_id,title:row.title}))};
     }
     if(op==='version.metadata'){const f=this.frozen(id(d.version_id));return {title:f.protocol.title,background:f.protocol.layout.background,orientation:f.protocol.layout.orientation??null};}
@@ -210,8 +216,26 @@ export class LabStore {
     switch(op) {
       case 'admin.me': return {authenticated:true,csrf:admin.csrf};
       case 'admin.logout': this.run('DELETE FROM lab_admin_tokens WHERE token_hash=?',actor); return {status:'LOGGED_OUT'};
-      case 'study.list': return {studies:this.all('SELECT s.study_id,s.title,s.revision,s.admission,s.created_at,(SELECT version_id FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS version_id FROM lab_studies s WHERE NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) ORDER BY rowid DESC LIMIT 100')};
-      case 'study.create': return this.request(actor,op,d,()=>{const sid=randomUUID();const p=sampleProtocol(); this.run("INSERT INTO lab_studies VALUES (?,?,?,1,'PAUSED',?)",sid,p.title,stableJSON(p),this.now());this.audit(actor,op,sid,{});return {study_id:sid,revision:1,draft:p};});
+      case 'study.list': return {studies:this.all('SELECT s.study_id,s.title,s.revision,s.admission,s.created_at,o.position,(SELECT version_id FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS version_id,(SELECT json_extract(protocol,\'$.title\') FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS protocol_title FROM lab_studies s JOIN lab_study_order o USING(study_id) WHERE NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) ORDER BY o.position,s.rowid DESC')};
+      case 'study.create': return this.request(actor,op,d,()=>{const sid=randomUUID();const p=sampleProtocol(); this.run("INSERT INTO lab_studies VALUES (?,?,?,1,'PAUSED',?)",sid,p.title,stableJSON(p),this.now());this.run('INSERT INTO lab_study_order SELECT ?,coalesce(max(position),-1)+1 FROM lab_study_order',sid);this.audit(actor,op,sid,{});return {study_id:sid,revision:1,draft:p};});
+      case 'study.rename':return this.request(actor,op,d,()=>{
+        const sid=id(d.study_id),revision=integer(d.revision,1);
+        if(typeof d.title!=='string'||!d.title.trim()||d.title.trim().length>200)throw new ContractError('INVALID_STUDY_TITLE');
+        const title=d.title.trim(),s=this.get<{title:string}>('SELECT title FROM lab_studies WHERE study_id=?',sid);
+        if(!s||this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',sid))throw new ContractError('STUDY_NOT_FOUND',404);
+        const update=this.run('UPDATE lab_studies SET title=?,revision=revision+1 WHERE study_id=? AND revision=?',title,sid,revision);
+        if(!update.changes)throw new ContractError('DRAFT_REVISION_CONFLICT',409);
+        this.audit(actor,op,sid,{before:s.title,title,revision:revision+1});return {study_id:sid,title,revision:revision+1};
+      });
+      case 'study.reorder':return this.request(actor,op,d,()=>{
+        if(!Array.isArray(d.order)||!Array.isArray(d.expected_order)||d.order.length>10000)throw new ContractError('INVALID_STUDY_ORDER');
+        const order=d.order.map(value=>id(value)),expected=d.expected_order.map(value=>id(value));
+        const current=this.all<{study_id:string}>('SELECT s.study_id FROM lab_studies s JOIN lab_study_order o USING(study_id) WHERE NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) ORDER BY o.position,s.rowid DESC').map(row=>row.study_id);
+        if(stableJSON(current)!==stableJSON(expected))throw new ContractError('STUDY_ORDER_CONFLICT',409);
+        const ids=new Set(current);if(order.length!==current.length||new Set(order).size!==order.length||order.some(sid=>!ids.has(sid)))throw new ContractError('INVALID_STUDY_ORDER');
+        for(const [position,sid]of order.entries())this.run('UPDATE lab_study_order SET position=? WHERE study_id=?',position,sid);
+        this.audit(actor,op,'studies',{before:current,order});return {order};
+      });
       case 'study.get': {
         const s=this.get<{study_id:string;title:string;draft:string;revision:number;admission:string}>('SELECT * FROM lab_studies WHERE study_id=?',id(d.study_id));
         if(!s) throw new ContractError('STUDY_NOT_FOUND',404);return {...s,draft:JSON.parse(s.draft),source:this.get<{source:string}>('SELECT source FROM lab_questionnaire_sources WHERE study_id=?',s.study_id)?.source??null,versions:this.all('SELECT version_id,hash,runner_hash,created_at FROM lab_versions WHERE study_id=? ORDER BY rowid DESC',s.study_id)};
@@ -262,6 +286,8 @@ export class LabStore {
       case 'study.admission': return this.request(actor,op,d,()=>{
         if(typeof d.paused!=='boolean') throw new ContractError('INVALID_ADMISSION_STATE');
         if(this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',id(d.study_id)))throw new ContractError('STUDY_DELETED',409);
+        if(!this.get('SELECT 1 FROM lab_studies WHERE study_id=?',id(d.study_id)))throw new ContractError('STUDY_NOT_FOUND',404);
+        if(!d.paused&&!this.get('SELECT 1 FROM lab_versions WHERE study_id=?',id(d.study_id)))throw new ContractError('VERSION_REQUIRED',409);
         this.run('UPDATE lab_studies SET admission=? WHERE study_id=?',d.paused?'PAUSED':'OPEN',id(d.study_id));this.audit(actor,op,String(d.study_id),{paused:d.paused});return {status:d.paused?'PAUSED':'OPEN'};
       });
       case 'asset.list': return {assets:this.all('SELECT asset_id,name,state,hash,bytes,width,height,format FROM lab_assets WHERE study_id=? ORDER BY rowid DESC LIMIT 200',id(d.study_id))};
@@ -279,7 +305,7 @@ export class LabStore {
         if(!['READY','FAILED','DELETING'].includes(a.state))throw new ContractError('ASSET_STATE_CONFLICT',409);
         this.run("UPDATE lab_assets SET state='DELETING' WHERE asset_id=?",asset);this.audit(actor,op,asset,{});return {asset_id:asset,status:'DELETING'};
       });
-      case 'session.list':this.admission.stats();return {sessions:this.all('SELECT s.session_id,s.version_id,s.state,s.writer_epoch,q.status AS admission_status,s.page_index,s.group_index,s.created_at,(SELECT count(*) FROM lab_diagnostics d WHERE d.session_id=s.session_id) AS diagnostics,(SELECT max(received_at) FROM lab_raw r WHERE r.session_id=s.session_id) AS last_received FROM lab_sessions s LEFT JOIN lab_session_queue q USING(session_id) WHERE s.study_id=? ORDER BY s.rowid DESC LIMIT ? OFFSET ?',id(d.study_id),Math.min(100,Number(d.limit)||50),integer(d.offset??0))};
+      case 'session.list':this.admission.stats();return {sessions:this.all('SELECT s.session_id,s.version_id,s.state,s.writer_epoch,q.status AS admission_status,s.page_index,s.group_index,s.created_at,(SELECT count(*) FROM lab_diagnostics d WHERE d.session_id=s.session_id) AS diagnostics,(SELECT max(received_at) FROM lab_raw r WHERE r.session_id=s.session_id) AS last_received FROM lab_sessions s LEFT JOIN lab_session_queue q USING(session_id) WHERE s.study_id=? ORDER BY s.rowid DESC LIMIT ? OFFSET ?',id(d.study_id),Math.min(100,integer(Number(d.limit??50),1)),integer(Number(d.offset??0)))};
       case 'session.detail': {
         const sid=id(d.session_id);if(!this.get('SELECT 1 FROM lab_sessions WHERE session_id=?',sid))throw new ContractError('SESSION_NOT_FOUND',404);
         return {...this.view(sid),marks:this.all('SELECT * FROM lab_marks WHERE session_id=? ORDER BY created_at',sid),

@@ -4,6 +4,7 @@ INSERT OR IGNORE INTO lab_meta VALUES ('schema','1'),('resource_barrier',''),('c
 CREATE TABLE IF NOT EXISTS lab_admin_tokens(token_hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS lab_studies(study_id TEXT PRIMARY KEY,title TEXT NOT NULL,draft TEXT NOT NULL,
  revision INTEGER NOT NULL,admission TEXT NOT NULL CHECK(admission IN ('OPEN','PAUSED')),created_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_study_order(study_id TEXT PRIMARY KEY REFERENCES lab_studies,position INTEGER NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS lab_versions(version_id TEXT PRIMARY KEY,study_id TEXT NOT NULL REFERENCES lab_studies,
  hash TEXT NOT NULL,protocol TEXT NOT NULL,runner_hash TEXT NOT NULL,runner_version TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS lab_questionnaire_sources(study_id TEXT PRIMARY KEY REFERENCES lab_studies,source TEXT NOT NULL) STRICT;

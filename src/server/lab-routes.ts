@@ -58,8 +58,9 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   app.post('/api/auth/logout',async(request,reply)=>{const result=await admin(request,'admin.logout');reply.header('Set-Cookie',`lab_admin=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0${secure(request)?'; Secure':''}`);return result;});
   app.get('/api/lab/studies',async request=>admin(request,'study.list'));
   app.post('/api/lab/studies',async request=>admin(request,'study.create',object(request.body)));
+  app.post('/api/lab/studies/reorder',async request=>admin(request,'study.reorder',object(request.body)));
   app.get('/api/lab/studies/:study',async request=>admin(request,'study.get',{study_id:id((request.params as {study:string}).study)}));
-  for(const op of ['save','publish','admission','import','delete'])app.post(`/api/lab/studies/:study/${op}`,async request=>admin(request,`study.${op}`,{...object(request.body),study_id:id((request.params as {study:string}).study)}));
+  for(const op of ['save','publish','admission','import','delete','rename'])app.post(`/api/lab/studies/:study/${op}`,async request=>admin(request,`study.${op}`,{...object(request.body),study_id:id((request.params as {study:string}).study)}));
   app.get('/api/lab/studies/:study/assets',async request=>admin(request,'asset.list',{study_id:id((request.params as {study:string}).study)}));
   app.addContentTypeParser(['image/png','image/jpeg','image/webp'],(request,payload,done)=>done(null,payload));
   app.addContentTypeParser('application/zip',(request,payload,done)=>done(null,payload));
