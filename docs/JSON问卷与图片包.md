@@ -53,6 +53,7 @@
 | `consent` | 顶层知情同意 title/text，明确同意后创建会话；标题最多 200、正文最多 8000 个 UTF-16 单元 |
 | `ending` | 可选顶层结束语 title/text，完成确认后显示 |
 | `text` | 只能 `input_purpose: "personal"`，max_length 必填，建议昵称等短输入 |
+| `input_match` | 可选的文字输入格式约束。优先使用安全预设，如 `{"kind":"preset","preset":"alphanumeric"}`；也可使用不超过 160 字符、无分支和开放量词、最多一个有界 `{n,m}` 量词的正则 `{"kind":"regex","pattern":"[A-Z0-9]{6,12}","message":"请输入 6–12 位大写字母或数字。"}`。仅适用于 `text`，服务端最终校验；旧 JSON 未配置时保持原行为 |
 | `condition` | 保留既有 eq/neq/includes/and/or/not 条件 AST，只能引用前序题，不执行脚本 |
 | `mode` | 默认 TEST_ONLY；COLLECTION 仍需既有真实环境验收与采集准入 |
 
@@ -96,6 +97,10 @@
 导出尚未确认时的 request/job ID 保留在当前标签页 sessionStorage，断线或刷新后复用原作业；已经完成的下载再次点击时生成新快照，避免拿修订号相同却数据过期的文件。下载与作业状态查询都要求管理员登录，继续使用既有单维护 worker 和导出预算。需核查的失败作业保留原恢复流程，不自动解除屏障。
 
 ## 图片压缩包
+
+上传前可运行本地 [移动端图片处理工具](移动端图片处理.md)，按显示尺寸/DPR 缩放、显式主体区域裁切或生成长图切片，并直接输出符合本平台限制的 ZIP 与检查报告。
+
+图片/文字刺激现支持 general 与题目级时长、jitter、固定/伪随机顺序、键盘作答和反馈。配置规则见 [刺激任务设计](刺激任务设计.md)，完整示例见 [randomized-stimuli.json](../examples/questionnaires/randomized-stimuli.json)。
 
 图片先在自己的电脑上完成压缩、移除 EXIF 及方向归一化，再打成标准 ZIP；管理端同一次上传可选择多个 ZIP。JSON 引用的是压缩包文件名及内部路径，无需写 bucket、服务器绝对路径、云密钥或公开 URL：
 
@@ -151,5 +156,7 @@
 
 
 手机测试：执行 `npm run preview:questionnaire -- --lan`，HTTP/HTTPS 分别绑定 `0.0.0.0:3081` 和 `0.0.0.0:3082`。首次从同一 Wi-Fi 的手机打开终端给出的 `/phone-setup` 地址，下载本机测试 CA 并完成系统信任设置，再打开 HTTPS 模拟问卷。HTTP 问卷链接保留路径与 version 跳转 HTTPS。该测试使用 OpenSSL 私有 CA 和服务证书，不安装系统全局信任，也不改项目 .env；签名私钥仅在受保护的 `.local` 目录，公开下载只有 CA 证书。直接配置服务器 TLS 时，`TLS_KEY_PATH` 与 `TLS_CERT_PATH` 必须同时设置；HTTPS 请求的会话与管理 Cookie 使用 Secure 标志。
+
+正式作答依赖原生 Web Locks 保证同一会话只有一个页面写入。`--lan-http` 在非安全上下文中只适合查看模拟界面；浏览器缺少 Web Locks 时，参加页和图片运行页会提示使用支持该能力的浏览器与 HTTPS，不创建会话。兼容层不会伪造互斥锁。
 
 本机实际使用局域网 IP 的 HTTPS 完成灰／深主题同意、拒绝重新阅读、三坐标、图片任务、结束语、刷新和管理员 CSV 下载，浏览器无页面错误；真实 Web Crypto/UUID/Web Locks 均可用。curl 使用生成的 CA 正常验证 TLS 链、IP SAN 与健康检查；HTTP 跳转保留参数，下载 CA 字节一致；证书设置页在三种设备尺寸中无滚动或裁剪。浏览器检查使用 Chromium 手机触控模拟与证书例外，尚未声称实机手机验收。

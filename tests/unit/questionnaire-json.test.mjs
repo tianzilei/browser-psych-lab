@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
@@ -9,6 +10,7 @@ import sharp from 'sharp';
 import {randomUUID} from 'node:crypto';
 import Database from 'better-sqlite3';
 import {compileQuestionnaire,parseQuestionnaireText,questionnaireTemplate} from '../../src/shared/questionnaire-json.ts';
+import {pageSnapshot,inputMatchRegex} from '../../src/shared/protocol.ts';
 import {unpackImages,imageInfo} from '../../src/server/image-package.ts';
 import {LabStore} from '../../src/server/lab-store.ts';
 import {digest} from '../../src/server/collection-store.ts';
@@ -17,11 +19,27 @@ test('human readable JSON is strict, compiles labels and image references, forbi
   assert.throws(()=>parseQuestionnaireText('{oops'),/语法错误/);assert.throws(()=>compileQuestionnaire({...input,extra:true}),/UNKNOWN_QUESTIONNAIRE_FIELD/);assert.throws(()=>compileQuestionnaire({...input,orientation:undefined}),/ORIENTATION_REQUIRED/);
   const q=input.pages[0].questions.find(q=>q.type==='text');delete q.input_purpose;assert.throws(()=>compileQuestionnaire(input),/PERSONAL_INPUT_ONLY/);
 });
+test('text input matching is strict, bounded and enforced in final snapshots',()=>{
+  const input=questionnaireTemplate();
+  const q=input.pages[0].questions.find(q=>q.type==='text');
+  q.input_match={kind:'preset',preset:'alphanumeric',message:'请输入字母和数字。'};
+  const p=compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[q]}]}), text=p.pages[0].questions[0];
+  assert.equal(inputMatchRegex(text.input_match).test('ABC123'),true);
+  assert.equal(inputMatchRegex(text.input_match).test('ABC-123'),false);
+  assert.throws(()=>compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[{...q,input_match:{kind:'regex',pattern:'(a+)+$'}}]}]}),/UNSAFE_INPUT_MATCH/);
+  assert.throws(()=>compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[{...q,input_match:{kind:'regex',pattern:'(a|aa)+'}}]}]}),/UNSAFE_INPUT_MATCH/);
+  assert.throws(()=>compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[{...q,input_match:{kind:'regex',pattern:'[A-Z]{1,}'}}]}]}),/UNSAFE_INPUT_MATCH/);
+  assert.throws(()=>compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[{...q,input_match:{kind:'regex',pattern:'[A-Z]{1,4}[0-9]{1,4}'}}]}]}),/UNSAFE_INPUT_MATCH/);
+  assert.throws(()=>compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[{...q,input_match:{kind:'regex',pattern:'[A-Z]+'}}]}]}),/UNSAFE_INPUT_MATCH/);
+  assert.throws(()=>compileQuestionnaire({...input,pages:[{...input.pages[0],questions:[{...q,input_match:{kind:'regex',pattern:'[a-z]+',flags:'m'}}]}]}),/INVALID_INPUT_MATCH/);
+  assert.throws(()=>pageSnapshot(p.pages[0],{}, {[q.id]:'ABC-123'}),/INVALID_ANSWER/);
+  assert.doesNotThrow(()=>pageSnapshot(p.pages[0],{}, {[q.id]:'ABC123'}));
+});
 test('ZIP produced by Python preserves bytes; rejects traversal, duplicate, forged CRC, symlink and pixel bombs',async t=>{
   const png=await readFile('examples/stimuli/mobile-card.png'),zip=await readFile('examples/stimuli/mobile-stimuli.zip');const images=unpackImages(zip);assert.equal(images[0].path,'images/mobile-card.png');assert.deepEqual(images[0].bytes,png);assert.deepEqual(imageInfo(png),{width:1080,height:720,format:'png',validation:'container-header-v1'});
   const root=await mkdtemp(join(tmpdir(),'bpl-zip-'));t.after(()=>rm(root,{recursive:true,force:true}));
-  const create=(kind)=>{const path=join(root,`${kind}.zip`);execFileSync('python3',['-c',`import zipfile,sys\nb= open(sys.argv[3],'rb').read()\nz=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED)\nname='../bad.png' if sys.argv[2]=='traversal' else 'good.png'\ninfo=zipfile.ZipInfo(name)\nif sys.argv[2]=='symlink': info.create_system=3; info.external_attr=0o120777<<16\nz.writestr(info,b)\nif sys.argv[2]=='duplicate': z.writestr(info,b)\nz.close()`,path,kind,'examples/stimuli/mobile-card.png'],{stdio:'pipe'});return path;};
-  for(const kind of ['traversal','duplicate','symlink'])assert.throws(()=>unpackImages(execFileSync('cat',[create(kind)])),/INVALID_IMAGE_PATH|DUPLICATE|UNSUPPORTED_ZIP_ENTRY/);
+  const create=(kind)=>{const path=join(root,`${kind}.zip`);execFileSync(process.env.PYTHON??(process.platform==='win32'?'python':'python3'),['-c',`import zipfile,sys\nb= open(sys.argv[3],'rb').read()\nz=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED)\nname='../bad.png' if sys.argv[2]=='traversal' else 'good.png'\ninfo=zipfile.ZipInfo(name)\nif sys.argv[2]=='symlink': info.create_system=3; info.external_attr=0o120777<<16\nz.writestr(info,b)\nif sys.argv[2]=='duplicate': z.writestr(info,b)\nz.close()`,path,kind,'examples/stimuli/mobile-card.png'],{stdio:'pipe'});return path;};
+  for(const kind of ['traversal','duplicate','symlink'])assert.throws(()=>unpackImages(readFileSync(create(kind))),/INVALID_IMAGE_PATH|DUPLICATE|UNSUPPORTED_ZIP_ENTRY/);
   const forged=Buffer.from(zip),central=forged.indexOf(Buffer.from([80,75,1,2]));forged.writeUInt32LE(0,central+16);forged.writeUInt32LE(0,14);assert.throws(()=>unpackImages(forged),/ZIP_CRC/);
   const bomb=Buffer.from(png);bomb.writeUInt32BE(10000,16);bomb.writeUInt32BE(crc32(bomb.subarray(12,29)),29);assert.throws(()=>imageInfo(bomb),/IMAGE_PIXEL_BUDGET_EXCEEDED/);
   for(const format of ['jpeg','webp']){const bytes=await sharp(png)[format]().toBuffer();assert.equal(imageInfo(bytes).format,format);assert.equal(imageInfo(bytes).width,1080);}

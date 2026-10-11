@@ -1,11 +1,15 @@
 import { ContractError, eventRef, id, integer, object, type EventRef, type Receipt, type Seal, type SessionState } from './contract.js';
-import { LAB_SCHEMA, type FrozenProtocol, type Answer, type Trial, type Protocol } from './protocol.js';
+import { LAB_SCHEMA, type FrozenProtocol, type Answer, type Trial, type Protocol, type Feedback, type Rating } from './protocol.js';
+import type {SamplingAudit} from './trial-sampling.js';
+import type {DesignAudit} from './trial-design.js';
 import type { ScheduleAudit } from './scheduler.js';
 export interface LabEvent { event_schema_version: typeof LAB_SCHEMA; event_id: string; session_id: string; version_id: string;
   protocol_hash: string; writer_id: string; writer_epoch: number; scope: string; sequence: number; previous: EventRef | null;
   clock_epoch: string; time_ms: number; kind: 'PAGE_REVISION' | 'PAGE_SNAPSHOT' | 'GROUP_RECORD' | 'INPUT_DIAGNOSTIC'; payload: Record<string, unknown> }
 export interface GroupPlan { group_id: string; scope: string; seed: [number,number,number,number]; roots: Trial[];
+  rating?:Rating; sampling?:SamplingAudit;
   choices: string[]; repeats: number; start: number; frame_ms: number; layout: string; budget: Protocol['budget']; plan_hash?: string;
+  design?: DesignAudit; response_keys?: Record<string,string>; feedback?: Feedback;
   geometry?: { viewport:{width:number;height:number;dpr:number}; canvas:{x:number;y:number;width:number;height:number}; buttons:{choice:string;x:number;y:number;width:number;height:number}[] } }
 export interface LabSession {
   session_id: string; study_id: string; admission_id: string; state: SessionState; writer_id: string | null; writer_epoch: number;
@@ -14,14 +18,19 @@ export interface LabSession {
   permit: { permit_id: string; scope: string; group_id: string; plan: GroupPlan; state: string } | null;
   seals: Seal[]; completion: unknown; diagnostics: { code: string; scope: string | null }[];
   admission?:SessionAdmissionStatus;
+  task_activity?:{last_seen:number;idle_timeout_ms:number;connection_timeout_ms:number}|null;
+  reanswer?:{old_session_id:string;new_session_id:string;created_at:number}|null;
 }
-export interface SessionAdmissionStatus {status:'QUEUED'|'ACTIVE'|'EXPIRED'|'LEFT'|'ENDED';ticket_id:string|null;position:number;limit:number;poll_ms:number;lease_until:number;lease_remaining_ms:number;pinned:boolean}
-export interface RunRecord { type: 'OP' | 'COMMIT' | 'ONSET' | 'WINDOW' | 'END' | 'INPUT' | 'CORRECTION' | 'CLOSING' | 'ABORT';
+export interface SessionAdmissionStatus {status:'QUEUED'|'ACTIVE'|'EXPIRED'|'LEFT'|'ENDED';ticket_id:string|null;position:number;limit:number|null;poll_ms:number;lease_until:number;lease_remaining_ms:number;pinned:boolean}
+export interface RunRecord { type: 'OP' | 'COMMIT' | 'ONSET' | 'WINDOW' | 'END' | 'INPUT' | 'CORRECTION' | 'CLOSING' | 'ABORT' | 'RATING' | 'RATING_INTENT' | 'RATING_CHANGE';
+  value?:number; item?:number; values?:number[];
   at: number; instance_id?: string; operation?: ScheduleAudit; op_id?: string; evidence?: string; answer?: string | null;
   input_time?: number; pointer_id?: number; reason?: string; root_id?: string; unresolved?: boolean;
   processed_watermark?: number; draw_time?: number;clock_origin?:number;raf_time?:number }
 export interface InputRecord extends RunRecord { type:'INPUT'; action:'down'|'up'|'cancel'; valid:boolean;
-  choice:string|null; raw_timestamp:number; time_origin:number; pointer_type:string; x:number;y:number }
+  choice:string|null; raw_timestamp:number; time_origin:number; pointer_type:string; x:number;y:number; key_code?:string; button?:number }
+export interface TrialSelection {group_id:string;seed:GroupPlan['seed'];roots:Trial[];sampling:SamplingAudit}
+export interface GroupReservation {reservation_id:string;variant_id:string;selection?:TrialSelection}
 export function parseLabEvent(raw: string): LabEvent {
   let v: Record<string,unknown>; try { v = object(JSON.parse(raw)); } catch { throw new ContractError('INVALID_EVENT_JSON'); }
   const keys = ['event_schema_version','event_id','session_id','version_id','protocol_hash','writer_id','writer_epoch','scope','sequence','previous','clock_epoch','time_ms','kind','payload'];

@@ -23,9 +23,11 @@
 
 ## 技术基线
 
+图片上传前可运行 `npm run images:prepare -- examples/images/mobile-plan.json .local/mobile-images-v1`，生成优化图片、可上传 ZIP 和尺寸/裁切/字节预算报告，详见 [移动端图片处理](docs/移动端图片处理.md)。
+
 TypeScript 单仓库、Node.js 24/Fastify 单应用、SQLite（WAL＋FULL）、三个私有逻辑存储区。数据库由单 worker 处理，HTTP 接收与 RPC 队列均有界；单独的维护 worker 执行重放、导出、备份和派生重建。正式问卷采用固定视口、原生按钮和独立纯色样式，仅个人信息题可使用文字输入，SurveyJS 仅供检查页显式加载；检查页与 P0 可靠问卷分入口，公共构建文件预压缩；原始事件／发件箱／提交意图使用一个 IndexedDB 事务。
 
-服务端生产直接依赖为 Fastify、@fastify/static 和 better-sqlite3；图片包只解包与标头校验，不做图像解码或转码，sharp 仅作为开发测试工具。SurveyJS/idb 在构建时安装并进入浏览器产物。保留现有库，无需增加 ORM、Redis 或集群。
+服务端生产直接依赖为 Fastify、@fastify/static 和 better-sqlite3；图片包只解包与标头校验，不做图像解码或转码，sharp 用于本地图片预处理与开发测试。SurveyJS/idb 在构建时安装并进入浏览器产物。保留现有库，无需增加 ORM、Redis 或集群。
 
 用户指定阿里云 Ubuntu 26.04、系统盘 2120 IOPS / 106.0 MB/s、1Mbps 公网带宽，最初为 2c4g，正在评估 1c2g。最新需求为整个参加者会话同时 1–2 例：`SESSION_CONCURRENCY=2` 默认双例，设为 1 使用单例；其余进入持久 FIFO 等待，最多 64 个有效条目。图片另设 `PREPARATION_CONCURRENCY=1` 保持单图片流，下载和解码串行，组内停止全部轮询。目标主机及微信等内置浏览器支持仍需实测。
 

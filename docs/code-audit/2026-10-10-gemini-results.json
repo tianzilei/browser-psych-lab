@@ -1,0 +1,476 @@
+{
+  "scope": "first-party source, tests, scripts, deploy and build configuration",
+  "initial_files": 125,
+  "initial_chunks": 53,
+  "results": [
+    {
+      "request_id": "full-code-audit-20261010-02",
+      "stage": "COMPLETED",
+      "result_id": "res_12b199b2fb356097b8c8",
+      "content": "已收到此批代码并修正前提认知（知晓主题变量由 `participant-theme.ts` 动态注入、文本阅读采用 `TextPager` 分页机制、且 `runner` 会主动监听视口变化进行熔断）。\n\n结合业务约束（尤其是**单会话必须单写者**、网络预算与异常恢复、管理端数据流安全），对当前文件的代码触发路径进行审计，报告以下 7 条确切缺陷与后续上下文疑点：\n\n### 1. `navigator.locks` polyfill 是无操作假实现，破坏单会话单写者隔离\n\n- **具体文件**：`src/web/compat.ts` (第 31 行)\n- **触发条件**： 在不支持原生 Web Locks API 的环境（如旧版 Safari、非安全上下文 HTTP 测试环境，或同源内多标签页运行），调用 `navigator.locks.request(...)`。\n- **严重级别**：**Critical（阻断级）**\n- **代码依据与影响**：`if (!navigator.locks) Object.defineProperty(navigator,'locks',{\n  value:{request:async (_name:string,_options:unknown,callback:(lock:object)=>Promise<unknown>)=>callback({})}, \n  configurable:true\n});`该 polyfill 没有进行任何并发排他控制或互斥锁等待，所有调用者直接并发执行回调并传入空对象。如果两个标签页同时访问同一被试会话，将直接并发写入 IndexedDB 或向服务端推送数据，彻底击穿“单会话单写者”约定。\n- **修复方案**： 不能直接 bypass 回调。在不支持 Web Locks 的环境，必须实现基于 `BroadcastChannel` + `localStorage` / `navigator.serviceWorker` 的实际互斥锁，或明确拒绝并中止单写者流程：`// 简易方案：若降级无法保证互斥，应抛错阻断，或使用基于 localStorage 的 CAS 互斥锁机制`\n\n### 2. `navigator.locks.request` 降级重载签名不匹配引发运行时崩溃\n\n- **具体文件**：`src/web/compat.ts` (第 31 行)\n- **触发条件**： 调用端采用 Web Locks 标准两参形式：`navigator.locks.request(name, callback)`。\n- **严重级别**：**High（严重）**\n- **代码依据与影响**： 当前 polyfill 强制声明了 3 个形参： `(_name: string, _options: unknown, callback: (lock: object) => Promise<unknown>) => callback({})`。 当外部使用常见签名 `navigator.locks.request('session-lock', async (lock) => { ... })` 时，第二个参数传入的是回调函数，导致 `callback` 变量接收到的是 `undefined`，执行 `callback({})` 抛出 `TypeError: callback is not a function`。\n- **修复方案**： 对齐原生 Web Locks 重载逻辑：`request: async (name: string, optionsOrCallback: any, maybeCallback?: any) => {\n  const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;\n  if (typeof callback !== 'function') throw new TypeError('Callback must be a function');\n  // 执行锁排队与互斥逻辑\n  return callback({ name, mode: 'exclusive' });\n}`\n\n### 3. `compat.ts` SHA-256 降级实现对 ArrayBufferView 切片偏移处理错误\n\n- **具体文件**：`src/web/compat.ts` (第 26–27 行)\n- **触发条件**： 在非安全上下文下，向 `crypto.subtle.digest('SHA-256', data)` 传入非零偏移量的 TypedArray（如 `new Uint8Array(buffer, 8, 32)`）。\n- **严重级别**：**High（严重）**\n- **代码依据与影响**：`const digest = async (_algorithm: string, data: BufferSource) => {\n  const bytes = data instanceof ArrayBuffer ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength).buffer;\n  return sha256(bytes);\n};``new Uint8Array(...).buffer` 返回的仍然是底层的**完整原始 `ArrayBuffer`**（从 offset 0 开始），并没有切片掉前面的字节；随后 `sha256(bytes)` 读取了整个底层 buffer 的 `byteLength`，导致传入哈希算法的数据范围错误，计算出的校验和不匹配。\n- **修复方案**： 提取独立切片或直接以 TypedArray 传递给 `sha256`：`const digest = async (_algorithm: string, data: BufferSource) => {\n  const view = ArrayBuffer.isView(data) \n    ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)\n    : new Uint8Array(data);\n  // 拷贝至独立 ArrayBuffer，确保 byteOffset 为 0\n  return sha256(view.slice().buffer);\n};`\n\n### 4. `asset-download.ts` 偶发异常导致读锁泄露与 reader 挂起\n\n- **具体文件**：`src/web/asset-download.ts` (第 48–56 行)\n- **触发条件**： 下载过程中触发字节超限 `图片字节数超出清单` 或取消操作，流终止时进入 `catch` 与 `finally` 块。\n- **严重级别**：**Medium（中等）**\n- **代码依据与影响**：`} catch (error) {\n  controller.abort(error);\n  await reader?.cancel().catch(() => {});\n  throw controller.signal.reason ?? error;\n} finally {\n  clearTimeout(total); clearTimeout(idle);\n  signal.removeEventListener('abort', abort);\n  reader?.releaseLock();\n}`当先执行 `await reader.cancel()` 时，如果在 cancel 的 Promise 挂起期间发生异常或微任务乱序，`releaseLock()` 在已取消但尚未完成的流上可能会抛出错误，从而打断 `finally` 中的清理；反之若流被 lock 住，调用方在外层重试读取同一流体会导致死锁。\n- **修复方案**： 在 `finally` 块中增加安全保护，保证锁必定安全释放且不掩盖原始异常：`} finally {\n  clearTimeout(total);\n  clearTimeout(idle);\n  signal.removeEventListener('abort', abort);\n  try { reader?.releaseLock(); } catch {}\n}`\n\n### 5. `admin.ts` 图片包上传时 CSRF Token 缺失导致 403 阻断\n\n- **具体文件**：`src/web/admin.ts` (第 41 行, 61 行)\n- **触发条件**： 管理员打开管理后台，若会话已经处于登录态（通过 `/api/auth/me` 获取），但首次上传 ZIP 依赖未更新的全局 `csrf`。\n- **严重级别**：**Medium（中等）**\n- **代码依据与影响**： ZIP 上传使用的是原生 `fetch` 并手动附加",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b2",
+      "stage": "COMPLETED",
+      "result_id": "res_84a15b95d3550a1baecc",
+      "content": "### 确定缺陷\n\n#### 1. `dom.ts`：HTTP 异常重试时未重置请求计时，导致假性超时抛错\n\n- **文件**：`src/web/dom.ts`（行 16–27）\n- **触发条件**：调用 `/seal` 或导出备份等重型接口时遭遇 429/503。客户端执行退避重试（最多 7 次），退避延迟与网络往返消耗累加后，`performance.now() - started` 逼近预算。\n- **依据与影响**：循环内 `remaining = budget - (performance.now() - started)`。当进入下一次重试时，`attemptBudget`（重型请求为 150s）会被截断为 `remaining`（例如仅剩 200ms）。此时发出的 `fetch` 遇到 `timeout = AbortSignal.timeout(200)`，立刻因客户端超时 abort，掩盖服务端实际状态并误报超时。\n- **修复方案**：若收到合法的 429/503 重试响应，应为单次尝试保留合理底线阈值，或根据响应头顺延总预算。\n\n#### 2. `consent-gate.ts`：拒绝同意后无法重新进入作答会话\n\n- **文件**：`src/web/consent-gate.ts`（行 19–20）\n- **触发条件**：受试者在知情同意页点击“不同意并退出”，页面切换为 `showConsentDeclined`；受试者随后点击“重新阅读知情同意书”并点击“我已阅读并同意”。\n- **依据与影响**：在 `read()` 中，`decline` 回调执行了 `dispose()` 并渲染拒绝页；但原外部 Promise 的 `resolve` 仅绑定在 `mountConsent` 的第三个参数上。一旦受试者点击“重新阅读”，`read()` 重新调用 `mountConsent` 传入了**同一个未决议的 `resolve`**，但此时没有清理前一个 `pagehide` 监听；若受试者在拒绝页停留过长或多次反复切换，会导致 `dispose` 闭包与事件清理失真。\n- **修复方案**：将阅读与决策状态封装为确定性状态机，拒绝时不应销毁外层控制上下文。\n\n#### 3. `consent-page.ts` / `ending-page.ts`：DOM 重新计算前未重置分页器，导致文本不可见\n\n- **文件**：`src/web/consent-page.ts`（行 16–22）、`src/web/ending-page.ts`（行 16–21）\n- **触发条件**：移动端横竖屏切换或软键盘弹起触发 `ResizeObserver` 回调。\n- **依据与影响**：`render()` 仅调用 `pager.show()`。如果视口从较大尺寸缩小，已翻至后页的 `pager` 内部索引未重置或未按新容器高度重新分段，`fits` 返回 false，文本被直接替换为提示语（`可见空间不足...`）；当屏幕恢复时，缺少对原始文本的重新回填流程，受试者卡在提示语无法继续。\n- **修复方案**：容器尺寸发生破坏性改变时，重新基于原始文档重置分页索引并重新排版。\n\n### 待上下文确认的疑点\n\n#### 4. `diagnostics.html` 与 `index.html` 入口路由权限混淆\n\n- **文件**：`src/web/index.html`、`src/web/diagnostics.html`\n- **疑点**：`index.html` 与 `admin.html` 完全相同，均直接加载管理端入口 `admin.ts`。受试者若直接访问根路径将直接触达管理后台登录页。需结合后续静态资源部署与路由配置（如 Nginx/Caddy 或后端路由分发）确认根路径是否预期暴露给被试。\n\n#### 5. `environment.ts`：部分高精度硬件探针超时竞争\n\n- **文件**：`src/web/environment.ts`（行 31–36）\n- **疑点**：`getHighEntropyValues` 和 `storage.estimate` 在隐私沙盒或 WebView 策略限制下可能静默挂起。虽然设置了 250ms 超时，但在主线程初始化阻塞严重时，可能导致环境采集结果大面积降级为 `timeout`。需结合其在实验全流程中的调用时机（是否阻塞实验加载）综合评估。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b3",
+      "stage": "COMPLETED",
+      "result_id": "res_a7dee6cd1e1cbdd59b84",
+      "content": "### 确定缺陷\n\n#### 1. `Ledger.ts`：Promise 链异常后全局阻断，永久锁死本地操作队列\n\n- **文件**：`src/web/ledger.ts`（第 22–24 行）\n- **触发条件**：任一入队任务因网络超时或校验失败抛错（例如 `INPUT_DIAGNOSTIC` 在超额预算时抛错）。\n- **依据与影响**：`private serialized<T>(fn:()=>Promise<T>):Promise<T>{\n  if(this.queued>=64){this.failure=new Error('LOCAL_QUEUE_BUDGET_EXCEEDED');return Promise.reject(this.failure);}\n  this.queued++;\n  const next=this.chain.then(fn).finally(()=>{this.queued--;});\n  this.chain=next.catch(error=>{this.failure=error;});\n  return next;\n}``this.chain` 捕获异常后将 `this.failure` 置为该 error。随后执行的所有后续排队方法（包括尝试写入 `termination`、上报环境信息或重试写入）虽通过 `next` 执行，但外层若调用 `drain()`，由于 `if(this.failure) throw this.failure;`，即使后续操作成功，`drain()` 也会永远抛出最初的错误，且 `failure` 状态永不重置。更严重的是，一旦某次异步任务抛错，`this.chain` 返回的是 resolve 态的 Promise，但 `next` 会把 rejection 抛给当前调用的 caller，导致后续追加任务的基底 Promise 被污染。\n- **修复方案**：区分可恢复错误与致命崩溃，在恢复或新事务前提供 `resetFailure()`，或在 `serialized` 中为单一任务独立隔离错误边界。\n\n#### 2. `Ledger.ts`：`pendingPath` 闭包范围漏查当前未落库事务中的新事件\n\n- **文件**：`src/web/ledger.ts`（第 37 行）\n- **触发条件**：调用 `append` 且同时传入 `pendingPath`（即在追加事件的同时尝试封口关闭 scope）。\n- **依据与影响**：`await tx.objectStore('events').add(row);\n...\nif(pendingPath){\n  const old=await tx.objectStore('events').index('scope').getAll(scope);\n  current.pending[scope]={request_id:crypto.randomUUID(),manifest:{manifest_id:crypto.randomUUID(),scope,path:pendingPath,events:old.filter(v=>v.session_id===s.session_id)...`虽然在同一个 IDB 事务内，但部分移动端浏览器/IndexedDB 内核在当前事务刚刚 `add(row)` 后，立即通过 `index('scope').getAll(scope)` 读取同一索引可能存在快照隔离延迟或脏读不一致；此外若此前存在未确认的软分叉，`getAll` 会盲目读取所有历史行。更根本的是，manifest 应该严格基于当前链式 `sequence`，此处直接异步捞取全表，若包含并发撤回事件将破坏事件链的严格连续性。\n- **修复方案**：`pending.events` 显式将当前构造的 `{event_id: e.event_id, hash}` 追加至集合中，避免依赖同一事务内对索引的即时二次查询。\n\n#### 3. `Ledger.ts`：`outbox` 游标遍历在无显式主键排序下可能导致死循环重发\n\n- **文件**：`src/web/ledger.ts`（第 44–46 行）\n- **触发条件**：调用 `batch()` 批量拉取待发送事件。\n- **依据与影响**： `let cursor=await tx.store.index('session').openCursor(m.session!.session_id);` 在 `outbox` 结构中，主键是 `event_id`（UUID 字符串），索引是 `session`。当调用 `batch()` 取出 16 条后，若服务端部分失败或尚未 ack，游标每次从首个匹配项扫起；因 UUID 本身无序，导致网络发送顺序与事件严格生成的 `sequence` 脱节，可能先发送 `seq: 5` 再发送 `seq: 1`，引发服务端状态机校验出现 `PREVIOUS_HASH_MISMATCH`。\n- **修复方案**：在 `outbox` 索引上引入 `[session_id, sequence]` 复合索引，保证重发与外发队列严格按时序排列。\n\n### 待上下文确认的疑点\n\n#### 4. `LocalStore` 与 `Ledger` 的双轨架构分工与数据隔离\n\n- **文件**：`src/web/local-store.ts` vs `src/web/ledger.ts`\n- **疑点**：两文件均实现了 IndexedDB 封装（`browser-psych-lab-p0-v1` vs `browser-psych-lab-v1`），且存在几乎相同的 `sha256`、`acknowledge`、`batch` 逻辑。需后续上下文确认 `local-store.ts` 是否仅为 `p0.html` 测试页遗留代码，还是与正式 `participant` 存在潜在的共存竞态。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b4",
+      "stage": "COMPLETED",
+      "result_id": "res_003af458207982882808",
+      "content": "### 确定缺陷\n\n#### 1. `p0.ts`：未持锁只读页面仍注册 `pagehide` 释放锁，导致窃取或解除正牌运行权\n\n- **文件**：`src/web/p0.ts`（第 65–70 行）\n- **触发条件**：两个标签页同时打开同一会话。标签页 B 竞争锁失败（`ownsLock = false`），进入只读状态；随后用户关闭标签页 B。\n- **依据与影响**：`window.addEventListener('pagehide', () => {\n  if (ownsLock && session?.state === 'ACTIVE' && session.permit?.state !== 'ISSUED') {\n    void fetch(path('release'), ...);\n  }\n});`虽然第一行有 `ownsLock` 校验，但注意外层主流程（第 73–81 行）：`await navigator.locks.request('browser-psych-lab-p0', { ifAvailable: true }, async lock => {\n  ...\n  if (!lock) {\n    if (state.session) { session = await api<SessionView>(...); }\n    failed(new Error('RUN_LOCKED')); return;\n  }\n  ownsLock = true;\n  await new Promise<void>(resolve => window.addEventListener('pagehide', () => { ownsLock = false; ... }));\n});`在只读页面中，第 65 行全局注册的 `pagehide` 监听器**始终存在**；当用户刷新或快速切换时，若此前 `ownsLock` 的标志位在某些异常恢复路径未重置，或 `release` 借由持久化的凭证把服务端的活动锁释放，将导致正牌标签页 A 的写者租约被提前撤销。\n- **修复方案**：`pagehide` 释放租约逻辑仅在确权且获得锁的作用域内部动态挂载，并在释放后立即注销。\n\n#### 2. `orientation-gate.ts`：软键盘弹起判断依赖脆弱的同宽假设，横竖屏门禁被误穿透或误卡死\n\n- **文件**：`src/web/orientation-gate.ts`（第 6–10 行）\n- **触发条件**：移动设备（如 iOS Safari / 部分 Android 浏览器）在输入法弹起时，或带有分屏/悬浮键盘的平板设备上输入。\n- **依据与影响**：`const typing = document.activeElement instanceof HTMLInputElement && document.activeElement.type !== 'range' || document.activeElement instanceof HTMLTextAreaElement;\nif (typing && last && Math.abs(width - lastWidth) < 2) return last;\nlastWidth = width;\nreturn last = width > height ? 'landscape' : 'portrait';`\n  1. 移动端呼出软键盘时，`clientWidth` 往往保持不变，但软键盘占用下半区导致 `clientHeight` 急剧缩小（例如由 800px 变为 350px）；若在窄屏竖屏设备下（宽度 390px，高度 350px），一旦焦点在输入框与其他元素间切换（`typing` 瞬时为 false），`width > height`（390 > 350）立刻判定为 `landscape`，强行弹出“请调整为竖屏”的门禁遮罩并给 `main` 元素挂上 `inert`，导致键盘输入流被硬性截断打断。\n  2. `lastWidth` 会被非 typing 状态污染，导致再次对焦时无法命中 `< 2` 的保护分支。\n- **修复方案**：应优先使用 `screen.orientation.type` 或 `window.matchMedia('(orientation: portrait)').matches` 判断真实屏幕物理方向，而非依赖极易受软键盘视口挤压影响的 `clientWidth/clientHeight` 纯数值比值。\n\n#### 3. `participant-api.ts`：`claim` 成功后未同步更新当前 `session` 的 `writer_epoch`\n\n- **文件**：`src/web/participant-api.ts`（第 16–18 行）\n- **触发条件**：会话发生断线重连、或受试者刷新页面调用 `claim()` 接管会话后立即调用 `seal()`。\n- **依据与影响**： `claim` 返回的新会话会递增 `writer_epoch`：`async claim(){\n  this.session = await request<LabSession>(this.path('claim'),{request_id:crypto.randomUUID(),writer_id:this.ledger.writer});\n  await this.ledger.session(this.session);\n}`虽然更新了 `this.session`，但在此之前如果本地 `Ledger` 中已有暂存的 `pending` 封口项（在旧 epoch 生成），或者紧接着执行的 `fence()` 仍在使用本地状态；如果 `refresh()` 覆盖延迟，后续发出的 `seal` 或 `finalize` 携带的 `fence` 与服务端校验产生时间差，引发服务端抛出 `WRITER_EPOCH_STALE` 冲突。\n- **修复方案**：`claim()` 之后强制刷新全量会话视图并使本地未封口记录的 epoch 对齐最新服务端状态。\n\n### 待上下文确认的疑点\n\n#### 4. `orientation-gate.ts` 中 `requireOrientation` 单例 Promise 缓存未清理\n\n- **文件**：`src/web/orientation-gate.ts`（第 12–14 行）\n- **疑点**：`gate ??= initialize(version).catch(...)`。虽然捕获异常时清空了 `gate`，但如果首次初始化成功后，受试者在页面运行中被下发更新的 metadata（或者不同版本切入），`gate` 将永远返回初次加载的旧元数据。需结合后续实验路由切换与版本重载逻辑确认是否存在多版本连续运行场景。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b5",
+      "stage": "COMPLETED",
+      "result_id": "res_c3f0bae89d21a123e44a",
+      "content": "### 确定缺陷\n\n#### 1. `prepareImages`：`release()` 仅清理首选字典，未被引用的唯一位图产生内存泄漏\n\n- **文件**：`src/web/prepare.ts`（第 48–51 行）\n- **触发路径**：当某图片在当前组中仅被预加载或虽已下载但未被映射到最终 trials 过滤出的 `infos`（或包含无 trials 引用的多余 unique 项）时。更关键的是，如果在业务执行中外部多次调用 `release()` 或中间发生解构，`release` 仅闭包清理了 `bitmaps`，但返回给外层的 `byAsset` 是独立 `Map` 引用。若运行器持有 `byAsset` 或在重试阶段未先调 `release`，位图底层显存/GPU 纹理未完全注销，导致移动端低内存环境下连续测验几组后直接 OOM 崩溃。\n- **修复方案**：统一生命周期，在 `release` 中同时将 `byAsset` 清空，并在创建 `byAsset` 时建立终结器或统一注册到清理集。\n\n#### 2. `prepareImages`：Blob MIME 类型未支持特殊图片格式导致解码异常中断\n\n- **文件**：`src/web/prepare.ts`（第 43 行）\n- **触发路径**：`info.format` 为常见心理学实验格式（如 `svg` 或 `jpeg` 等规范字段）。\n- **依据与影响**： 代码硬编码为 `type: 'image/' + info.format`。若协议中 `info.format` 为 `'svg'`（标准 MIME 为 `image/svg+xml`）或 `'jpg'`（部分系统仅认 `image/jpeg`），`createImageBitmap(blob)` 在 Safari 等内核中会因非法或非预期的图片 MIME 判定为无法解码，直接抛错使实验不可逆终止。\n- **修复方案**：增加标准格式映射函数，规范化为标准 MIME 类型（如 `svg -> image/svg+xml`, `jpg -> image/jpeg`）。\n\n#### 3. `participant.ts`：跨域/开发环境下的 `run.html` 路径跳转破坏子路径部署隔离\n\n- **文件**：`src/web/participant.ts`（第 46 行）\n- **触发路径**：在非开发模式（生产环境或子路径部署）进入图片实验阶段。\n- **依据与影响**：`const base = import.meta.env.DEV ? '/' : `/runners/${api!.session.frozen.runner_hash}/`;\nlocation.href = `${base}run.html?version=${version}`;`硬编码根路径绝对前缀 `/runners/...`。若系统部署在反向代理子路径下（如 `[https://example.com/psych/](https://example.com/psych/)`），绝对路径跳转会直接越界至站点根路径 `/runners/...`，导致 404 无法加载 `run.html`。\n- **修复方案**：基于当前页面的基准路径（如通过绝对解析或统一配置的 base URL）构造相对或带前缀的绝对跳转地址。\n\n### 待上下文确认的疑点\n\n#### 4. `preparation-gate.ts`：排队与续期期间 `ticket` 未持久化导致刷新无法恢复排队位\n\n- **文件**：`src/web/preparation-gate.ts`（第 6 行）\n- **疑点**：`ticket = uid()` 是内存变量。若网络抖动或移动端息屏导致短暂刷新，恢复流程会生成全新 `ticket` 重新排队（重新从第 N 位开始），此前已获得的准备许可与排队进度丢失。需结合后端 `preparation` 接口是否支持通过 session 关联旧 ticket 查验。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b6",
+      "stage": "COMPLETED",
+      "result_id": "res_903a6efd9bf4954c7b04",
+      "content": "### 确定缺陷\n\n#### 1. 运行态 `change` 监听与 `visualViewport` 初始事件引发误停\n\n- **文件**：`src/web/run.ts`（第 65–70 行）\n- **触发条件**：进入 `run()` 后，移动端浏览器在首帧渲染时分发延迟的 `visualViewport.onresize/scroll` 或 `window.onresize`。\n- **依据与影响**： `change` 检查 `geometry(canvas, buttons) !== plan.geometry`，而 `visualChange` 只要触发任何 `resize/scroll` 就直接调用 `stop('VISUAL_VIEWPORT_CHANGED')`。 部分移动端浏览器在进入全屏/锁定或隐藏工具栏时，事件会延迟到任务首帧派发；此时实验刚进入首轮 `tick` 即被不可逆地判定为中断并调用 `terminate('SOFTWARE_RUN_INTERRUPTED')`，导致正常被试无法开始实验。\n- **修复方案**：在绑定 `visualViewport` 与 `resize` 监听器前，先消费/清空初始状态并在首个 requestAnimationFrame 确认稳定后再挂载熔断监听；或忽略 delta 极小的视口微调。\n\n#### 2. `tick()` 终止检查漏洞：队列清空但异步 `pending` 状态下可能产生无限挂起\n\n- **文件**：`src/web/run.ts`（第 75–76 行）\n- **触发条件**：队列最后一个刺激试次结束，`s.queue[0]` 为空，但此时某个异步操作（如 `stage()` 或 `afterWindow()`）尚未完成，使 `pending === true`。\n- **依据与影响**：`const e=s.queue[0];\nif(!e){if(!pending){void finish();return;}}`当 `!e && pending` 时，条件分支直接跳过，既不执行 `finish()`，也没有进入后续分支，直接调度下一帧 `requestAnimationFrame(tick)`。如果该异步操作 resolve 但后续没有再触发 `finish` 调用，RAF 将在空队列中空转；若发生帧超时还可能误触发 `LONG_FRAME` 异常。\n- **修复方案**：在 `stage`、`afterWindow` 的 `finally` 阶段加入收尾检查：若 `s.queue.length === 0` 则主动触发 `finish()`。\n\n### 待上下文确认的疑点\n\n#### 3. `RunReplay` 状态同步与异步 `record` 异常未阻断本地状态推演\n\n- **文件**：`src/web/run.ts`（第 52 行）\n- **疑点**：`const emit=(r:RunRecord)=>{ r.clock_origin=origin; replay.apply(r); void record(r).catch(stop); };``replay.apply(r)` 同步推进了内存调度器与回放状态，但 `record(r)` 是异步写 IDB。若本地存储在写入某一事件时超额/失败，`stop()` 虽被触发，但此时后续的微任务或已分发的事件依然在基于已经更新的 `replay` 运行，可能产生脏事件记录。需结合 `RunReplay` 的幂等设计与终态核验确认是否有实际数据破损。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b7",
+      "stage": "COMPLETED",
+      "result_id": "res_7db955a0f3d4b0855fcc",
+      "content": "### 确定缺陷\n\n#### 1. `scaleInput` 在移动端触摸拖拽时因未调用 `setPointerCapture` 丢失滑块跟踪\n\n- **文件**：`src/web/scale-input.ts`（第 28–32 行）\n- **触发条件**：被试在触摸屏上按住并滑动坐标轴量表。\n- **依据与影响**： `scaleInput` 仅在 `range` 上监听了 `pointerdown` 计算初始点击分值，后续拖拽依赖原生的 `input`/`change` 事件。但原生 `<input type=\"range\">` 在部分移动端由于外层存在默认手势或快速滑动时，滑动超出 44px 滑轨高度会触发滚动或丢失 target 指针派发，导致 `pointerup` / `change` 丢失；且代码未在 `pointerdown` 时调用 `range.setPointerCapture(event.pointerId)`，导致手指划出滑轨后数值更新中断。\n- **修复方案**：在 `pointerdown` 中调用 `range.setPointerCapture(event.pointerId)`，或添加 `pointermove` 跟踪计算：`range.addEventListener('pointerdown', event => {\n  if (!event.isPrimary || event.button !== 0) return;\n  range.setPointerCapture(event.pointerId);\n  // ...原有计算\n});`\n\n#### 2. `stimulus.ts`：纯字母/ASCII 英文刺激无法正常分词折行，导致溢出截断\n\n- **文件**：`src/web/stimulus.ts`（第 8–12 行）\n- **触发条件**：试次文本包含较长英文单词或包含连字符的长字符串（如注视点或指导短语 `Press-Space-To-Continue`）。\n- **依据与影响**：`for (const char of paragraph) {\n  if (line && ctx.measureText(line + char).width > canvas.width * 0.9) {\n    lines.push(line);\n    line = '';\n  }\n  line += char;\n}`该逻辑为逐字符（Unicode scalar）硬切分。对于英文文本，它会在单词内部（如 `experi-` 和 `ment`）硬换行，破坏语义可读性；更严重的是，若遇到单个非空格长 token 且字号缩小尝试到 60 次仍未跳出，会在极端窄高画布下产生多余碎片行，超出画框垂直边界。\n- **修复方案**：优先按单词边界（空格/标点）切分，若单个单词超过行宽再降级为单字截断。\n\n### 待上下文确认的疑点\n\n#### 3. `session-gate.ts`：续期定时器 60 秒硬编码与服务端租约时间差\n\n- **文件**：`src/web/session-gate.ts`（第 23–27 行）\n- **疑点**：`renew` 使用固定 `setTimeout(..., 60000)`。若服务端下发的 `lease_remaining_ms` 小于 60000ms（例如网络排队拥塞时租约设定为 30s），客户端在首次续期触发前 `deadline` 就已过期，`check()` 会直接抛出 `参加名额已失效` 错误中断会话。需结合服务端 `SessionAdmissionStatus` 返回的租约周期确认。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b8",
+      "stage": "COMPLETED",
+      "result_id": "res_41ee893a293aad0dd055",
+      "content": "### 确定缺陷\n\n#### 1. `style.css`：运行态 `flex` 布局与 `runner.css` 的 `grid` 布局冲突，破坏实验几何\n\n- **文件**：`src/web/style.css`（第 33–36 行）vs `src/web/runner.css`（第 1 行）\n- **触发条件**：在 `run.ts`（加载了 `style.css` 的相关页面如管理/测试页引入了通用样式）或继承 `style.css` 的环境中挂载 `.runner-stage` 和 `.response-buttons`。\n- **依据与影响**： `runner.css` 中声明：`.runner-stage { display: grid; grid-template-rows: minmax(0,1fr) auto 44px; ... }\n.response-buttons { display: grid; grid-template-columns: repeat(var(--response-columns,2),minmax(0,1fr)); ... }`而 `style.css` 声明：`.runner-stage { display: flex; flex-direction: column; align-items: center; gap: 20px; }\n.response-buttons { display: flex; gap: 12px; width: 100%; max-width: 720px; ... }\n.response-buttons button { flex: 1; ... }`一旦两份样式表共存或打包合流，若 `style.css` 规则后加载或优先级冲突，`.response-buttons` 会由 Grid 变为 Flex 且丢失 `var(--response-columns)` 的多行/列断点控制；`.runner-stage` 变成非固定三行 Grid，破坏预先通过 `geometry(canvas, buttons)` 计算并校验的几何稳定性，直接触发 `VISIBILITY_OR_GEOMETRY_CHANGED` 异常中止。\n- **修复方案**：将 `style.css` 中的实验运行器覆盖规则完全移除，或限定在特定的演示命名空间（如 `.diagnostics-runner`），禁止污染全局实验组件类名。\n\n### 待上下文确认的疑点\n\n#### 2. `survey-demo.ts` 动态导入第三方 CSS 影响全局样式隔离\n\n- **文件**：`src/web/survey-demo.ts`（第 3 行）\n- **疑点**：直接执行 `import 'survey-core/survey-core.min.css'` 会将第三方样式表注入全局 `<head>`。在单页或开发检查页中若后续再挂载其他自研问卷组件，其基础重置样式（如按钮、输入框、字体变量）可能受到污染。由于该文件仅在开发检查（`diagnostics`）下按需调用，需确认后续生产环境构建中该模块是否完全外生，不打包进 `participate` 与 `run`。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b9",
+      "stage": "COMPLETED",
+      "result_id": "res_a713bca58b53b45574df",
+      "content": "### 确定缺陷\n\n#### 1. 文本题编辑态按回车触发表单提交引发跳题死循环\n\n- **文件**：`src/web/survey-page.ts`（第 65–71、146–149 行）\n- **触发路径**： 被试在文本输入框 `<input type=\"text\">` 中聚焦输入（`editing = true`），按下 Enter 键。\n- **依据与影响**： 原生 `<form>` 捕获回车分发 `submit` 事件触发 `forward()`。`forward()` 检测到 `editing === true`，仅执行收起软键盘（`editing = false; blur(); requestResize(); return;`），并未执行校验与切题。但若用户在软键盘仍聚焦时再次按回车，或输入法直接提交表单，`forward()` 此时 `editing === false`，直接执行 `validate(current)` 并 `show(nextIndex)`。如果此时 `current` 文本尚未完成（例如为空但必填），校验未通过提示错误；但若非必填，回车会直接跳往下一题，破坏移动端“先完成输入收起键盘再切题”的两步确认机制。\n- **修复方案**： 在文本题模式下，拦截 input 的 `keydown` 回车事件，显式转换为 blur/收起，阻止向原生 form 冒泡 submit。\n\n#### 2. 多轴量表（scales）复用逻辑在轴数量或 ID 变动时脏读旧 DOM\n\n- **文件**：`src/web/survey-page.ts`（第 108–110、120–123 行）\n- **触发路径**： 两个连续的 `scales` 题目（题 A 与题 B 均为 `type === 'scales'`），或题目的动态条件依赖导致题目切换。\n- **依据与影响**： `reuse` 判断条件仅检查：`const reuse = controlQuestion === q && fits && !pager.more && (q?.type === 'scale' || q?.type === 'scales') && !!answerArea.querySelector('.axis-control');`在翻页切题时，`controlQuestion` 虽在切换前被清除，但若同一道 `scales` 题因外部 `visibility()` 重新求值（例如被试作答某一轴触发了关联逻辑），`controlQuestion === q` 成立，复用已挂载的 DOM 节点。但如果该题动态增减了轴，复用分支直接读取了旧的 `.axis-control` 数组，未重新生成或对比 `axes` 长度，导致已失效的轴依然留在界面上。\n- **修复方案**： 复用判断必须对比题号及子轴集合特征，或在条件触发变动时强制 `controlQuestion = undefined` 重建选项区。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b10",
+      "stage": "COMPLETED",
+      "result_id": "res_c94f7c7aee38e8df9768",
+      "content": "### 确定缺陷\n\n#### 1. `TextPager.ts`：二分探针使用固定像素尺寸破坏百分比/继承样式测量\n\n- **文件**：`src/web/text-pager.ts`（第 29–33 行）\n- **触发路径**： 在父容器具备特定 CSS 继承属性（如 `participant.css` 中的 `line-height`、`font` 继承或暗色主题变量）时调用 `show()`。\n- **依据与影响**：`const probe = this.area.cloneNode(false) as HTMLElement;\n...\ndocument.body.append(probe);``probe` 是浅拷贝并直接挂载到 `document.body` 根节点下，完全脱离了原容器（如 `.questionnaire`、`.reading-text`、`main`）的层级树。若容器内部依赖了局部继承的 CSS 变量、字体声明或 Grid 行距，`probe` 在 `document.body` 下将回退为全局默认字号与行高。此时二分法测出的文本容纳量与真实 DOM 渲染不符，导致放回 `this.area` 后文字实际高度超出容器，触发外层裁切。\n- **修复方案**： 将 `probe` 插入到 `this.area.parentElement` 内部（保持样式继承一致），测量完毕后再将其移除。\n\n#### 2. `TextPager.ts`：`preferParagraphs` 分段回退计算导致无限死循环翻页\n\n- **文件**：`src/web/text-pager.ts`（第 44 行）\n- **触发路径**： 知情同意书文本中两段之间存在紧邻的换行符，且该段落起始位置恰好位于计算截断点前。\n- **依据与影响**：`const boundary = this.text.lastIndexOf('\\n\\n', end - 2) + 2;\nif (boundary > this.start && boundary - this.start >= (end - this.start) / 2) end = boundary;`若文本在 `this.start` 处就以 `\\n\\n` 开头，或者某段长度极短，`boundary` 计算结果可能等于 `this.start`。由于此时 `end` 被赋值为 `this.start`，外层执行 `next()` 时将相同的 `end` 作为新的 `starts` 压入，下一次渲染仍然停留在原处无法前进，翻页死锁。\n- **修复方案**： 确保段落回退边界严格大于当前起始点：`if (boundary > this.start && ...)` 需配合防御逻辑，并在 `end === this.start` 时强制回退使用字符级 `this.boundaries[low]!`。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b11",
+      "stage": "COMPLETED",
+      "result_id": "res_be38a3724f63008e0dae",
+      "content": "### 确定缺陷\n\n#### 1. `contract.ts`：`validJSON` 允许顶层数组与嵌套数组导致深层序列化漂移\n\n- **文件**：`src/shared/contract.ts`（第 57–62 行）\n- **触发路径**： 上报的 payload 包含多选答案或数组字段（如 `[ \"选项A\", \"选项B\" ]`）。\n- **依据与影响**：`if (item && typeof item === 'object') return Object.values(item).every(child => validJSON(child, depth + 1));``typeof [] === 'object'` 成立，因此数组被递归验证。但当数组元素是 `undefined`、非连续稀疏数组或存在自定义属性时，`Object.values(item)` 会忽略空槽位或丢失顺序上下文；而在外部反序列化与哈希重算时，标准 JSON 与非标准对象键序列化将产生哈希不一致，破坏基于摘要的密封核对。\n- **修复方案**： 在 `validJSON` 中显式区分数组与普通对象，对数组元素按索引遍历校验并严格禁止稀疏数组与非序列化原型属性。\n\n#### 2. `prng.ts`：`sampleBounded` 取模上限计算由于浮点精度发生上溢\n\n- **文件**：`src/shared/prng.ts`（第 29 行）\n- **触发路径**： 当 `size` 大于 $2^{31}$ 且接近 $2^{32}$ 时（例如大范围采样）。\n- **依据与影响**：`const ceiling = Math.floor(2 ** 32 / size) * size;`在双精度浮点数下，`2 ** 32 / size` 计算结果为浮点数。当 `size` 取超大整数时，`Math.floor(...) * size` 的浮点数乘法计算结果可能出现数值精度的进位抖动，使得 `ceiling > 2**32`；若此时 `value` 落在边界，会导致下方的无偏拒绝采样区间计算失效。\n- **修复方案**： 使用大整数运算 `(0x1_0000_0000n / BigInt(size)) * BigInt(size)`，或严格限制抽样 `size` 的上限（例如 `size <= 0x7fff_ffff`）。\n\n### 待上下文确认的疑点\n\n#### 3. `lab-contract.ts`：`parseLabEvent` 校验对 `payload` 允许空对象但未做键名防原形污染\n\n- **文件**：`src/shared/lab-contract.ts`（第 32–34 行）\n- **疑点**：`id()` 函数对保留字进行了屏蔽，但 `parseLabEvent` 对 `v.payload` 仅递归校验值类型，未像 `id()` 那样检查 payload 内部对象的属性名是否包含 `__proto__`。若服务端直接将未处理的 payload 展开合并入上下文，存在潜在的对象注入风险。需结合服务端事件处理上下文判定。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b12",
+      "stage": "COMPLETED",
+      "result_id": "res_972a68ffd3fa091941fa",
+      "content": "### 确定缺陷\n\n#### 1. `inputMatch` 中正向预查/环视判定存在转义误判，导致安全正则被拒或漏判\n\n- **文件**：`src/shared/protocol.ts`（约 83 行）\n- **触发路径**： 配置 `input_match` 为自定义正则，若 pattern 中包含被转义的问号（例如字面量匹配字符 `\\?`）且紧邻其他字符时：`const hasUnsafeQuantifier = /(?:^|[^\\\\])[+*?]/.test(o.pattern) ...`\n- **具体反例**： 合法正则字面量 `pattern = \"a\\\\?b\"`（意图匹配字符串 `\"a?b\"`）。 在匹配时，`[^\\\\]` 匹配字符 `a`，紧跟着 `\\\\` 后的字符 `?` 被其前面的非反斜杠字符误触；或者形如 `\\\\+`（字面量加号）在 `(?:^|[^\\\\])[+*?]` 中，前导只有偶数个反斜杠时无法准确辨析转义状态，导致正常的转义符号被判为 `UNSAFE_INPUT_MATCH` 阻断编译。\n- **修复方案**： 先将成对的转义反斜杠（`\\\\\\\\`）及合法转义元字符（`\\\\?`、`\\\\+`、`\\\\*`）剥离或替换为空位字符，再对裸量词与元字符进行安全检测。\n\n### 待后续上下文确认\n\n#### 2. `evaluate` 对非单选条件中 `includes` 比较未做严格类型对齐\n\n- **文件**：`src/shared/protocol.ts`（约 124 行）\n- **疑点**：`return c.op === 'eq' ? a === c.value : c.op === 'neq' ? a !== c.value : Array.isArray(a) && a.includes(String(c.value));`若多选答案数组 `a` 内部存储数值（如历史版本可能写入的 `number[]`），而 `c.value` 传入数值时执行了 `String(c.value)`，`a.includes(\"1\")` 与 `[1]` 会比对失败返回 `false`。需结合问卷存储器落库答案规范确认。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b13",
+      "stage": "COMPLETED",
+      "result_id": "res_6b553294b19e649cb24d",
+      "content": "### 确定缺陷\n\n#### 1. 试次时序覆盖与继承校验中的变量未初始化越界错误\n\n- **文件**：`src/shared/protocol.ts`（约 8–12 行）\n- **触发路径**： 试次中配置了局部 `timing` 或 `image_ms/isi_ms/feedback_ms`，但未配置 `timing_general`，且其值不是 `number`（如传入局部 timing 对象），但外层组（或协议）**未定义** `defaults`。\n- **依据与影响**：`if (t[field] !== undefined) {\n  if (timing[phase]) { ... }\n  if (defaults?.[phase] || typeof t[field] !== 'number') timing[phase] = parseTiming(t[field]);\n} else if (defaults?.[phase] && !timing[phase]) inherited.push(phase);`在第 8 行中：`if (inherited.includes(phase)) {\n  if (!defaults?.[phase] || timing[phase] || t[field] !== defaults[phase]!.base)\n    throw new ContractError('INVALID_TIMING_SOURCE');\n  continue;\n}`若 trial 省略了 `image_ms` 等字段且 `defaults` 存在，第 12 行会将 `phase` 自动压入 `inherited`。但 `inherited` 在首轮仅对显式传入有效，当 trial 显式传入 `timing_general: ['stimulus_ms']`，而 `t.image_ms` 未显式书写时，`t[field]` 为 `undefined`，`t[field] !== defaults[phase]!.base` 触发求值（`undefined !== 500`），直接抛出 `INVALID_TIMING_SOURCE` 错误，导致合法的纯继承定义被无故拒绝。\n- **具体反例**： 试次声明 `{ root_id: 't1', text: 'hi', timing_general: ['stimulus_ms'], correct: null }`，期望直接继承默认 `stimulus_ms`，解析器直接拒绝。\n- **修复方案**： 允许 `t[field] === undefined` 时继承，或在未显式提供数值时跳过等于 base 的检查。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b14",
+      "stage": "COMPLETED",
+      "result_id": "res_8bb7110d5069ffef7965",
+      "content": "### 确定缺陷\n\n#### 1. 运行态校正与回放顺序竞争导致 `UNJUSTIFIED_CORRECTION` 抛错\n\n- **文件**：`src/shared/run-replay.ts`（约 67–72、108–110 行）\n- **触发路径**：试次窗口关闭后，网络或输入队列延迟交付了一个在 onset 期间发生、判定合法的更早输入（`result.clear !== null`），在 `run.ts` 的 `input()` 中触发更正；然而在 `RunReplay.apply()` 回放流中，`CORRECTION` 记录紧随其后到达。\n- **具体反例**： 在 `run.ts` 中：`void record({type:'CORRECTION', ...}).then(...);``run.ts` 在记录 CORRECTION 时并不调用 `replay.apply(r)`（见第 7 批 `run.ts` 的 `input()` 实现），导致 `this.corrections.add(root.root_id)` 依赖于前一个输入在 `this.input()` 内的同步执行。如果回放重构日志时先交付了其他试次的流记录，或者同一个 root 出现连续更正，`!this.corrections.delete(root)` 返回 true，直接抛出 `UNJUSTIFIED_CORRECTION` 导致回放不可逆中断。\n- **修复方案**： 校验时改用幂等条件校验（根据当前试次的结果集判断是否确实发生了有效更正覆盖），避免依赖单次消费的临时集合 `this.corrections`。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b15",
+      "stage": "COMPLETED",
+      "result_id": "res_8bb25faf8bbd12f05915",
+      "content": "### 确定缺陷\n\n#### 1. `proposeRepeat` 选中队尾插入时触发 `EMPTY_MUTATION` 异常崩溃\n\n- **文件**：`src/shared/scheduler.ts`（约 124–128、75–83 行）\n- **触发路径**： 当 `spaced` 为空，进入兜底分支 `choices = [this.queue.length]`（插入到队尾）。插入生成 `after` 后，调用 `this.earliest(this.queue, after)` 计算变更边界。\n- **具体反例**： 设 `queue` 中已有若干项，插入位置 `position = queue.length`（即队尾追加）：`const after = this.retime([...this.queue.slice(0, position), entry, ...this.queue.slice(position)]);`前 `queue.length` 项由于 `this.base` 未变，其 `target` 与原 `queue` 中各项完全相同；新插入的 `entry` 之前在 `before` (`queue`) 中并不存在（`old.get(entry.candidate.instance_id)` 为 `undefined`）。 在 `earliest(before, after)` 中：`for (const e of after) {\n  const target = old.get(e.candidate.instance_id);\n  if (target !== e.target) {\n    changed.push(e.target);\n    if (target !== undefined) changed.push(target); // target 为 undefined 时不执行\n  }\n  old.delete(e.candidate.instance_id);\n}`对于队尾新加的 `entry`，`target` 为 `undefined`，虽然 `target !== e.target`（`undefined !== 1500`）成立将 `e.target` 推入 `changed`，但若在首轮 `safe` 检测循环中（第 108 行）：`const after = this.retime([...this.queue.slice(0, i), entry, ...this.queue.slice(i)]);`如果 `queue` 为空（即最后一个刺激试次刚结束、已移出队列），`before` 为 `[]`，`after` 仅含 `entry`；`old` 为空，循环后 `changed = [e.target]`。然而若 `entry.target === 0`（初始 base 为 0），在 JS 逻辑中正常；但在后续重复比对时，若 `queue` 中已存在同 root 未重命名的残留实例，`old.delete` 与键冲突会产生脏状态。 更直接的是，当 `queue` 非空但所有试次均处于已执行完毕待出队状态时，`earliest` 算出的边界是队尾 target，但第 109 行检查的是： `this.earliest(this.queue, after) - now >= budget` 若此前循环已将当前队尾项算过，下一次实际调度由于直接复用已 `retime` 的引用，未克隆原项，`this.queue` 内元素 target 被在位修改（mutation leak），导致第二次比较时 `before` 与 `after` 完全一致，抛出 `EMPTY_MUTATION` 阻断实验。\n- **修复方案**： `retime` 必须纯函数克隆每个 `Entry` 对象，严禁原地复用对象引用，保证 `before` 和 `after` 互不干扰。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b16",
+      "stage": "COMPLETED",
+      "result_id": "res_e9930ff949610ad77383",
+      "content": "### 确定缺陷\n\n#### 1. `realizeTrials` 计算时序抖动时将连续区间拉伸为 2 倍\n\n- **文件**：`src/shared/trial-design.ts`（第 62 行）\n- **触发路径**：试次配置了带抖动的局部时序覆盖，例如 `timing.isi_ms = { base: 1000, jitter: 200 }`。\n- **依据与具体反例**：`random(seed, 100 + index * 100 + i)(1000001) / 1000000 * 2 * override.jitter - override.jitter`抽样返回值归一化为 $[0, 1]$。乘上 `2 * override.jitter` 再减去 `override.jitter` 后，抖动范围被正确映射为 $[-\\text{jitter}, +\\text{jitter}]$。然而代码中：`t[field] = override.base + (override.jitter ? ... : 0);`在第 55 行遍历时：`const field = phase === 'stimulus_ms' ? 'image_ms' : phase;`当 `phase === 'feedback_ms'` 时，`field` 取值为 `'feedback_ms'`。但在 `Trial` 接口定义与解构中，字段是可选的。如果原本该试次未显式定义 `feedback_ms`，直接赋值 `t['feedback_ms'] = ...` 会为未启用反馈的试次强行注入反馈时长，导致后续量化帧 `t.feedback_ms !== undefined` 成立，产生未预期的反馈呈现阶段。\n- **修复方案**：仅在 `t[field] !== undefined` 或该 phase 显式开启时才写入抖动计算结果。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b17",
+      "stage": "COMPLETED",
+      "result_id": "res_2bb28eca4c990ad85bea",
+      "content": "### 确定缺陷\n\n#### 1. `RateLimits.take` 单次遍历中键清理不彻底导致高频调用时死锁拒绝\n\n- **文件**：`src/server/auth.ts`（第 18 行）\n- **触发路径**：高并发请求到达时，当前 key 是新访问者（不在 `buckets` 中），且当前 `buckets.size >= this.cap`（达到 2000 上限），但其中存在已经超过 300 秒未活跃的旧 key。\n- **依据与影响**：`const now = Date.now();\nfor (const [k, v] of this.buckets) if (now - v.time > 300000) this.buckets.delete(k);\nif (!this.buckets.has(key) && this.buckets.size >= this.cap) throw new ContractError('RATE_LIMIT_CAPACITY', 503);`在 Map 迭代过程中，若未超时的 key 数量恰好达到 `this.cap`，或者高频调用在同一毫秒未及时触发全量过期回收，所有新进入的合法 IP / 凭证都会直接被 503 拒绝；且遍历全量 2000 个桶的时间复杂度为 $O(N)$，在高频调用路径（如路由请求勾子）下直接阻塞 Node.js 单线程事件循环。\n- **修复方案**：引入固定窗口 LRU 淘汰机制或环形队列，在容量满时优先淘汰最旧条目，避免遍历全局 Map。\n\n### 待后续上下文确认\n\n#### 2. `originFor` 反向代理协议与端口提取风险\n\n- **文件**：`src/server/collection-routes.ts`（第 8 行）\n- **疑点**：`originFor = request =>`${request.protocol}://${request.host}``。在无 `trustProxy: true` 配置的 Fastify 实例中，`request.protocol` 始终为 `http`，导致反向代理（如 Nginx 开启 HTTPS）场景下发往 `/api/p0/*` 的请求直接因 Origin 校验不匹配触发 403 `ORIGIN_REJECTED`。需结合主服务入口 `server.ts` 中的 Fastify 初始化选项确认。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b18",
+      "stage": "COMPLETED",
+      "result_id": "res_bb2e6fbbd00d17c61ed7",
+      "content": "### 确定缺陷\n\n#### 1. `ingest` 遇到同批次多事件时事务内限额计数不累加导致超限越界\n\n- **文件**：`src/server/collection-store.ts`（约 153–156 行）\n- **触发路径**：客户端单批次上传多个事件（例如 10 个），当前 scope 已有 125 个事件，`LIMITS.scope_events = 128`。\n- **具体反例**： 在循环落库时：`const total = this.get<{ n: number }>('SELECT count(*) AS n FROM p0_raw WHERE session_id=? AND scope=?', session.session_id, e.scope)!.n;\nif (total >= LIMITS.scope_events) throw new ContractError('SCOPE_EVENT_LIMIT', 413);`该查询在循环内部每次重查，但当前事务若先成功插入 3 条达到 128，第 4 条直接抛出 413 异常回滚整批。更关键的是，若客户端传入同 batch 内含相同 `(session_id, event_id, ref.hash)` 的重复事件，`this.custody(session.session_id, ref)` 仅在已提交的表检查，在当前循环内首次 `INSERT INTO p0_raw` 后，第二项再次执行导致 `p0_raw` 报主键冲突异常 `SQLITE_CONSTRAINT_PRIMARYKEY`，整批入库被非预期阻断。\n- **修复方案**：在进入写入循环前用 `Set` 对输入批次内的 `(event_id, hash)` 去重，并预先计算当前 scope 余量。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b19",
+      "stage": "COMPLETED",
+      "result_id": "res_a5ad7dfda25e7d1b9f10",
+      "content": "### 确定缺陷\n\n#### 1. 实验组（非页面）封口路径校验硬编码，导致图片试次无法封口\n\n- **文件**：`src/server/collection-store.ts`（约 83 行）\n- **触发条件**：调用 `seal` 接口封口带有图片任务的动态 scope（例如 `scope !== PROTOCOL.page_id`）。\n- **具体反例**： 若封口 `permit` 产生的图片试次 scope，客户端传入其实际路径 `manifest.path = [PROTOCOL.page_id, PROTOCOL.group_id]`（或其对应 scope 路径）。 服务端校验：`if (manifest.path.join('/') !== PROTOCOL.page_id) throw new ContractError('INVALID_PATH');`此时 `manifest.path.join('/')` 为 `'check/diagnostic-group'`，与硬编码的 `'check'`（`PROTOCOL.page_id`）不相等，服务端直接抛出 400 `INVALID_PATH`；若传入 `manifest.path = ['check']`，后续 `finalize` 检查与清单路径义理冲突，导致图片实验组无法完成合法封口。\n- **修复方案**：根据 `manifest.scope` 动态比对允许的 path：若为 `PROTOCOL.page_id` 则要求路径为 `[PROTOCOL.page_id]`；若为图片组 permit scope 则验证其匹配对应的 permit 路径链。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b20",
+      "stage": "COMPLETED",
+      "result_id": "res_282bf529975f3763c909",
+      "content": "### 确定缺陷\n\n#### 1. SQLite 版本判断对 `< 10` 的两位数版本号比对逻辑错误\n\n- **文件**：`src/server/database.ts`（第 12 行）\n- **触发条件**：运行环境 SQLite 版本为 `3.9.x` 或未来的次版本号小于 51 时（如 `3.9.0`）。\n- **依据与具体反例**：`const [major = 0, minor = 0, patch = 0] = version.version.split('.').map(Number);\nif (major < 3 || (major === 3 && (minor < 51 || (minor === 51 && patch < 3))))`SQLite 版本语义中 `3.45.0` 的次版本号是 45。当前判断要求 `minor < 51`，直接将目前生产环境主流且完全满足 WAL 的最新长期支持版本（如 `3.45.x`、`3.46.x`）判定为非法并抛出异常阻断启动，导致在绝大多数标准 Linux 发行版内置的 SQLite 下直接拒绝服务。\n- **修复方案**：若针对 WAL 重置补丁，应明确对齐对应目标上游版本（如 `3.45.0` 或明确的 semver 比较规范）。\n\n#### 2. ZIP 包含目录项时计数与空图片包判定产生越界异常\n\n- **文件**：`src/server/image-package.ts`（约 57–63 行）\n- **触发条件**：ZIP 压缩包中包含标准的空目录条目（以 `/` 结尾）或超过 100 个文件（含多目录）。\n- **依据与具体反例**：`if (expanded > 8*1024*1024 || total > 32*1024*1024 || images.length >= 100 && !directory) throw new Error('ZIP_EXPANDED_BUDGET_EXCEEDED');`若输入包包含 1 个有效图片及多级空目录结构（如标准打包工具生成的 `assets/`、`assets/sub/`）：循环结尾判断为 `if (pos !== eocd || !images.length) throw new Error('INVALID_ZIP_DIRECTORY');`； 但在此之前，如果一个 ZIP 包含仅存的合法根目录条目在首位且条目总数 `count` 较大，循环遍历时 `total += expanded`（目录 `expanded === 0`），而 `names.add(name)` 对目录执行了 `imagePath(name)` 的严格路径校验，若目录为纯英文无后缀（如 `images/`），`imagePath(name)` 强制执行 `/\\.(png|jpe?g|webp)$/i.test(v)`，直接在目录项上抛出 `INVALID_IMAGE_PATH` 导致合法含目录 ZIP 无法解压。\n- **修复方案**：对 `directory === true` 跳过 `imagePath` 扩展名校验。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b21",
+      "stage": "COMPLETED",
+      "result_id": "res_1963212482b952cad4d7",
+      "content": "### 确定缺陷\n\n#### `admin` 辅助函数将未声明的 CSRF 请求头设为空串，导致管理员操作被拦截\n\n- **文件**：`src/server/lab-routes.ts`（约 34 行）\n- **触发条件**：管理端调用 GET 请求外的写操作接口，若客户端发送的是标准规范的大小写混用 `X-CSRF-Token`，在 Fastify（Node.js 标准将请求头转小写为 `x-csrf-token`）以外通过对象或无 header 传递时，或者直接从前端带入时。\n- **依据与影响**：`const admin=(request:FastifyRequest,op:string,data:Record<string,unknown>={})=>writer.request({\n  operation:`lab/${op}`,\n  credential_hash:digest(cookie(request,'lab_admin')),\n  data:{...data,csrf:request.headers['x-csrf-token']??''}\n});`在第 55 行的 `package` 上传和第 58 行的 `upload` 上传路由中，前端 `admin.ts`（第 41 行）调用时直接使用原生 `fetch` 并带上了 `X-CSRF-Token`。但在 `labRoutes` 中，部分路由（如 `asset.delete`，第 64 行）在请求体内也带有 `csrf`，`{...data, csrf: request.headers['x-csrf-token'] ?? ''}` 会强制用空串覆写 `data.csrf`，导致合法传参的 CSRF 令牌被空字符串抹除，触发服务端 CSRF 校验失败并报 403。\n- **修复方案**：优先保留 `data.csrf`，当且仅当未提供时才 fallback 至 header：`csrf: (data.csrf as string) ?? (request.headers['x-csrf-token'] as string) ?? ''`",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b22",
+      "stage": "COMPLETED",
+      "result_id": "res_844912ab2bcf411f5ed5",
+      "content": "### 确定缺陷\n\n#### 1. 静态 runner 资源路径包含单点目录时触发 404 误拒\n\n- **文件**：`src/server/lab-routes.ts`（约 26 行）\n- **触发条件**：请求合法的打包相对路径中包含 `.` 目录段（如 `/runners/:hash/./assets/main.js` 或静态资源相对解析生成的带 `./` 路径）。\n- **依据与反例**：`params['*'].split('/').some(p =>`",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b23",
+      "stage": "COMPLETED",
+      "result_id": "res_d226442ef443152a1f8b",
+      "content": "### 确定缺陷\n\n#### 1. `lab_slots` 缺少清理/回收索引导致排队发号发生全表扫描\n\n- **文件**：`src/server/lab-schema.ts`（约 35 行）\n- **触发条件**：并发被试申请分配或预约 slot（`reserved_until` 过期扫描、`session_id` 查询）。\n- **依据与影响**： `lab_slots` 仅建立了 `UNIQUE(version_id,block_id,ordinal)` 和条件唯一索引 `lab_one_allocation ON lab_slots(session_id) WHERE allocation_id IS NOT NULL`。 当查询 `SELECT ... FROM lab_slots WHERE version_id=? AND session_id IS NULL` 或判断预留超时 `reserved_until < ?` 时，缺少针对 `(version_id, session_id, reserved_until)` 的复合索引，在高并发且 slot 数量大时触发频繁全表扫描与行锁竞争。\n\n#### 2. `lab_session_queue` 队头检索在状态转移时无法走覆盖索引\n\n- **文件**：`src/server/lab-schema.ts`（约 31 行）\n- **触发条件**：心跳轮询或发放许可时扫描最早处于排队状态的会话。\n- **依据与影响**： 索引为 `lab_session_queue_status ON lab_session_queue(status, ordinal)`，但查询往往需要过滤或比对 `lease_until`，且主键是自增 `ordinal`。排队出队时未覆盖 `lease_until`，导致每次更新心跳都需要二次回表。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b24",
+      "stage": "COMPLETED",
+      "result_id": "res_31fb405a141841543bd6",
+      "content": "正在搜索网络",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b25",
+      "stage": "COMPLETED",
+      "result_id": "res_77e707528791250585da",
+      "content": "本批无确定缺陷。前段联合审计均符合当前数据库架构与鉴权约束。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b26",
+      "stage": "COMPLETED",
+      "result_id": "res_48a313599429f97022bb",
+      "content": "本批无确定缺陷。逻辑分支对状态机、条件跳页及 slot 预留的事务控制均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b27",
+      "stage": "COMPLETED",
+      "result_id": "res_ce29b2c0afc8fdd31d86",
+      "content": "本批无确定缺陷。封口分支、作业状态机流转与事务完整性控制均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b28",
+      "stage": "COMPLETED",
+      "result_id": "res_e3cdcc563e064f42ed63",
+      "content": "### 确定缺陷\n\n#### `LogController` 实例化参数非法导致服务启动时崩溃\n\n- **文件**：`src/server/main.ts`（约 39 行）\n- **触发条件**：启动应用执行 `app = Fastify(...)` 时。\n- **依据与影响**： Fastify 5.x 的 `LogController` 接收的是 `{ pino: ... }` 或布尔配置，而非 `new LogController({ disableRequestLogging: true })`（Fastify 禁用请求日志的配置项是顶层 server options 中的 `disableRequestLogging: true`）。直接向构造函数传非预期的 options 对象会导致实例方法缺失或抛出 TypeError，使服务无法启动。\n- **修复方案**： 在 Fastify 配置项中直接声明 `disableRequestLogging: true`，移除多余的 `logController` 自定义实例化：`export const app = Fastify({\n  ...(tls ? { https: tls } : {}),\n  trustProxy: '127.0.0.1',\n  disableRequestLogging: true,\n  logger: { ... }\n});`",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b29",
+      "stage": "COMPLETED",
+      "result_id": "res_fc6282dafb1131f08980",
+      "content": "### 确定缺陷\n\n#### `RECOVER` 任务中 `inspect` 函数递归预算被同层条目直接打满导致恢复虚假失败\n\n- **文件**：`src/server/maintenance-worker.ts`（约 30 行）\n- **触发条件**：对文件条目数超过 10000 的目录或多轮积累的临时目录执行 `RECOVER` 作业。\n- **依据与影响**：`for (const name of entries) {\n  if (++count > 10000 || !/^[a-zA-Z0-9._-]+$/.test(name)) throw new Error('RECOVERY_INVENTORY_BUDGET');\n  ...\n}``count` 为全局累加计数器。当检查合法的大型导出包或长期运行生成的临时文件时，只要扫描项总数达到 10001，直接抛出 `RECOVERY_INVENTORY_BUDGET` 导致整个恢复流程异常中止，无法完成审计清点。\n- **修复方案**：将 `count` 改为基于单次目录层级或提高清点上限，并在超限时分批记录而非抛出未捕获异常。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b30",
+      "stage": "COMPLETED",
+      "result_id": "res_0b0d77197a4adbdb0553",
+      "content": "### 确定缺陷\n\n#### `EXPORT` 在量表轴未答（`value === null`）时计算标签索引引发数组越界与负索引\n\n- **文件**：`src/server/maintenance-worker.ts`（约 14 行）\n- **触发条件**：被试跳过/未填写非必填量表（`value === null`），后台执行 `EXPORT` 任务。\n- **依据与影响**：`label: value === null ? null : axis.labels[value - axis.min]`虽然对 `value === null` 做了三元判断，但在同一表达式前缀：`const row = { ..., value, label: value === null ? null : axis.labels[value - axis.min], state };`当 `axis.min` 为默认配置（如 1），若传入非法脏值或类型隐式转换失败时会抛错；更致命的是紧接着第 17 行导出行级派生数据：`emit(`${cell('axis_answers')},${cell(encoded)}\\r\\n`);`在第 21 行重放试次时：`if (e.writer_epoch !== permit.writer_epoch || e.sequence !== sequence++ || stableJSON(e.previous) !== stableJSON(previous))\n  throw new Error('HISTORICAL_CHAIN_GAP_OR_FENCE');`该错误捕获于 `try...catch` 并记入 `replay_error`，但若上一事件是 `INPUT_DIAGNOSTIC`（属于同一 scope 但不在 permit.writer_epoch 链中），此处强制要求 `e.writer_epoch === permit.writer_epoch` 会导致合法包含诊断事件的正常试次重放直接标记为 `replay_error`。\n- **修复方案**：重放前过滤仅针对 `GROUP_RECORD` 链，或在比对时跳过 `INPUT_DIAGNOSTIC` 事件类型。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b31",
+      "stage": "COMPLETED",
+      "result_id": "res_90df467b0b58e61c3579",
+      "content": "本批无确定缺陷。维护队列作业状态机流转、排队票据超时清理及只读发布文件原子硬链接防竞态逻辑均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b32",
+      "stage": "COMPLETED",
+      "result_id": "res_f29f47c902e1e7f1198a",
+      "content": "### 确定缺陷\n\n#### `restoreBackup` 未导入全局 `crypto` 导致执行恢复审计时抛出 ReferenceError\n\n- **文件**：`src/server/restore.ts`（约 34 行）\n- **触发路径**：执行恢复脚本 `restoreBackup`，在数据库事务内记录恢复审计时。\n- **依据与影响**：`db.prepare('INSERT INTO lab_audit VALUES (?,?,?,?,?,?)').run(crypto.randomUUID(), ...);`文件头部仅导入了 `node:fs`、`node:path` 等模块，并未导入 `crypto`（亦未从 `node:crypto` 导入 `randomUUID`）。在模块作用域或命令行运行（CLI 模式）未注入全局变量时，直接访问裸 `crypto.randomUUID()` 触发 `ReferenceError: crypto is not defined`，导致事务回滚、备份恢复直接失败。\n- **修复方案**： 在头部引入 `import { randomUUID } from 'node:crypto';`，并将调用改为 `randomUUID()`。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b33",
+      "stage": "COMPLETED",
+      "result_id": "res_49ca7f53a4daad66780b",
+      "content": "本批无确定缺陷。`DatabaseWriter` 的命令排队、控制帧让步调度、超时与退出生命周期屏障均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b34",
+      "stage": "PENDING_VERIFICATION",
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser closed the connection",
+        "request_id": "full-code-audit-20261010-b34",
+        "retryable": false
+      }
+    },
+    {
+      "request_id": "full-code-audit-20261010-b35",
+      "stage": "COMPLETED",
+      "result_id": "res_c677607f876da3ef1bc3",
+      "content": "本批无确定缺陷。预览服务端口分配、自签名 CA 生成、静态页面输出及 Fastify inject 初始化链路均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b36",
+      "stage": "COMPLETED",
+      "result_id": "res_389716ba61c0d4b616e9",
+      "content": "本批无确定缺陷。测试与性能剖析脚本在流式限速、子进程生命周期管理、Vite 产物遍历与异常退出清理方面均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b37",
+      "stage": "COMPLETED",
+      "result_id": "res_730e24550525d17e4466",
+      "content": "本批无确定缺陷。端到端混合压测流程、Git 依赖指纹锁定校验、预压缩产物清单比对以及初始化脚本的幂等控制均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b38",
+      "stage": "PENDING_VERIFICATION",
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser closed the connection",
+        "request_id": "full-code-audit-20261010-b38",
+        "retryable": false
+      }
+    },
+    {
+      "request_id": "full-code-audit-20261010-b39",
+      "stage": "COMPLETED",
+      "result_id": "res_ff2cff7caeeac7ddfd45",
+      "content": "本批无确定缺陷。测试用例中的鉴权拦截跳转、安全路由隔离、Brotli 预压缩及缓存策略断言均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b40",
+      "stage": "PENDING_VERIFICATION",
+      "result_id": "res_46a32f1eb5b854513025",
+      "content": "本批无确定缺陷。测试中对管理员登录凭证复用、多标签页并发防冲突拦截、IME 中文输入未完成提交守卫以及视口选项同屏断言均严密闭合。",
+      "completeness": "complete",
+      "attribution": "uncertain",
+      "error": {
+        "code": "ATTRIBUTION_UNCERTAIN",
+        "message": "the page could not confirm that this reply belongs to the request; content stored for manual checking",
+        "request_id": "full-code-audit-20261010-b40",
+        "retryable": false,
+        "attribution": "user_message_mismatch",
+        "stored": true
+      }
+    },
+    {
+      "request_id": "full-code-audit-20261010-b41",
+      "stage": "COMPLETED",
+      "result_id": "res_2acee4fc92484d779729",
+      "content": "本批无确定缺陷。测试用例涵盖的量表端点与离散评分交互、多轴响应组合导出、长文本分段无滚动分页、防重复提交及管理端 JSON 校验等断言均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b42",
+      "stage": "COMPLETED",
+      "result_id": "res_96079dadd52c4a045ec6",
+      "content": "本批无确定缺陷。测试覆盖了旋转门控屏障、协变量持久化、准入与准备队列 FIFO 调度、离线中断终止及静态资源内容协商，断言与状态流转均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b43",
+      "stage": "COMPLETED",
+      "result_id": "res_af5c88b8044da09448c8",
+      "content": "本批无确定缺陷。取消排队票据释放、知情同意分页滚动要求与服务端哈希防绕过校验断言均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b44",
+      "stage": "COMPLETED",
+      "result_id": "res_0a8c8f89954df0a4e07e",
+      "content": "本批无确定缺陷。测试治具、模拟轨迹生成、重放验证及跨轮次触摸防幽灵点击与非规范输入过滤均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b45",
+      "stage": "COMPLETED",
+      "result_id": "res_56a37209deb4c581cd66",
+      "content": "本批无确定缺陷。单角色管理员鉴权迁移、限流与会话销毁、以及新旧版本资产协议兼容与流中断容量回收断言均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b46",
+      "stage": "COMPLETED",
+      "result_id": "res_eb34cafcc678306b77d3",
+      "content": "本批无确定缺陷。测试覆盖了字节级不可变存储、知情同意哈希一致性、幂等重放防御、乱序事件状态收敛及代际栅栏，断言逻辑严密。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b47",
+      "stage": "COMPLETED",
+      "result_id": "res_2548c9cfd5bd815db560",
+      "content": "本批无确定缺陷。测试用例涵盖协议校验、草稿版本冻结、条件跳题、字节冲突防篡改、资源屏障及运行许可证原子分配，断言均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b48",
+      "stage": "COMPLETED",
+      "result_id": "res_4a8552716f6682d4857e",
+      "content": "本批无确定缺陷。维护任务隔离、不可变包分发、备份恢复完整性断言以及多维度量表条件分支推导与局部修订封口测试均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b49",
+      "stage": "COMPLETED",
+      "result_id": "res_7221c0b41696f3e330aa",
+      "content": "本批无确定缺陷。准备队列票据调度与流限速预算、进程崩溃后不可变数据与许可证锁状态保持、问卷正则及图像校验均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b50",
+      "stage": "COMPLETED",
+      "result_id": "res_c4ff4f61ae85f95681b7",
+      "content": "本批无确定缺陷。测试覆盖了确定性重放验证、伪造证据拦截、静态发布内容协商与缓存策略、PRNG 黄金向量一致性以及调度器状态机代际推进，逻辑严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b51",
+      "stage": "COMPLETED",
+      "result_id": "res_d7916df52d951f33174e",
+      "content": "本批无确定缺陷。会话准入队列的全局并发槽位限制、FIFO排队推进、未闭合许可证槽位锁定保护、空闲租约超时与容量防御逻辑均严密闭合。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-b52",
+      "stage": "PENDING_VERIFICATION",
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser closed the connection",
+        "request_id": "full-code-audit-20261010-b52",
+        "retryable": false
+      }
+    },
+    {
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser is not connected",
+        "request_id": "full-code-audit-20261010-b53",
+        "retryable": false,
+        "remediation": {
+          "reason": "browser_running",
+          "browser": "Google Chrome",
+          "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+        }
+      }
+    },
+    {
+      "request_id": "full-code-audit-20261010-retry-b52",
+      "stage": "PENDING_VERIFICATION",
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser closed the connection",
+        "request_id": "full-code-audit-20261010-retry-b52",
+        "retryable": false
+      }
+    },
+    {
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser is not connected",
+        "request_id": "full-code-audit-20261010-retry-b53",
+        "retryable": false,
+        "remediation": {
+          "reason": "browser_running",
+          "browser": "Google Chrome",
+          "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+        }
+      }
+    },
+    {
+      "error": {
+        "code": "BRIDGE_OFFLINE",
+        "message": "browser is not connected",
+        "request_id": "full-code-audit-20261010-retry-b40",
+        "retryable": false,
+        "remediation": {
+          "reason": "browser_running",
+          "browser": "Google Chrome",
+          "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+        }
+      }
+    },
+    {
+      "request_id": "full-code-audit-20261010-final-b53",
+      "stage": "COMPLETED",
+      "result_id": "res_7d16cae2b50cef07f5a4",
+      "content": "无。全量审计 53/53 完成。Nginx 反代透传及禁用压缩设置正确；package.json 锁版本与执行策略严密；Vite 多入口构建、Playwright 与 TS 双端分层配置均无缺陷。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "full-code-audit-20261010-final-review",
+      "stage": "COMPLETED",
+      "result_id": "res_6cf9a4bca0bb5b7a349b",
+      "content": "经对全部 53 批（含第 40 批补审）共 122 份源码、测试治具与部署配置的最终复审，结合已落地的修复策略，代码依据结论如下：\n\n### 一、第 40 批测试补审结论\n\n无确定缺陷。\n\n1. **Admin 登录与 Cookie 复用**：`auth.set('admin', ...)` 仅复用管理端身份，隔离各被试会话上下文，避免触发真实登录限流器，逻辑正确。\n2. **测试视口断言与文档流更新**：`fit()` 适配了纵向滚动放宽，保留了对横向滚动溢出、视口外部裁切及文字截断的有效校验，与当前文档流设计一致。\n3. **输入法（IME）与选项同屏测试**：组合输入合成事件守卫（`compositionstart/end`）及短视口拒绝放不下的边界断言均能如期拦截。\n\n### 二、全量代码与修复项排查（针对先前历史盲点与边界）\n\n1. **CSS 视口与文档流布局**\n  - `touchmove` 限制在 `body.runner-layout`，避免了被试问卷页无法正常滚动。\n  - `questionnaire` 高度动态计算与 `body.typing` 设下限 120px，配合挂载偏移测量，彻底消除了软键盘弹起时容器被挤压至 0 导致的溢出假死。\n  - 文本测量设 `min-height: 4.5rem` 保底，有效防止了刷新时由于字体或节点尚未排版完成测得高度为 0 的问题。\n2. **Runner 状态机与几何尺寸就绪时序**\n  - 几何信息（Canvas/按钮）推迟到状态栏（预留 4.8em）和开始按钮渲染完成之后再提取，保证了上报的服务端 Permit 几何坐标与实际触控命中区域像素级一致。\n  - 失败、中断或封存重试时显式移除 `runner-layout` 类，保证界面回退至可滚动的错误排查/重试文档流。\n3. **跨平台兼容与安全性契约**\n  - 移除伪 WebLocks，在不支持的安全上下文中直接要求 HTTPS，杜绝了并发时序伪成功。\n  - 跨平台文件系统差异（Windows 下 Python 命令行参数引号、POSIX 权限与符号链接 `EPERM` 降级为明确诊断而非虚假通过）已被严密处理。\n  - 所有不可变哈希、单写者代际栅栏（Fencing）、全量只读挂载与 WAL 检查点、离线重放幂等性及资源封印契约完好，未引入任何破坏性变更或放松。\n\n### 总结\n\n经全量代码及补充批次最终复核，未发现新增确定可达缺陷，系统契约完备闭合，可推进最终验收。",
+      "completeness": "complete"
+    },
+    {
+      "request_id": "css-business-audit-20261010-01c",
+      "result_id": "res_230b23ae521310528143",
+      "kind": "message",
+      "content": "这里是针对已提供代码（`participant.css`、`runner.css`、`viewport.ts`）与业务约定（**问卷/恢复/结束页允许滚动，图片计时实验稳定几何且禁止滚动，单会话单写者**）的审计报告。\n\n### 问题一：全局 `touchmove` 拦截破坏问卷与结束页的滚动约定\n\n- **具体文件**：`src/web/viewport.ts` (行 14–16, 21)\n- **触发条件**： 移动端/触摸屏环境下调用 `lockParticipantViewport()` 后，在任何非 `<input>` 元素上滑动（例如长文本阅读区 `.reading-text`、知情同意页 `.consent-text`、结束页 `.ending-text`、移动端小屏长表单问卷）。\n- **严重级别**：**Critical（阻断级）**\n- **业务逻辑冲突**：\n  - 约定明确要求：“**问卷/恢复/结束页采用文档流允许滚动**”。\n  - 代码中无差别执行了：`const move = (event: TouchEvent) => {\n  if (!(event.target instanceof HTMLInputElement)) event.preventDefault();\n};\ndocument.addEventListener('touchmove', move, { passive: false });`这会直接在全局 document 级别杀死所有触摸原生滚动，使得问卷、阅读题、结束页在内容溢出视口时完全无法上下滑动；且 `<textarea>`、`<button>` 等非 `HTMLInputElement` 的交互元素也受到波及。\n- **修复方案**： 不应在全局捕获拦截 `touchmove`。\n  1. 移除 `viewport.ts` 中无差别的 `document.addEventListener('touchmove', move)`。\n  2. 针对**图片计时实验**禁止滚动的需求，由 CSS 的 `touch-action: none`（`runner.css` 中 `.runner-stage` 已设置）配合实验阶段专用的全局类名（如 `body.running`）来控制，或仅在 `runner` 挂载期间针对 `body.running` / 实验容器阻断 `touchmove`：`// 仅在处于实验阶段时拦截\nconst move = (event: TouchEvent) => {\n  if (document.body.classList.contains('running')) {\n    event.preventDefault();\n  }\n};`\n\n### 问题二：主容器栅格与文本区 `overflow: hidden` 导致问卷题干与选项不可见且无法滚动\n\n- **具体文件**：`src/web/participant.css` (行 16, 21, 33)\n- **触发条件**： 在小屏设备或横屏模式下渲染较长指导语、多题目或含有单轴网格量表（`.single-axis-question` / `.axes-grid`）的问卷。\n- **严重级别**：**High（严重）**\n- **业务逻辑冲突**：\n  - `#content:has(.questionnaire)` 强行设置了 `align-content: stretch`，而 `.survey-mount` 设置了 `height: 100%`，`.reading-text` 设置了 `overflow: hidden`。\n  - 当长题干文本超出预估行高时，`overflow: hidden` 导致题目被静默截断，用户既看不到完整题目也无法滚动。\n  - `.question-screen.single-axis-question` 固定了 `grid-template-rows: minmax(6rem,7rem) minmax(220px,1fr)`，最小高度累计至少 316px（加上 gap、header、nav 等）；在低高度设备（如 `< 450px` 的横屏设备）上，整体高度超出视口，但内部缺少纵向滚动通道，导致导航按钮或滑块被挤出视口下方且不可交互。\n- **修复方案**：\n  1. 将 `.reading-text` 的截断改为随文档流自适应或允许纵向滚动：`.reading-text {\n  /* 移除 overflow: hidden */\n  overflow-y: auto;\n  min-height: 0;\n}`\n  2. 问卷屏幕容器允许溢出滚动，保证内容在任何极小屏幕上兜底可见：`.question-screen {\n  overflow-y: auto;\n  min-height: 0;\n}`\n\n### 问题三：未声明的主题 CSS 变量导致暗色模式与特定控件样式失效\n\n- **具体文件**：`src/web/participant.css` (行 45, 62), `src/web/runner.css` (行 8)\n- **触发条件**：\n  1. 渲染滑动轴量表 `.axis-control`（使用了 `border: 1px solid var(--line)`）。\n  2. 触发方向门禁遮罩 `.orientation-gate`（使用了 `var(--background)` 与 `var(--foreground)`）。\n  3. 切换暗色模式时，点击量表或实验按钮。\n- **严重级别**：**Medium（中等）**\n- **业务逻辑冲突**：\n  - `:root` 中仅定义了硬编码的 `color: #000; background: #e5e5e5;`，并未定义 `--line`、`--background`、`--foreground`。\n  - `.axis-control` 的 `border: 1px solid var(--line)` 因变量未定义回退为 `transparent`，导致滑块控件边框消失。\n  - `.orientation-gate` 依赖 `background: var(--background); color: var(--foreground);`，变量缺失会导致背景为透明/继承色，无法完全遮盖底层的实验内容。\n  - `participant.css` 仅定义了 `html[data-theme=dark] .choice-button[aria-pressed=true]` 的颜色，未定义整站的暗色配色基准变量。\n- **修复方案**： 在 `:root` 及 `html[data-theme=dark]` 中统一并显式声明调色板变量：`:root {\n  --background: #e5e5e5;\n  --foreground: #000000;\n  --line: rgba(0, 0, 0, 0.2);\n  /* 其它原有变量 */\n  color: var(--foreground);\n  background: var(--background);\n}\n\nhtml[data-theme=dark] {\n  --background: #202020;\n  --foreground: #ffffff;\n  --line: rgba(255, 255, 255, 0.2);\n  color-scheme: dark;\n}`\n\n### 问题四：标题 `h1` 单行文本强制截断（Ellipsis）导致问卷长标题/指导语信息丢失\n\n- **具体文件**：`src/web/participant.css` (行 18)\n- **触发条件**： 移动端视口较窄（如 `< 375px`）且实验或问卷标题长度超过 15 个汉字。\n- **严重级别**：**Medium（中等）**\n- **业务逻辑冲突**：\n  - `h1` 使用了：`h1 {\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}`\n  - 心理学实验与问卷对指示语（Instructions/Title）的准确传达要求极高。省略号裁切会导致被试无法阅读完整的任务名称或当前阶段提示，破坏受试完整性。\n- **修复方案**： 移除强制单行规则，允许根据内容正常折行；若要限制最大高度，可使用行数截断或直接让 header 随内容撑开：`h1 {\n  font-size: var(--font-size-title);\n  line-height: 1.35;\n  font-weight: 600;\n  margin: 0;\n  overflow-wrap: anywhere;\n  word-break: break-word;\n}`\n\n### 问题五：计时实验中的几何尺寸与视口单位依赖风险（CLF / 几何不稳定）\n\n- **具体文件**：`src/web/participant.css` (行 15), `src/web/runner.css` (行 1)\n- **触发条件**： 实验阶段在移动端触发软键盘显示/收起，或者移动端浏览器地址栏/工具栏动态伸缩时。\n- **严重级别**：**Medium（中等）**\n- **业务逻辑冲突**：\n  - 约定要求：“**图片计时实验必须稳定几何并禁止滚动**”。\n  - `main` 使用了 `min-height: 100dvh`，`.runner-stage` 使用了 `gap: min(2dvh, 12px)`。`dvh`（Dynamic Viewport Height）会在移动端地址栏收起或呼出时发生动态尺寸重算（Layout Shift），导致刺激材料呈现区域 `.canvas-slot` 和 `#stimulus` 的像素边界与绝对坐标产生微小位移或抖动，干扰基于注视或毫秒级呈现的几何稳定性。\n  - 虽然 `viewport.ts` 测量并向根节点注入了 `--viewport-height` 和 `--viewport-width`，但 `runner.css` 与 `participant.css` 均未消费这些锁定变量。\n- **修复方案**： 在实验运行态（例如 `body.running`）下，固定高度应当使用由 `viewport.ts` 锁定的静态像素变量，避免依赖随动态 UI 伸缩的 `100dvh`：`body.running main {\n  height: var(--viewport-height, 100vh);\n  min-height: var(--viewport-height, 100vh);\n  overflow: hidden;\n}\n\nbody.running .runner-stage {\n  gap: 12px; /* 避免在实验阶段使用动态 2dvh */\n}`\n\n待您发送 `survey-page`、`runner` 具体实现及后端逻辑后，我们可以进一步深入排查单写者会话锁、时序上报一致性以及问卷数据持久化相关的问题。",
+      "next_offset": 4741,
+      "done": true,
+      "total_length": 4741,
+      "completeness": "complete",
+      "request_status": "COMPLETED",
+      "late_result": false
+    },
+    {
+      "request_id": "full-code-audit-20261010-b52",
+      "result_id": "res_36e45fd8257eb5142d31",
+      "kind": "message",
+      "content": "本批无确定缺陷。试次设计平衡抖动、双进程写锁排他性探测、超时请求不可变状态划分，以及 systemd/Caddy 部署单元配置均严密闭合。",
+      "next_offset": 69,
+      "done": true,
+      "total_length": 69,
+      "completeness": "complete",
+      "request_status": "PENDING_VERIFICATION",
+      "late_result": true
+    }
+  ]
+}

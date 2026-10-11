@@ -1,7 +1,10 @@
 import { Scheduler, type ScheduleAudit } from './scheduler.js';
 import { stableJSON } from './protocol.js';
 import type { GroupPlan, InputRecord, RunRecord } from './lab-contract.js';
+import {RatingReplay} from './rating-replay.js';
 export interface TrialResult { instance_id:string;root_id:string;number:number;onset:number;clear:number|null;end:number|null;
+  rating?:number;rating_label?:string;ratings?:number[];rating_labels?:string[];asset_id?:string;category?:string;isi_ms?:number;first_rt_ms?:number;submit_rt_ms?:number;change_count?:number;
+  rating_item_times?:{item:number;first_rt_ms:number|null;last_rt_ms:number|null;changes:number}[];
   answer:string|null;input_time:number|null;correct:boolean|null;rt_ms:number|null;software_quality:string;actual_gap:number|null }
 export class RunReplay {
   readonly scheduler:Scheduler; readonly results=new Map<string,TrialResult>(); readonly obligations=new Set<string>();
@@ -9,8 +12,10 @@ export class RunReplay {
   private last=-Infinity; private closed=false;private clockOrigin:number|null=null;
   private corrections=new Set<string>();
   private domOrigin:number|null=null;
-  constructor(readonly plan:GroupPlan){this.scheduler=new Scheduler(plan.roots,plan.repeats,plan.start,plan.seed,plan.budget);}
+  private ratingReplay?:RatingReplay;
+  constructor(readonly plan:GroupPlan){if(plan.rating){this.ratingReplay=new RatingReplay(plan);this.scheduler=this.ratingReplay.scheduler;this.results=this.ratingReplay.results;}else this.scheduler=new Scheduler(plan.roots,plan.repeats,plan.start,plan.seed,plan.budget);}
   apply(r:RunRecord) {
+    if(this.ratingReplay){this.ratingReplay.apply(r);return;}
     if(!Number.isFinite(r.at)||r.at<this.last)throw new Error('NONMONOTONIC_TRACE');this.last=r.at;
     if(this.plan.budget.environment_id!=='TEST_ONLY'&&(typeof r.clock_origin!=='number'||!Number.isFinite(r.clock_origin)||r.clock_origin<0))throw new Error('MISSING_GROUP_CLOCK_DOMAIN');
     if(r.clock_origin!==undefined){if(this.clockOrigin!==null&&r.clock_origin!==this.clockOrigin)throw new Error('GROUP_CLOCK_ORIGIN_CHANGED');this.clockOrigin=r.clock_origin;}
@@ -53,8 +58,8 @@ export class RunReplay {
         else {this.obligations.delete(root.root_id);s.satisfied.add(root.root_id);}break;
       }
       case 'END':{
-        const e=s.queue[0];const result=this.results.get(r.instance_id!)!;if(!e||!result||r.at<e.target+e.candidate.image_ms+e.candidate.isi_ms
-          ||r.at-e.target-e.candidate.image_ms-e.candidate.isi_ms>this.plan.budget.long_frame_ms)throw new Error('END_TARGET_MISMATCH');
+        const e=s.queue[0];const result=this.results.get(r.instance_id!)!;if(!e||!result||r.at<e.target+e.candidate.image_ms+(e.candidate.feedback_ms??0)+e.candidate.isi_ms
+          ||r.at-e.target-e.candidate.image_ms-(e.candidate.feedback_ms??0)-e.candidate.isi_ms>this.plan.budget.long_frame_ms)throw new Error('END_TARGET_MISMATCH');
         result.end=r.at;s.ended(r.instance_id!);
         if(result.number===this.plan.repeats+1)this.obligations.delete(result.root_id);break;
       }
@@ -84,8 +89,13 @@ export class RunReplay {
     this.inputAudit.push(r);
     if(r.action!=='down') {if(r.valid)throw new Error('RELEASE_CANNOT_ANSWER');return;}
     const result=[...this.results.values()].find(v=>mono>=v.onset&&(v.clear===null||mono<v.clear));
-    if(!Number.isFinite(r.x)||!Number.isFinite(r.y)||!['mouse','touch','pen'].includes(r.pointer_type))throw new Error('INVALID_POINTER_GEOMETRY');
-    if(this.plan.geometry){const hit=this.plan.geometry.buttons.find(b=>r.x>=b.x&&r.x<b.x+b.width&&r.y>=b.y&&r.y<b.y+b.height)?.choice??null;if(hit!==r.choice)throw new Error('INPUT_GEOMETRY_MISMATCH');}
+    if(r.pointer_type==='keyboard'){
+      const codes=this.plan.choices.map(choice=>this.plan.response_keys?.[choice]),index=r.key_code===undefined?-1:codes.indexOf(r.key_code);
+      if(index<0||r.pointer_id!==-index-1||this.plan.response_keys?.[r.choice!]!==r.key_code)throw new Error('INVALID_KEYBOARD_INPUT');
+    }else{
+      if(!Number.isFinite(r.x)||!Number.isFinite(r.y)||!['mouse','touch','pen'].includes(r.pointer_type)|| (r.button!==undefined&&r.button!==0))throw new Error('INVALID_POINTER_GEOMETRY');
+      if(this.plan.geometry){const hit=this.plan.geometry.buttons.find(b=>r.x>=b.x&&r.x<b.x+b.width&&r.y>=b.y&&r.y<b.y+b.height)?.choice??null;if(hit!==r.choice)throw new Error('INPUT_GEOMETRY_MISMATCH');}
+    }
     const can=!this.closed&&this.scheduler.state==='RUNNING'&&!!result&&!held&&!multi&&r.choice!==null&&this.plan.choices.includes(r.choice);
     if(r.valid!==can)throw new Error('INPUT_VALIDITY_MISMATCH');if(!can)return;
     if(result!.input_time!==null&&result!.input_time<=mono)return;
@@ -98,5 +108,5 @@ export class RunReplay {
     }
     if(result!.rt_ms!<0)throw new Error('NEGATIVE_VALID_RT');
   }
-  finish(){if(this.scheduler.state!=='GROUP_CLOSING')throw new Error('GROUP_NOT_NORMALLY_CLOSED');return [...this.results.values()];}
+  finish(){if(this.ratingReplay)return this.ratingReplay.finish();if(this.scheduler.state!=='GROUP_CLOSING')throw new Error('GROUP_NOT_NORMALLY_CLOSED');return [...this.results.values()];}
 }

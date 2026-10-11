@@ -4,34 +4,23 @@ import {createServer} from 'node:http';
 import {PreparationQueue} from '../../src/server/preparation-queue.ts';
 import {downloadBudget,downloadOriginal} from '../../src/web/asset-download.ts';
 import {request} from '../../src/web/dom.ts';
-test('FIFO tickets, exact cancellation, one stream and actual stream exit bound preparation',()=>{
-  let now=0;const q=new PreparationQueue(1,()=>now);
-  assert.equal(q.join('one:1:0','a').status,'READY');assert.equal(q.join('two:1:0','b').position,1);assert.equal(q.join('three:1:0','c').position,2);
-  let canceled=0;const end=q.transfer('one:1:0','a',()=>canceled++);
-  assert.throws(()=>q.transfer('one:1:0','a',()=>{}),/STREAM_BUSY/);
-  now=89000;q.touch('two:1:0','b');q.touch('three:1:0','c');now=91000;
-  assert.equal(q.touch('two:1:0','b').status,'QUEUED'); // Active HTTP survives lease age.
-  q.releaseSession('one','stale');assert.equal(canceled,0);
-  q.releaseSession('one','a');assert.equal(canceled,1);assert.equal(q.touch('two:1:0','b').status,'QUEUED');
-  end();end();assert.equal(q.touch('two:1:0','b').status,'READY');q.release('two:1:0','b');assert.equal(q.touch('three:1:0','c').status,'READY');
-  q.release('three:1:0','c');q.join('one:1:1','new');q.releaseSession('one','a');assert.equal(q.touch('one:1:1','new').status,'READY');
-  assert.throws(()=>q.join('one:1:1','other'),/ALREADY_QUEUED/);q.close();assert.equal(q.stats().active,0);
+test('preparation rejects full capacity without a queue and releases only after actual stream exit',()=>{
+ let now=0;const q=new PreparationQueue(1,()=>now);assert.equal(q.join('one:1:0','a').status,'READY');
+ assert.throws(()=>q.join('two:1:0','b'),e=>e.code==='PREPARATION_CAPACITY_FULL'&&e.status===409&&e.details.retry_after_seconds===1800);assert.equal(q.stats().queued,0);
+ let canceled=0;const end=q.transfer('one:1:0','a',()=>canceled++);assert.throws(()=>q.transfer('one:1:0','a',()=>{}),/STREAM_BUSY/);
+ now=91000;assert.throws(()=>q.join('two:1:0','b'),/CAPACITY_FULL/);q.releaseSession('one','stale');assert.equal(canceled,0);
+ q.releaseSession('one','a');assert.equal(canceled,1);assert.throws(()=>q.join('two:1:0','b'),/CAPACITY_FULL/);end();end();assert.equal(q.join('two:1:0','b').status,'READY');
+ assert.throws(()=>q.join('two:1:0','other'),/ALREADY_ACTIVE/);q.close();assert.equal(q.stats().active,0);
 });
-test('preparation queue is bounded, expires abandoned clients, and cancels its hard deadline',()=>{
-  let now=0;const q=new PreparationQueue(1,()=>now);
-  for(let i=0;i<64;i++)q.join(`s${i}:1:0`,String(i));assert.throws(()=>q.join('full','65'),/QUEUE_FULL/);
-  now=90001;assert.equal(q.stats().active,0);assert.equal(q.join('new','n').status,'READY');
-  let canceled=0;const end=q.transfer('new','n',()=>canceled++);now+=20*60000;
-  q.join('waiting','w');assert.equal(canceled,1);assert.equal(q.touch('waiting','w').status,'QUEUED');end();assert.equal(q.touch('waiting','w').status,'READY');
-  assert.throws(()=>new PreparationQueue(0),/INVALID/);
+test('abandoned preparation expires and hard deadline cancels real streams',()=>{
+ let now=0;const q=new PreparationQueue(1,()=>now);q.join('old','a');now=90001;assert.equal(q.stats().active,0);q.join('new','n');
+ let canceled=0;const end=q.transfer('new','n',()=>canceled++);now+=20*60000;assert.throws(()=>q.join('retry','r'),/CAPACITY_FULL/);assert.equal(canceled,1);end();assert.equal(q.join('retry','r').status,'READY');
+ assert.throws(()=>new PreparationQueue(0),/INVALID/);assert.throws(()=>new PreparationQueue(10001),/INVALID/);
 });
-test('legacy asset GET shares FIFO capacity and cleans canceled or timed-out waits',async()=>{
-  const q=new PreparationQueue(1);q.join('modern','a');const controller=new AbortController();
-  const pending=q.legacyTransfer('old',controller.signal,()=>{},1000);assert.equal(q.stats().queued,1);
-  controller.abort(new Error('client closed'));await assert.rejects(pending,/client closed/);assert.equal(q.stats().queued,0);
-  await assert.rejects(q.legacyTransfer('old',new AbortController().signal,()=>{},10),/LEGACY_PREPARATION_BUSY/);assert.equal(q.stats().queued,0);
-  const ready=q.legacyTransfer('old',new AbortController().signal,()=>{},1000);q.release('modern','a');const done=await ready;
-  assert.equal(q.stats().streams,1);assert.equal(q.join('modern-next','b').status,'QUEUED');done();done();assert.equal(q.touch('modern-next','b').status,'READY');q.close();
+test('legacy assets reject immediately at capacity and release their streams exactly once',async()=>{
+ const q=new PreparationQueue(1);q.join('modern','a');await assert.rejects(q.legacyTransfer('old',new AbortController().signal,()=>{}),/CAPACITY_FULL/);assert.equal(q.stats().queued,0);
+ const aborted=new AbortController();aborted.abort(new Error('client closed'));await assert.rejects(q.legacyTransfer('old',aborted.signal,()=>{}),/client closed/);
+ q.release('modern','a');const done=await q.legacyTransfer('old',new AbortController().signal,()=>{});assert.equal(q.stats().streams,1);assert.throws(()=>q.join('next','b'),/CAPACITY_FULL/);done();done();assert.equal(q.join('next','b').status,'READY');q.close();
 });
 test('download budgets tolerate low bandwidth while bounding total time',()=>{
   assert.ok(downloadBudget(1024*1024)>20000);assert.ok(downloadBudget(5*1024*1024)>=15*60000);

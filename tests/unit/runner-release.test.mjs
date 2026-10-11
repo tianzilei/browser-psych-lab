@@ -29,7 +29,7 @@ test('archived representations match canonical code and restart skips existing d
   }
   const release={runnerHash,runnerVersion:'canvas-v1',files,representations};await writeFile(join(dist,'release.json'),JSON.stringify(release));
   assert.equal(await retainRelease(root,dist),runnerHash);const archived=join(root,'research-assets/runners',runnerHash,path),before=await stat(archived);
-  assert.equal(before.mode&0o777,0o600);for(const ext of ['gz','br'])assert.equal((await stat(`${archived}.${ext}`)).mode&0o777,0o600);
+  if(process.platform!=='win32'){assert.equal(before.mode&0o777,0o600);for(const ext of ['gz','br'])assert.equal((await stat(`${archived}.${ext}`)).mode&0o777,0o600);}
   assert.equal(await new RunnerAssetPolicy(root).get(runnerHash),'legacy');
   await retainRelease(root,dist);assert.equal((await stat(archived)).mtimeMs,before.mtimeMs);
   assert.equal((await readFile(`${archived}.gz`)).length,(await readFile(join(dist,'web',`${path}.gz`))).length);

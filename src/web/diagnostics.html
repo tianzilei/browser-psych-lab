@@ -1,29 +1,3 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Browser Psych Lab · 开发检查</title>
-  </head>
-  <body>
-    <main>
-      <header><p class="eyebrow">BROWSER PSYCH LAB · TEST_ONLY</p>
-        <h1>开发环境已连接</h1>
-        <p><a href="/admin.html">打开研究管理</a>。此页检查基础组件。<a href="/p0.html">打开可靠保存测试问卷</a>，验证本地保存与服务器封存。</p>
-      </header>
-      <section aria-labelledby="environment-heading">
-        <h2 id="environment-heading">环境检查</h2>
-        <ul id="checks" aria-live="polite"></ul>
-        <canvas id="canvas" width="480" height="100" aria-label="Canvas 绘制检查"></canvas>
-      </section>
-      <section aria-labelledby="survey-heading">
-        <h2 id="survey-heading">问卷渲染样例</h2>
-        <p>按需加载问卷样例，答案不保存。</p>
-        <button id="load-survey" type="button">加载问卷样例</button>
-        <p id="survey-status" role="status"></p>
-        <div id="survey"></div>
-      </section>
-    </main>
-    <script type="module" src="/diagnostics.ts"></script>
-  </body>
-</html>
+﻿<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>开发检查 · Browser Psych Lab</title></head>
+<body><main><header><p class="eyebrow">BROWSER PSYCH LAB · TEST_ONLY</p><h1>开发环境已连接</h1><p>此页检查基础组件。<a href="/p0.html">打开可靠保存测试问卷</a>，验证本地保存与服务器封存。</p></header><section aria-labelledby="environment-heading"><h2 id="environment-heading">环境检查</h2><ul id="checks" aria-live="polite"></ul><canvas id="canvas" width="480" height="100" aria-label="Canvas 绘制检查"></canvas></section><section aria-labelledby="survey-heading"><h2 id="survey-heading">问卷渲染样例</h2><p>按需加载问卷样例，答案不保存。</p><button id="load-survey" type="button">加载问卷样例</button><p id="survey-status" role="status"></p><div id="survey"></div></section></main><script type="module" src="/diagnostics.ts"></script></body></html>

@@ -56,11 +56,9 @@ test('frozen legacy GET remains private and shares capacity; new runner cannot o
     if(stats.json().preparation?.queued===queued)return stats.json().preparation;
     await new Promise(r=>setTimeout(r,10));
   }assert.fail(`queue did not reach ${queued}`);}
-  const abort=new AbortController(),canceled=fetch(url(legacy),{headers:{Cookie:cookie(legacy)},signal:abort.signal});
-  const rejectedCancellation=assert.rejects(canceled,/abort/i);await waitForQueue(1);abort.abort();await rejectedCancellation;
-  assert.equal((await waitForQueue(0)).active,1);
-  const waiting=fetch(url(legacy),{headers:{Cookie:cookie(legacy)}});await waitForQueue(1);
-  await post('release');const served=await waiting;assert.equal(served.status,200);assert.equal(digest(Buffer.from(await served.arrayBuffer())),digest(png));
+  const full=await fetch(url(legacy),{headers:{Cookie:cookie(legacy)}});assert.equal(full.status,409);assert.equal((await full.json()).code,'PREPARATION_CAPACITY_FULL');
+  assert.equal((await waitForQueue(0)).active,1);await post('release');
+  const served=await fetch(url(legacy),{headers:{Cookie:cookie(legacy)}});assert.equal(served.status,200);assert.equal(digest(Buffer.from(await served.arrayBuffer())),digest(png));
   // Force a real file stream error before EOF. The response must be destroyed
   // before capacity is reclaimed by its close handler, and a later GET works.
   const handle=await open(await assetPath(root,asset.asset_id)),prototype=Object.getPrototypeOf(handle);await handle.close();

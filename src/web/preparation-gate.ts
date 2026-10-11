@@ -1,9 +1,8 @@
 import {request,uid} from './dom.js';
-import {wait} from './wait.js';
 import type {ParticipantAPI} from './participant-api.js';
 interface Ticket {ticket_id:string;status:'QUEUED'|'READY';position:number;poll_ms:number}
 export async function awaitPreparation(api:ParticipantAPI,signal:AbortSignal,status:(text:string)=>void,onFailure:(error:unknown)=>void=()=>{}){
-  const ticket=uid(),url=api.path('preparation'),fence=api.fence(),started=performance.now();
+  const ticket=uid(),url=api.path('preparation'),fence=api.fence();
   const body=(action:string)=>({action,ticket_id:ticket,...fence});
   let timer:ReturnType<typeof setTimeout>|undefined,pending:Promise<void>=Promise.resolve(),released=false;
   const release=async()=>{if(released)return;released=true;clearTimeout(timer);await pending;
@@ -12,12 +11,7 @@ export async function awaitPreparation(api:ParticipantAPI,signal:AbortSignal,sta
   window.addEventListener('pagehide',hidden,{once:true});
   try{
     let result=await request<Ticket>(url,body('join'),undefined,signal);
-    while(result.status==='QUEUED'){
-      if(performance.now()-started>45*60000)throw new Error('排队超过 45 分钟，请稍后重新准备。');
-      status(`等待图片准备名额 · 排队第 ${result.position} 位`);
-      await wait(result.poll_ms+Math.random()*500,signal);
-      result=await request<Ticket>(url,body('touch'),undefined,signal);
-    }
+    if(result.status!=='READY')throw new Error('当前作答人数较多，建议30分钟后再进行答题。已保存的答卷保留。');
     const renew=()=>{timer=setTimeout(()=>{pending=(async()=>{
       try{await request<Ticket>(url,body('touch'),undefined,signal);}
       catch(error){renewalError=error;onFailure(error);}

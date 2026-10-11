@@ -91,6 +91,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   });
   app.get('/api/lab/studies/:study/sessions',async request=>admin(request,'session.list',{study_id:id((request.params as {study:string}).study),...object(request.query)}));
   app.get('/api/lab/sessions/:session',async request=>admin(request,'session.detail',{session_id:id((request.params as {session:string}).session)}));
+  app.get('/api/lab/sessions/:session/actions',async request=>admin(request,'session.actions',{session_id:id((request.params as {session:string}).session),...object(request.query)}));
   app.post('/api/lab/sessions/:session/marks',async request=>admin(request,'session.mark',{...object(request.body),session_id:id((request.params as {session:string}).session)}));
   app.get('/api/lab/jobs',async request=>admin(request,'job.list'));
   app.get('/api/lab/jobs/:job',async request=>{const job=await admin(request,'job.get',{job_id:id((request.params as {job:string}).job)}) as {job_id?:string};if(!job.job_id)throw new ContractError('JOB_NOT_FOUND',404);return job;});
@@ -114,6 +115,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   app.post('/api/lab/collection-gate/close',async request=>admin(request,'gate.close',object(request.body)));
   app.post('/api/lab/collection-gate',async request=>admin(request,'gate.open',object(request.body)));
   app.get('/api/participate/versions/:version',async request=>writer.request({operation:'lab/version.public',data:{version_id:id((request.params as {version:string}).version)}}));
+  app.get('/api/questionnaires',async()=>writer.request({operation:'lab/questionnaires.public',data:{}}));
   app.get('/api/participate/versions/:version/metadata',async request=>writer.request({operation:'lab/version.metadata',data:{version_id:id((request.params as {version:string}).version)}}));
   app.get('/api/participate/versions/:version/consent',async request=>writer.request({operation:'lab/version.consent',data:{version_id:id((request.params as {version:string}).version)}}));
   app.post('/api/participate/sessions',async(request,reply)=>{
@@ -121,7 +123,16 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     const result=await writer.request({operation:'lab/participant.create',data:{request_id:id(d.request_id),version_id:id(d.version_id),credential_hash:digest(d.credential),...(d.consent!==undefined?{consent:d.consent}:{}),server_covariates:{observed_at:new Date().toISOString(),ip:request.ip,user_agent:request.headers['user-agent']??null,accept_language:request.headers['accept-language']??null,accept_encoding:request.headers['accept-encoding']??null,client_hints:Object.fromEntries(Object.entries(request.headers).filter(([k])=>k.startsWith('sec-ch-ua')))}}}) as {session_id:string};
     reply.header('Set-Cookie',`lab_${result.session_id}=${d.credential}; HttpOnly; SameSite=Strict; Path=/api/participate/sessions/${result.session_id}${secure(request)?'; Secure':''}`);return result;
   });
+  app.post('/api/participate/sessions/:session/reanswer',async(request,reply)=>{
+    const params=request.params as {session:string};const sid=id(params.session),token=cookie(request,`lab_${sid}`);if(!/^[a-f0-9]{64}$/.test(token))throw new ContractError('UNAUTHORIZED',401);
+    const data=object(request.body),credential=data.credential;if(typeof credential!=='string'||!/^[a-f0-9]{64}$/.test(credential))throw new ContractError('INVALID_CREDENTIAL');const result=await writer.request({operation:'lab/participant.reanswer',session_id:sid,credential_hash:digest(token),data:{request_id:id(data.request_id),credential_hash:digest(credential)}}) as {session_id:string};
+    reply.header('Set-Cookie',`lab_${result.session_id}=${credential}; HttpOnly; SameSite=Strict; Path=/api/participate/sessions/${result.session_id}${secure(request)?'; Secure':''}`);return {...result,credential};
+  });
   app.get('/api/participate/sessions/:session',async request=>participant(request,'view'));
+  app.post('/api/participate/sessions/:session/resume',async(request,reply)=>{
+    const sid=id((request.params as {session:string}).session),credential=object(request.body).credential;if(typeof credential!=='string'||!/^[a-f0-9]{64}$/.test(credential))throw new ContractError('INVALID_CREDENTIAL');const result=await writer.request({operation:'lab/participant.view',session_id:sid,credential_hash:digest(credential),data:{}});
+    reply.header('Set-Cookie',`lab_${sid}=${credential}; HttpOnly; SameSite=Strict; Path=/api/participate/sessions/${sid}${secure(request)?'; Secure':''}`);return result;
+  });
   app.post('/api/participate/sessions/:session/preparation',async request=>{
     const d=object(request.body),nonce=id(d.ticket_id),action=String(d.action);
     if(action==='release'){const s=await participant(request,'preparation.release') as {session_id:string};return preparation.releaseSession(s.session_id,nonce);}
@@ -131,8 +142,12 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     throw new ContractError('INVALID_PREPARATION_ACTION');
   });
   app.post('/api/participate/sessions/:session/admission',async request=>participant(request,'admission',object(request.body)));
-  for(const op of ['claim','release','reserve','permit','ingest','receipts','seal','finalize','terminate','reconcile','covariates'])app.post(`/api/participate/sessions/:session/${op}`,{bodyLimit:1024*1024},async request=>{
+  for(const op of ['activity','claim','release','reserve','permit','ingest','receipts','seal','finalize','terminate','reconcile','covariates'])app.post(`/api/participate/sessions/:session/${op}`,{bodyLimit:1024*1024},async request=>{
     const data=object(request.body);delete data.proof_job_id;
+    if(op==='permit'){
+      const session=await participant(request,'view') as {frozen:{runner_hash:string}};
+      if(await assetPolicy.requiresActivity(session.frozen.runner_hash))object(data.readiness).activity_policy='idle120-offline300-v1';
+    }
     if(op==='seal'&&String(object(data.manifest).scope).startsWith('g-')){
       const params=request.params as {session:string};await participant(request,'admission.check');
       const proof=await maintenance.run('REPLAY',{session_id:id(params.session),scope:id(object(data.manifest).scope)});data.proof_job_id=proof.job_id;

@@ -1,0 +1,91 @@
+# Gemini 意见核对记录
+
+本文件仅记录核对结论；原始返回保存在 gemini-results.json，覆盖与请求 ID 见 coverage.json。Gemini 建议不自动视为已确认缺陷。
+
+采纳或收窄：
+- 固定首刺激准备时间与合法预算冲突：A02。
+- db-worker 仅以 PID 判断旧持有者存活：A04；通过注入“PID 已复用”的状态验证，未夸大为所有重启必然失败。
+- 局域网预览 new URL 未捕获异常：A05；使用原始请求目标 http://[ 复现，普通相对 URL 不必然非法。
+- EXPORT 最后一行漏计：A06；source_hash 编码不同只记录为格式不统一，没有证据表明既有消费者因此失败。
+
+排除或暂不列为缺陷：
+- 私有文件的 POSIX 权限/目录 fsync 在 Windows 失败：记录为验证限制，不按建议跳过生产安全和持久化检查。
+- 令牌桶无界增长：Map 有2000条容量上限；达到容量拒绝请求是有界策略。
+- nginx 缺少 X-Real-IP：已发送 X-Forwarded-For，Fastify 只信任 loopback，当前单反代契约成立。
+- backup service 没有 ReadWritePaths：该服务没有 ProtectSystem 限制，且备份写入发生在应用 HTTP API。
+- 发布清单 Windows 分隔符混入：逻辑 key 使用字面量 /，disk join 路径与 key 分开。
+- release/charged/done 多次扣减：同步 get/delete、ended 等保护保证幂等。
+- READY job 被失败重试改成 RECOVERY_REQUIRED：job.finish 对终态拒绝覆盖。
+- logout 未吊销：LabStore 使用已鉴权的 credential_hash 精确删除令牌。
+- package 并发重试：候选保留；已有维护 worker 和持久作业门禁，但上传等待期间的跨请求窗口未做 Linux 全流程复现，不列已确认。
+- dev detached 子进程与父进程同组：POSIX detached 创建独立进程组；描述的前提不成立。
+- browser-server 二次删除：rm/rmSync 使用 force，且异步删除完成后才进入退出清理。
+- backup finally 掩盖原始网络错误：属于诊断质量改进，不导致虚报备份成功；未列主要缺陷。
+- 浏览器 teardown UUID 长度不对：session_id 由 randomUUID 生成，当前 cookie 格式匹配。
+- context.cookies 丢失 domain/path：返回对象包含这些字段，addCookies 直接复用。
+- route.fetch 后 route.abort 非法：fetch 只取上游响应，并未处理原 route；用于模拟服务端提交后丢 ACK。
+- waitForEvent 必须 Promise.all：先创建等待 Promise，再触发 click，监听已注册。
+- expect(...).toBeEnabled 未等待：Playwright assertion 自动重试。
+- 输入法、route 内 DOM 读取、下载重试等死锁推断：未给出当前代码中成立的触发路径，作为未证实意见保留原文。
+- SQL 参数数目不匹配：diagnostic 是4个形参，内部传6个值；package.ready 是10个参数加一个固定值，对应11列。
+- P0 seal path 必然错误：P0 使用固定页路径，现有完整事件链封存单测通过；不能套用 lab 的动态路径规则。
+- P0 FINALIZING 中间态外泄：execute 事务包裹整个操作；terminal trigger 只限制 COMPLETED/TERMINATED。
+- P0 上一 permit 被后一个覆盖：当前 P0 是单个固定试次设计；未证实多 permit 合法路径。
+- realizeTrials 缺省 NaN：调用前 parseProtocol 已归一化必需 image_ms/isi_ms；可选 feedback_ms 有 undefined 判断。
+- Map 原型键污染/局部 buckets 跨调用复用：Map 不受 Object 原型属性影响，buckets 每次新建。
+- timing 字符串超限未拦截：parseTiming 对有限值、上下界均校验；按帧向上量化是明确设计。
+- scheduler ended 同步检查与 shift 之间竞态：没有 await 或用户回调。
+- earliest 不记录尾部新 entry：undefined !== 新 target，确实会记入 changed。
+- acknowledge 旧队列复活结束项：显式 filter 已结束项；没有可达反例。
+- 回放无法归属迟到输入：查找所有 results，按归一化时间落入窗口判定；晚到更早输入单测通过。
+- correct=null 不应补测 miss：当前规则是错答/漏答触发有限 repeats，repeats=0 不产生额外候选。
+- 文本刺激必须有 stimulus_type：不是当前 schema 字段；groups 内 ordering 已被解析。
+- includes 可用于任意题型：运行时定义为数组包含；建议增强配置类型提示，但没有改变当前定义的依据。
+- timing_general 未写回：解析器明确持久化 inherited。
+- 单固定 seed 校验 balanced 不足：排布算法每步排除不可完成的前缀；未给出种子相关失败反例，已有多种种子测试。
+- 可选多轴部分作答不合法：契约允许；导出按轴保留 null/UNANSWERED。
+- PRNG 极值浮点下溢：无具体反例；u32 和相关计算在整数精确范围内。
+- WebP 扩展尺寸误拒绝、空目录 CRC 不同：未提供合法样例；不计入缺陷。
+- ZIP 无签名 descriptor 的 CRC 恰等于签名：极端兼容性候选，未构造满足图片校验的合法包，暂不列已确认。
+- SQLite >=3.51.3 不存在：使用当前锁定 better-sqlite3，数据库与测试已运行；版本时点假设错误。
+- worker 启动失败永久挂起：writer 有 error/exit/超时处理；不能把启动拒绝说成无限等待。
+- INPUT_DIAGNOSTIC 任意 scope：客户端固定 d- 前缀，未找到合法无前缀调用。
+- session.detail 前缀错误：路由明确传 lab/ 前缀，豁免列表匹配。
+- 同事务内事件推广不可见：SQLite 同一连接事务读到自己的更新，ORDER BY sequence 有序推广。
+- validateAssets 不查研究归属：实际查询同时约束 study_id。
+- 原始 d.study_id 写入绕过 id：相同值此前已通过严格校验，id 不执行会改变值的清洗。
+- session.list 缺诊断索引：确有扩容性能风险，未测量达到事务阈值的实际数据规模；负 limit 候选亦未作为主要缺陷。
+- skipPages 清空跳过页/全局清理过期 reservation：符合契约，不等于错误清空有效答案或提前释放。
+- 小屏按钮 <44px 被拒：前端明确最小高度；不可用屏幕被拒是前置条件。
+- skipPages 二次 JSON 序列化：先 parse 后 stringify，不会产生字符串嵌套。
+- REPLAY_PROOF 哈希字段不同：worker 与 seal 使用相同字段集合和排序。
+- 中文 ZIP 文件名：当前 packageName 契约只接受 ASCII，编码/解码链本身没有遗漏。
+- 下载 retry 期间 stall timer 超时：无字节进展的硬上限是当前契约，不因收到503自动重置。
+- writer 同一 Promise 多次 reject 导致失控：Promise 幂等且 fail 清空队列；启动期 request 不入队。
+- session 重新入队被排尾：文档明确；换 ticket 保留位置是刷新语义。
+- q=0. / q=1. 必须非法：qvalue 语法允许0到3位小数。
+- restore 全局 crypto 在旧 Node 不可用：项目限定 Node24；不能以 Node18 推断当前故障。
+- restore 目录必须预先存在：privateRoot 会 mkdir recursive。
+- release 同目录 link 被指跨卷：未给出符合本地受支持文件系统前提的触发；不支持 fsync/link 的部署在要求之外。
+- copyTree 嵌套目录不存在：每次递归入口 mkdir，当时父目录已建立。
+- EXPORT fd 未被显式关闭的异常路径：Worker 默认跟踪 unmanaged fd，结束时清理；未证实主进程持续泄漏。
+- maintenance worker exit/message 竞态：正常 worker 消息在 exit 前送达；超时/退出清理有监听。
+- maintenance phase reject 的 timer 永久泄漏：finally terminate 触发 exit 清除 timer。
+- consent dispose 初始化竞态：同步初始化没有可插入的页面事件；尺寸变化后的重新阅读是分页行为。
+- IndexedDB 同一事务读不到刚 add 的记录：事务内可读自身写入。
+- reconciliation 无 head：实际调用只遍历 Object.keys(heads)。
+- 非安全旧浏览器全局缺失：参与入口已有能力要求，不据此推断支持环境崩溃。
+- orientation gate 必须首次通过后销毁：持续方向约束是设计；问卷切换是完整导航而非 SPA。
+- 合成轨迹时间戳必然为负：忽略了 raw_timestamp 的单调分支，现有单测通过。
+- P0 第二标签无 Cookie：同浏览器同源标签共享 Cookie；只读标签也不应终止当前运行。
+- 原生 HTTP write 不设置 chunked 头：Node 自动生成传输编码。
+- 几何微小变化、视口滚动、存储探针最大耗时：实验执行采取严格环境门禁，缺少真实设备反例时不改为宽松接受。
+- theme/stimulus 三位色崩溃：协议只允许六位色。
+- scale 重复 commit：相同值去重；固定22px thumb 与 CSS 对齐，未定义的 transform 不属于现有路径。
+- simulate 跨页旧答案残留：模拟器没有跨已提交页面回退，重置清空 answers。
+- simulate 图片缺凭证：同源 img 自动附带管理员 Cookie，GET 不需要 CSRF。
+- survey 多轴复用布局陈旧：getBoundingClientRect 读取当前布局，闭包保留的是该题固定轴定义；未给出反例。
+- 完成输入后二次 click 自动提交：未复现系统生成额外 click 的路径；人工再次点击是现有导航操作，不据推测列缺陷。
+- text-pager 回退导致死循环：段落边界必须大于 start，真实空间不足会停用前进并允许视口恢复；并无无界循环。
+- Vite rolldownOptions 无效：锁定 Vite8 的构建已通过，包含所有7个 HTML 入口，直接反驳所述缺失产物。
+

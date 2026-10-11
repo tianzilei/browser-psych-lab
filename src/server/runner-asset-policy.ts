@@ -6,6 +6,7 @@ type AssetPolicy='legacy'|'ticket';
 export class RunnerAssetPolicy {
   private cache=new Map<string,AssetPolicy>();
   private pending=new Map<string,Promise<AssetPolicy>>();
+  private activity=new Set<string>();
   constructor(private root:string){}
   private async read(path:string,maxBytes:number){
     const file=await openPrivate(path);
@@ -28,9 +29,11 @@ export class RunnerAssetPolicy {
     let policy:AssetPolicy='legacy';
     if(contracts.length){const bytes=await this.read(join(directory,'runner-contract.json'),1024);
       if(digest(bytes)!==contracts[0]!.hash)throw new Error('RUNNER_CONTRACT_HASH_MISMATCH');
-      const contract=JSON.parse(bytes.toString()) as {schema:string;preparation_queue:boolean};
+      const contract=JSON.parse(bytes.toString()) as {schema:string;preparation_queue:boolean;task_activity?:string};
       if(contract.schema!=='runner-assets-v1'||contract.preparation_queue!==true)throw new Error('UNSUPPORTED_RUNNER_CONTRACT');policy='ticket';
+      if(contract.task_activity==='idle120-offline300-v1')this.activity.add(hash);
     }
-    if(this.cache.size>=64)this.cache.delete(this.cache.keys().next().value!);this.cache.set(hash,policy);return policy;
+    if(this.cache.size>=64){const evicted=this.cache.keys().next().value!;this.cache.delete(evicted);this.activity.delete(evicted);}this.cache.set(hash,policy);return policy;
   }
+  async requiresActivity(hash:string){await this.get(hash);return this.activity.has(hash);}
 }

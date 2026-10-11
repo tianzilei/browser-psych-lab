@@ -1,0 +1,1955 @@
+{
+  "schema": "code-audit-coverage-v1",
+  "date": "2026-10-09",
+  "scope": "First-party src/scripts/tests/deploy plus root build configuration; existing uncommitted changes included",
+  "complete_source_files": 123,
+  "gemini_complete_source_files": 123,
+  "source_characters": 659306,
+  "source_snapshot_unchanged": true,
+  "coverage_semantics": "Readable Gemini response for the complete submitted line ranges; source review is not proof of all runtime paths. Local Codex review and selected runtime tests supplement Gemini.",
+  "exclusions": [
+    "node_modules dependency sources",
+    "references/checkouts external code",
+    "dist generated artifacts",
+    "runtime data and secrets",
+    "binary assets",
+    "docs/examples except relevant contract context",
+    "package-lock line-by-line review (npm audit instead)"
+  ],
+  "files": [
+    {
+      "path": "deploy/production.env.example",
+      "sha256": "9aced7bfa75f80074964ec0660c382487f14d1656bccbea62673522bf19456f9",
+      "lines": 19,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 19,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "deploy/nginx.conf",
+      "sha256": "e66bb5e126877250e90e24c1ac677cb3206328b5f8614fafa0a90d18068bcbda",
+      "lines": 37,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 37,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "deploy/browser-psych-lab.service",
+      "sha256": "6801c8a325d0d32d9a8fe43ed10d81df5891d4f0fcd6d7d65d86a67f7a9fd679",
+      "lines": 29,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 29,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "deploy/browser-psych-lab-backup.timer",
+      "sha256": "e057c5f570d0a0d7b64bd84a6c8eebb83102377a2e0fa33ae09d2afc18bce747",
+      "lines": 9,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 9,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "deploy/browser-psych-lab-backup.service",
+      "sha256": "b7a3167168d818045f17309e9bc85284a9524a16a3ef4212fb5ac55d1866992b",
+      "lines": 14,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 14,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "deploy/1c2g.conf",
+      "sha256": "d841720211d1ce941d0ce8b8bb995c202abc7f75828bd165676058f36656f8e7",
+      "lines": 8,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 8,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "scripts/smoke.mjs",
+      "sha256": "e315d4464f958af5b7eabba503421463cca6f21d93a48cd7d76c41fbab038f82",
+      "lines": 51,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 51,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "scripts/setup.mjs",
+      "sha256": "c8f6ba4e53c98ec02b0dd0b08347c310d44ffb193d0d9014001e51b92b2fb764",
+      "lines": 22,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 22,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "scripts/release.mjs",
+      "sha256": "cdd0966454643212cf8ff55c7e34899e5e11c8d0ffaedaf682e1df489c77dc8f",
+      "lines": 23,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 23,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "scripts/references.mjs",
+      "sha256": "390ba61cf9b1b46ed8d88889bfb848794a6241bfd40f634874200a31f9ae6640",
+      "lines": 55,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 55,
+          "result_id": "res_e2bb91b092e2a5e0c2b7",
+          "request_id": "bpl-audit-all-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "scripts/profile-mixed.mjs",
+      "sha256": "7f84655914799b6b5460a54d5c6d28bdadabba55fe26a659a44d1bdb053bcfb7",
+      "lines": 51,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 51,
+          "result_id": "res_f5f3411c45f08bd58963",
+          "request_id": "bpl-audit-resume-20261009-002"
+        }
+      ]
+    },
+    {
+      "path": "scripts/profile-frontend.mjs",
+      "sha256": "1fa56a636e07cd582011806e0fe69b2b67160012dd0de0809299eee9b1be433b",
+      "lines": 40,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 40,
+          "result_id": "res_f5f3411c45f08bd58963",
+          "request_id": "bpl-audit-resume-20261009-002"
+        }
+      ]
+    },
+    {
+      "path": "scripts/profile-foundation.mjs",
+      "sha256": "2122ab303e53102a229abb47a5a177b36c12cf9db755035e675d63dee7934e0f",
+      "lines": 81,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 81,
+          "result_id": "res_cc3d7ffe3687440408ec",
+          "request_id": "bpl-audit-resume-20261009-003"
+        }
+      ]
+    },
+    {
+      "path": "scripts/profile-bandwidth.mjs",
+      "sha256": "829e82a62d250e60b4b6a337d750a4e2403cc4a5a73977363b1d8d95df4bb1e9",
+      "lines": 85,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 85,
+          "result_id": "res_cc3d7ffe3687440408ec",
+          "request_id": "bpl-audit-resume-20261009-003"
+        }
+      ]
+    },
+    {
+      "path": "scripts/preview-tls.mjs",
+      "sha256": "0700e39118084a9688fc0661f752220a0f9d7b2833c3be28d9699b07489c8a5d",
+      "lines": 27,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 27,
+          "result_id": "res_cc3d7ffe3687440408ec",
+          "request_id": "bpl-audit-resume-20261009-003"
+        }
+      ]
+    },
+    {
+      "path": "scripts/preview-questionnaire.mjs",
+      "sha256": "cb7f38992d5c55eedafd48c1f9cb5e79db2c1ab6363eeccc2ada7673d64145ba",
+      "lines": 111,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 111,
+          "result_id": "res_72d6534115128fbe29d1",
+          "request_id": "bpl-audit-final-20261009-004"
+        }
+      ]
+    },
+    {
+      "path": "scripts/precompress.mjs",
+      "sha256": "34f05bef90ab44222c55beb186a2e3c721210f64d8b32cddb94b6bc5a09ae7ee",
+      "lines": 21,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 21,
+          "result_id": "res_72d6534115128fbe29d1",
+          "request_id": "bpl-audit-final-20261009-004"
+        }
+      ]
+    },
+    {
+      "path": "scripts/lib.mjs",
+      "sha256": "79eb63f45c661a9eb1b1c31c622b6dd8b4a6cf8083b361efa4af5a541f49f043",
+      "lines": 18,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 18,
+          "result_id": "res_72d6534115128fbe29d1",
+          "request_id": "bpl-audit-final-20261009-004"
+        }
+      ]
+    },
+    {
+      "path": "scripts/doctor.mjs",
+      "sha256": "ddc38750f733b369a03af8c9077defbf72b50df96c68fea1b152157e2697f4aa",
+      "lines": 60,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 60,
+          "result_id": "res_72d6534115128fbe29d1",
+          "request_id": "bpl-audit-final-20261009-004"
+        }
+      ]
+    },
+    {
+      "path": "scripts/dev.mjs",
+      "sha256": "b1ef96942ef46264b352786fbff6085e35333d6e7d76749d2faafe7fed8c5a81",
+      "lines": 30,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 30,
+          "result_id": "res_2c34d7a09ab1c2f1b704",
+          "request_id": "bpl-audit-complete-20261009-005"
+        }
+      ]
+    },
+    {
+      "path": "scripts/browser-server.mjs",
+      "sha256": "d9074df54adfc0c7ae83db6c608d605d150abea7016ec7d8c4c90549fa5bc777",
+      "lines": 17,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 17,
+          "result_id": "res_2c34d7a09ab1c2f1b704",
+          "request_id": "bpl-audit-complete-20261009-005"
+        }
+      ]
+    },
+    {
+      "path": "scripts/backup.mjs",
+      "sha256": "12c6e1e101cc48b93126e044418404fbb351542aca5a97387d848cb9450feeb5",
+      "lines": 11,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 11,
+          "result_id": "res_2c34d7a09ab1c2f1b704",
+          "request_id": "bpl-audit-complete-20261009-005"
+        }
+      ]
+    },
+    {
+      "path": "scripts/auth-setup.mjs",
+      "sha256": "5da43a4f492506b43edddc04ad2b6fdab60079df90a2ccf53ca69eabf39a7005",
+      "lines": 18,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 18,
+          "result_id": "res_2c34d7a09ab1c2f1b704",
+          "request_id": "bpl-audit-complete-20261009-005"
+        }
+      ]
+    },
+    {
+      "path": "tests/browser/lab.spec.ts",
+      "sha256": "94daa38f62ddce71a57c056b6c32b161fdd656e46ae210db0c4f38170c0308da",
+      "lines": 388,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 388,
+          "result_id": "res_7f0e340ae9426626f64d",
+          "request_id": "bpl-audit-complete-20261009-006"
+        },
+        {
+          "start": 1,
+          "end": 388,
+          "result_id": "res_a680afaeafafc024ed50",
+          "request_id": "bpl-audit-complete-20261009-007"
+        },
+        {
+          "start": 1,
+          "end": 388,
+          "result_id": "res_d1e93e4f1f207b2e3568",
+          "request_id": "bpl-audit-complete-20261009-008"
+        },
+        {
+          "start": 1,
+          "end": 388,
+          "result_id": "res_f4bce26a79a70cf64dd0",
+          "request_id": "bpl-audit-complete-20261009-009"
+        }
+      ]
+    },
+    {
+      "path": "tests/browser/environment.spec.ts",
+      "sha256": "464fc4ff0c340342f6226a05cd7f039b8f49ebbddc4c788bcfdfb3971de61854",
+      "lines": 46,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 46,
+          "result_id": "res_f4bce26a79a70cf64dd0",
+          "request_id": "bpl-audit-complete-20261009-009"
+        }
+      ]
+    },
+    {
+      "path": "tests/browser/collection.spec.ts",
+      "sha256": "d7a6bba93f567dcd58e46f752b230fa678b639f1b3aada2bc5778277590368fb",
+      "lines": 113,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 113,
+          "result_id": "res_fd4518342f2ebd6e72d8",
+          "request_id": "bpl-audit-complete-20261009-010"
+        }
+      ]
+    },
+    {
+      "path": "src/server/auth.ts",
+      "sha256": "37421a1bda5f94a83e60756339a42eb3b48b4b5a0443b55be584f99a93e995f4",
+      "lines": 25,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 25,
+          "result_id": "res_795118873fb2bed6fa20",
+          "request_id": "bpl-audit-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "src/server/collection-routes.ts",
+      "sha256": "dcc0a9309949439b6dc56175f0d65c127a8beb641b32978c344396cc44b8eabc",
+      "lines": 60,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 60,
+          "result_id": "res_fd4518342f2ebd6e72d8",
+          "request_id": "bpl-audit-complete-20261009-010"
+        }
+      ]
+    },
+    {
+      "path": "src/server/collection-store.ts",
+      "sha256": "5773b1a86cfef9c0864c090175a59acf4c2fe3b9e160275ff62e81c51d120ca0",
+      "lines": 351,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 351,
+          "result_id": "res_839613aba6c2f0a8efa8",
+          "request_id": "bpl-audit-complete-20261009-011"
+        },
+        {
+          "start": 1,
+          "end": 351,
+          "result_id": "res_565140bec302f733a289",
+          "request_id": "bpl-audit-complete-20261009-012"
+        }
+      ]
+    },
+    {
+      "path": "tests/runner-browser.config.ts",
+      "sha256": "a789de3d001b359a605e2e7e84871e822fd20f7b502731fd8c799789ed902f06",
+      "lines": 7,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 7,
+          "result_id": "res_565140bec302f733a289",
+          "request_id": "bpl-audit-complete-20261009-012"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/trial-design.ts",
+      "sha256": "774ca970418f24be2dd355ab6853219b5b82d91a774ea5775a215c99253dd9af",
+      "lines": 89,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 89,
+          "result_id": "res_ab4bebd8e58460bca1a7",
+          "request_id": "bpl-audit-complete-20261009-013"
+        },
+        {
+          "start": 1,
+          "end": 89,
+          "result_id": "res_01bdff69d35c7db8877e",
+          "request_id": "bpl-audit-targeted-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/scheduler.ts",
+      "sha256": "55dc996094d83a8c96dc73cc41ad2c8b937689dfacc8ff4efc2fa0f4ee39a45a",
+      "lines": 217,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 217,
+          "result_id": "res_23526aa8d321247e038f",
+          "request_id": "bpl-audit-complete-20261009-014"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/run-replay.ts",
+      "sha256": "814b45cb34bd91773f677405cab84eb522f0d63e8066ab7a4b245c70fcf8f41a",
+      "lines": 108,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 108,
+          "result_id": "res_57b2da2a03643f9a3517",
+          "request_id": "bpl-audit-complete-20261009-015"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/questionnaire-json.ts",
+      "sha256": "5b0d6c06ac444afbbe1786e02d664d8f4a8a559cec9e747a168eac4481ef3d59",
+      "lines": 58,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 58,
+          "result_id": "res_57b2da2a03643f9a3517",
+          "request_id": "bpl-audit-complete-20261009-015"
+        },
+        {
+          "start": 1,
+          "end": 58,
+          "result_id": "res_01bdff69d35c7db8877e",
+          "request_id": "bpl-audit-targeted-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/protocol.ts",
+      "sha256": "cdbc8e04dc57bc78674c8f14ec0f0db75d032e3ca22abe5095108ca274b5379b",
+      "lines": 264,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 264,
+          "result_id": "res_fc1d24ebb8ec9657abe1",
+          "request_id": "bpl-audit-complete-20261009-016"
+        },
+        {
+          "start": 1,
+          "end": 264,
+          "result_id": "res_cc9da4e793e0f7a2206b",
+          "request_id": "bpl-audit-complete-20261009-017"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/prng.ts",
+      "sha256": "de433f953058aeeadeff148418b61584a40f0b4e5215e4930bd38ff09541541b",
+      "lines": 41,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 41,
+          "result_id": "res_cc9da4e793e0f7a2206b",
+          "request_id": "bpl-audit-complete-20261009-017"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/lab-contract.ts",
+      "sha256": "757a5cca536ce8a8a9c167bbac134a6ea2fecd8a91b03e79cda9f9b9e4845093",
+      "lines": 42,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 42,
+          "result_id": "res_cc9da4e793e0f7a2206b",
+          "request_id": "bpl-audit-complete-20261009-017"
+        }
+      ]
+    },
+    {
+      "path": "src/shared/contract.ts",
+      "sha256": "47263fe47de842bb7da5a4f336907c9706fb2a7213458b969e36c99068ab1faf",
+      "lines": 103,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 103,
+          "result_id": "res_ed5a2b57e529e094f860",
+          "request_id": "bpl-audit-complete-20261009-018"
+        }
+      ]
+    },
+    {
+      "path": "src/server/image-package.ts",
+      "sha256": "aa07b069c54c5d43e1400beb55337d0e16f8fd90442f3160955bf3533490f705",
+      "lines": 65,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 65,
+          "result_id": "res_ed5a2b57e529e094f860",
+          "request_id": "bpl-audit-complete-20261009-018"
+        }
+      ]
+    },
+    {
+      "path": "src/server/db-worker.ts",
+      "sha256": "ce9e4acab878022da4b2a627a57c25b8cb57192aa8276d12286572e6e25c6ce7",
+      "lines": 48,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 48,
+          "result_id": "res_2e5366ad2c82b692eb42",
+          "request_id": "bpl-audit-complete-20261009-019"
+        }
+      ]
+    },
+    {
+      "path": "src/server/database.ts",
+      "sha256": "4db2dd59cf23c644c60de8f3471e1b8060e0f3f3d3ee958f47606d015ab2ab23",
+      "lines": 31,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 31,
+          "result_id": "res_2e5366ad2c82b692eb42",
+          "request_id": "bpl-audit-complete-20261009-019"
+        }
+      ]
+    },
+    {
+      "path": "src/server/lab-schema.ts",
+      "sha256": "7bde62ed49bebfe676c602313ac0e112f55d1bced194d0d4048bda6886067d45",
+      "lines": 88,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 88,
+          "result_id": "res_2e5366ad2c82b692eb42",
+          "request_id": "bpl-audit-complete-20261009-019"
+        }
+      ]
+    },
+    {
+      "path": "src/server/lab-routes.ts",
+      "sha256": "b31d2daf29e4b44f928a2b2fb5b87a7f77644981d9e93450dc6456a3e1ae5d81",
+      "lines": 183,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 183,
+          "result_id": "res_babafc123d1efbbf0ffb",
+          "request_id": "bpl-audit-20261009-003"
+        }
+      ]
+    },
+    {
+      "path": "src/server/lab-store.ts",
+      "sha256": "1ac36b3f6849f292da5937e6cb17868bd240f0f8a9e12492c6e76c4fbb59da93",
+      "lines": 528,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 528,
+          "result_id": "res_019b4ef8ab97b7c2f8d7",
+          "request_id": "bpl-audit-complete-20261009-020"
+        },
+        {
+          "start": 1,
+          "end": 528,
+          "result_id": "res_87266389b8398408a883",
+          "request_id": "bpl-audit-complete-20261009-021"
+        },
+        {
+          "start": 1,
+          "end": 528,
+          "result_id": "res_94be09f7951ba56849ec",
+          "request_id": "bpl-audit-complete-20261009-022"
+        },
+        {
+          "start": 1,
+          "end": 528,
+          "result_id": "res_5309d800f83a05302bd6",
+          "request_id": "bpl-audit-complete-20261009-023"
+        }
+      ]
+    },
+    {
+      "path": "src/server/main.ts",
+      "sha256": "1158bf507128d110a14c33ef942f519324707b4ae5733a1cf3e9c967fabf6ac6",
+      "lines": 97,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 97,
+          "result_id": "res_795118873fb2bed6fa20",
+          "request_id": "bpl-audit-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "src/web/admin.html",
+      "sha256": "12c1ac99b5f8d5295521dc7a207af56a43083336b6cab284e548833fed7b32bf",
+      "lines": 3,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 3,
+          "result_id": "res_5309d800f83a05302bd6",
+          "request_id": "bpl-audit-complete-20261009-023"
+        }
+      ]
+    },
+    {
+      "path": "src/web/admin.css",
+      "sha256": "c889b1eee448d7e08b63be11e97d4808caa3f9635a36c6ee1c2ae4968d3970cf",
+      "lines": 4,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 4,
+          "result_id": "res_5309d800f83a05302bd6",
+          "request_id": "bpl-audit-complete-20261009-023"
+        }
+      ]
+    },
+    {
+      "path": "src/web/admin.ts",
+      "sha256": "d48e1221001397c4208cd4fc6eb1e795d9d9d65b3b6bdee4cbbb69c6e780fe4f",
+      "lines": 66,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 66,
+          "result_id": "res_bb7ac933739e8f7875a8",
+          "request_id": "bpl-audit-complete-20261009-024"
+        }
+      ]
+    },
+    {
+      "path": "src/web/asset-download.ts",
+      "sha256": "1775b36b6a986f0ce02564b2f35c40f480f6c9edd9442daf19edc508dfc327f4",
+      "lines": 65,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 65,
+          "result_id": "res_bb7ac933739e8f7875a8",
+          "request_id": "bpl-audit-complete-20261009-024"
+        }
+      ]
+    },
+    {
+      "path": "src/server/writer.ts",
+      "sha256": "111133ca21b98522b843df89295642585d90d975e9286856a5459cba84688426",
+      "lines": 106,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 106,
+          "result_id": "res_1d3ceabf5cc396b46a1e",
+          "request_id": "bpl-audit-continue-20261009-025"
+        }
+      ]
+    },
+    {
+      "path": "tests/fixtures/writer-process.mjs",
+      "sha256": "3d82ecdc45aff120df8cf56445efe68f7050e861467bc20efcd9dce20728baab",
+      "lines": 9,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 9,
+          "result_id": "res_1d3ceabf5cc396b46a1e",
+          "request_id": "bpl-audit-continue-20261009-025"
+        }
+      ]
+    },
+    {
+      "path": "src/server/session-admission.ts",
+      "sha256": "64295d2bde6f58af8c4f2836d67c97f28d19f61e5fb9655e96dc07636f129044",
+      "lines": 60,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 60,
+          "result_id": "res_1d3ceabf5cc396b46a1e",
+          "request_id": "bpl-audit-continue-20261009-025"
+        }
+      ]
+    },
+    {
+      "path": "tests/fixtures/stalled-worker.mjs",
+      "sha256": "a8b2b4cf18ef56e028e55a6295399a1486e3a94e64f5aa18402ec8dfe555e657",
+      "lines": 14,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 14,
+          "result_id": "res_1d3ceabf5cc396b46a1e",
+          "request_id": "bpl-audit-continue-20261009-025"
+        }
+      ]
+    },
+    {
+      "path": "src/server/runner-encoding.ts",
+      "sha256": "325e24386ba92bb5af0bfa6899cb82f44ba528f1b1840c8a24fa9b8c214f7583",
+      "lines": 17,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 17,
+          "result_id": "res_1d3ceabf5cc396b46a1e",
+          "request_id": "bpl-audit-continue-20261009-025"
+        }
+      ]
+    },
+    {
+      "path": "src/server/runner-asset-policy.ts",
+      "sha256": "ddbfd20d52913a027eb7a32e0a487fa8cadfac38f13b0a25d2bf7a40d5f94408",
+      "lines": 37,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 37,
+          "result_id": "res_c65ef5cb23f1cc85bfe4",
+          "request_id": "bpl-audit-continue-20261009-026"
+        }
+      ]
+    },
+    {
+      "path": "src/server/restore.ts",
+      "sha256": "35b6eda9db8d2769815c593280a07b20c87ec1377ced96cba2e1763e21f98b61",
+      "lines": 42,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 42,
+          "result_id": "res_c65ef5cb23f1cc85bfe4",
+          "request_id": "bpl-audit-continue-20261009-026"
+        }
+      ]
+    },
+    {
+      "path": "src/server/release.ts",
+      "sha256": "63edd574b4b7eb9f8c47b9ad59050a27b57e7eb7a873b72f76621db276d5f75d",
+      "lines": 54,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 54,
+          "result_id": "res_c65ef5cb23f1cc85bfe4",
+          "request_id": "bpl-audit-continue-20261009-026"
+        }
+      ]
+    },
+    {
+      "path": "src/server/private-files.ts",
+      "sha256": "064558b93b20f63cca6287c04d37da6a276a0802ce43877b358060751c34e169",
+      "lines": 46,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 46,
+          "result_id": "res_795118873fb2bed6fa20",
+          "request_id": "bpl-audit-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "src/server/preparation-queue.ts",
+      "sha256": "63cff64d2aa006674b00dafc5c819601ad94d550fca2b4d18b469384690b8de6",
+      "lines": 68,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 68,
+          "result_id": "res_ff9b55c38ada520742f1",
+          "request_id": "bpl-audit-continue-20261009-027"
+        }
+      ]
+    },
+    {
+      "path": "src/server/maintenance.ts",
+      "sha256": "21524a60515bb3e468d7a75f2f506b590bc1570200116e39ca6b7a1126f4677b",
+      "lines": 43,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 43,
+          "result_id": "res_ff9b55c38ada520742f1",
+          "request_id": "bpl-audit-continue-20261009-027"
+        }
+      ]
+    },
+    {
+      "path": "src/server/maintenance-worker.ts",
+      "sha256": "4c2024243a91d0aec0faeb64db028c6584de737cab36b3204a7f364e18ad778e",
+      "lines": 169,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 125,
+          "result_id": "res_bc3cc35e194e822a25dd",
+          "request_id": "bpl-audit-continue-20261009-028"
+        },
+        {
+          "start": 126,
+          "end": 169,
+          "result_id": "res_dd620136d0d107b78feb",
+          "request_id": "bpl-audit-continue-20261009-029"
+        }
+      ]
+    },
+    {
+      "path": "src/web/ending-page.ts",
+      "sha256": "bddbc02f3ca75c31cd4bafc6b1a299ea62d220f5b359b37dae9531a5fac01758",
+      "lines": 18,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 18,
+          "result_id": "res_dd620136d0d107b78feb",
+          "request_id": "bpl-audit-continue-20261009-029"
+        }
+      ]
+    },
+    {
+      "path": "src/web/dom.ts",
+      "sha256": "5ca0f5e16c20f5f86343f2f6db31064562115b6c4ea958de747388806931ef27",
+      "lines": 26,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 26,
+          "result_id": "res_dd620136d0d107b78feb",
+          "request_id": "bpl-audit-continue-20261009-029"
+        }
+      ]
+    },
+    {
+      "path": "src/web/diagnostics.ts",
+      "sha256": "60c722ac924475a2227ff7e104c71a460dac7cc844ae620bbfc1a5f6a0e392bb",
+      "lines": 7,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 7,
+          "result_id": "res_dd620136d0d107b78feb",
+          "request_id": "bpl-audit-continue-20261009-029"
+        }
+      ]
+    },
+    {
+      "path": "src/web/diagnostics.html",
+      "sha256": "cbc10eaab75f00341d88ea7efe8ede9b77d5718287ce0a96eb9a05d492159f3c",
+      "lines": 30,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 30,
+          "result_id": "res_dd620136d0d107b78feb",
+          "request_id": "bpl-audit-continue-20261009-029"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/admin-auth.test.mjs",
+      "sha256": "d5c1e1ec1f9f18dc4e6f675b30923452d0a6d4cd0983567b82d5cb14f6348631",
+      "lines": 62,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 62,
+          "result_id": "res_93b15bb84b31e033837a",
+          "request_id": "bpl-audit-continue-20261009-030"
+        }
+      ]
+    },
+    {
+      "path": "src/web/consent-page.ts",
+      "sha256": "4b0c304687d276accdd74d82f9c74478eef9eac265d2f85305e575aa2a0ab494",
+      "lines": 27,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 27,
+          "result_id": "res_93b15bb84b31e033837a",
+          "request_id": "bpl-audit-continue-20261009-030"
+        }
+      ]
+    },
+    {
+      "path": "src/web/consent-gate.ts",
+      "sha256": "e422c457a4e84f1026eb7681aaefaec80e7e50521affd7b3b5d53d2b28758c67",
+      "lines": 26,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 26,
+          "result_id": "res_93b15bb84b31e033837a",
+          "request_id": "bpl-audit-continue-20261009-030"
+        }
+      ]
+    },
+    {
+      "path": "src/web/local-store.ts",
+      "sha256": "be898db7a67f6e84b1d2e244ca8f579b259f66b55c25cd5342ff2ca428f96ebc",
+      "lines": 99,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 99,
+          "result_id": "res_93b15bb84b31e033837a",
+          "request_id": "bpl-audit-continue-20261009-030"
+        }
+      ]
+    },
+    {
+      "path": "src/web/ledger.ts",
+      "sha256": "6f356553caec66406b379881cc56bcaa5aa5d2fa8e008e715d146d8848b7d97e",
+      "lines": 53,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 53,
+          "result_id": "res_6701bf6ed48da01e896f",
+          "request_id": "bpl-audit-continue-20261009-031"
+        }
+      ]
+    },
+    {
+      "path": "src/web/index.html",
+      "sha256": "12c1ac99b5f8d5295521dc7a207af56a43083336b6cab284e548833fed7b32bf",
+      "lines": 3,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 3,
+          "result_id": "res_6701bf6ed48da01e896f",
+          "request_id": "bpl-audit-continue-20261009-031"
+        }
+      ]
+    },
+    {
+      "path": "src/web/environment.ts",
+      "sha256": "371d08a4bea41ee765c2e34aece5e46e62dcec8c259c074268b55811f707e27f",
+      "lines": 35,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 35,
+          "result_id": "res_6701bf6ed48da01e896f",
+          "request_id": "bpl-audit-continue-20261009-031"
+        }
+      ]
+    },
+    {
+      "path": "src/web/orientation-gate.ts",
+      "sha256": "7dfda632718aa34dccad5400fb231b6bd135c07d144725dc82815d4a56f9fad9",
+      "lines": 40,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 40,
+          "result_id": "res_9c4251363ab0f82830f2",
+          "request_id": "bpl-audit-continue-20261009-032"
+        }
+      ]
+    },
+    {
+      "path": "src/web/main.ts",
+      "sha256": "29072d530f4f1f5989619234e3da4dd6df92f820442d2d6fcf1f1317d5522389",
+      "lines": 59,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 59,
+          "result_id": "res_9c4251363ab0f82830f2",
+          "request_id": "bpl-audit-continue-20261009-032"
+        }
+      ]
+    },
+    {
+      "path": "src/web/p0.html",
+      "sha256": "dab936e658c42f9fdb101c3feb59c40a9b85521a40061eec25af23b815b279f6",
+      "lines": 20,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 20,
+          "result_id": "res_9c4251363ab0f82830f2",
+          "request_id": "bpl-audit-continue-20261009-032"
+        }
+      ]
+    },
+    {
+      "path": "tests/helpers/lab-fixture.mjs",
+      "sha256": "7bed7e650a2f579f4d23b79620c18f788b4b2a550ed853237f157f70c52ba0be",
+      "lines": 27,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 27,
+          "result_id": "res_9c4251363ab0f82830f2",
+          "request_id": "bpl-audit-continue-20261009-032"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/asset-compatibility.test.mjs",
+      "sha256": "b256ccbbb410614b3977db05e01d4b0434f192731f86f60fdaffaa2b2df42a07",
+      "lines": 76,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 76,
+          "result_id": "res_b50b8c76a2e31189c30c",
+          "request_id": "bpl-audit-continue-20261009-033"
+        }
+      ]
+    },
+    {
+      "path": "tests/helpers/run-trace.mjs",
+      "sha256": "60aee059ee99b43c9d2067dc257567ef1e5a3bd60389b1713459c6a7608c9139",
+      "lines": 21,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 21,
+          "result_id": "res_b50b8c76a2e31189c30c",
+          "request_id": "bpl-audit-continue-20261009-033"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/collection.test.mjs",
+      "sha256": "78d92b8809d4e97a8bd52a77ef7c2cabcc5a39cc4e71b41a98bdd46ce43514f6",
+      "lines": 135,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 135,
+          "result_id": "res_d8446c67bea6f9d47618",
+          "request_id": "bpl-audit-continue-20261009-034"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/consent.test.mjs",
+      "sha256": "5a96f23ca3776e8c8d576cff8e077ccb8e2821b9c2d48f4124d600198f9b488c",
+      "lines": 35,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 35,
+          "result_id": "res_d8446c67bea6f9d47618",
+          "request_id": "bpl-audit-continue-20261009-034"
+        }
+      ]
+    },
+    {
+      "path": "tests/runner-browser/runner.spec.ts",
+      "sha256": "ed5f183eef242788280a5544b236ff6a2ac26d6a60493aca3df9760ab2d689e5",
+      "lines": 97,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 97,
+          "result_id": "res_9e334d3a3bc6c0ce8588",
+          "request_id": "bpl-audit-continue-20261009-035"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/lab.test.mjs",
+      "sha256": "c363d8c5b9ec8c9d195f7d2b1015bdd772ec238411d8b3a88d2a5b9b73346392",
+      "lines": 80,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 80,
+          "result_id": "res_ee0f7979feea433d6da9",
+          "request_id": "bpl-audit-continue-20261009-036"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/maintenance.test.mjs",
+      "sha256": "622316232710c3c4205255c791b0845f1db2f070de2cbfe558a9890112723ff6",
+      "lines": 45,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 45,
+          "result_id": "res_2fa8f5569179dc93e263",
+          "request_id": "bpl-audit-continue-20261009-037"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/multi-scale.test.mjs",
+      "sha256": "2d82a102bd366f9397087a257ae03197ceaf7482f492e58df789fe79afd0de5a",
+      "lines": 38,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 38,
+          "result_id": "res_2fa8f5569179dc93e263",
+          "request_id": "bpl-audit-continue-20261009-037"
+        }
+      ]
+    },
+    {
+      "path": "src/web/p0.ts",
+      "sha256": "206b754d0a52a1e15f1b0ae5d41dee93f2c254fa21fca65af8f5413df9849fb9",
+      "lines": 107,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 107,
+          "result_id": "res_e931bf4f112ae2e8ff62",
+          "request_id": "bpl-audit-continue-20261009-038"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/writer.test.mjs",
+      "sha256": "884f4a0debbb264fa83037cf0b5a581c12556e996628a483f3d0e96ab81468ca",
+      "lines": 54,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 54,
+          "result_id": "res_e931bf4f112ae2e8ff62",
+          "request_id": "bpl-audit-continue-20261009-038"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/trial-design.test.mjs",
+      "sha256": "6415cc3ebcd02b61ce0f5b830a5cdd2336ff68a679355abf27950ae0ad1fa778",
+      "lines": 138,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 138,
+          "result_id": "res_ed24d8cae52399f57f7e",
+          "request_id": "bpl-audit-continue-20261009-039"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/session-admission.test.mjs",
+      "sha256": "58a1b7c1ac12ee23b0408cec306799c74b1a75296820d4f26a49e3bf18efb8f5",
+      "lines": 61,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 61,
+          "result_id": "res_90c283e8aa426ec4b427",
+          "request_id": "bpl-audit-continue-20261009-040"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/scheduler.test.mjs",
+      "sha256": "7f14e2041779c82a2368e189be2589b017d90ab627f29e72e7d80e11f0205f96",
+      "lines": 92,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 92,
+          "result_id": "res_90c283e8aa426ec4b427",
+          "request_id": "bpl-audit-continue-20261009-040"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/runner-release.test.mjs",
+      "sha256": "11fdff5ebd7a4ef3b1b1fcbc8651fdecc1a26c35c441cba3160727bc4a214722",
+      "lines": 77,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 77,
+          "result_id": "res_f3cbb47c2c2a767ff301",
+          "request_id": "bpl-audit-continue-20261009-041"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/run-replay.test.mjs",
+      "sha256": "530166ff9c2fbe0998f82a1ab8afc0b4529df59bec2562f6447a846206e34e11",
+      "lines": 31,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 31,
+          "result_id": "res_f3cbb47c2c2a767ff301",
+          "request_id": "bpl-audit-continue-20261009-041"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/questionnaire-json.test.mjs",
+      "sha256": "d5a0e2ed937686389a838d959ced8007f6018f8c9db11ce1e00e583b406e0907",
+      "lines": 38,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 38,
+          "result_id": "res_f3cbb47c2c2a767ff301",
+          "request_id": "bpl-audit-continue-20261009-041"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/process-crash.test.mjs",
+      "sha256": "4ac6037102bb4ce9925470d9448973ab64fc6b8279a3b75ade57038bded701a5",
+      "lines": 48,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 48,
+          "result_id": "res_d7fd079d47ab72b3859e",
+          "request_id": "bpl-audit-continue-20261009-042"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/preparation.test.mjs",
+      "sha256": "f0c4c180296106f942985494c332250340ed3a2affc4f7ba94584475bfcf47ce",
+      "lines": 66,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 66,
+          "result_id": "res_d7fd079d47ab72b3859e",
+          "request_id": "bpl-audit-continue-20261009-042"
+        }
+      ]
+    },
+    {
+      "path": "src/web/run.ts",
+      "sha256": "33d1a7c368f9c6631f964e912171bb06a95e84a28251490150f39874bb4c9165",
+      "lines": 113,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 113,
+          "result_id": "res_7e85a763739a7ca81e9f",
+          "request_id": "bpl-audit-continue-20261009-043"
+        }
+      ]
+    },
+    {
+      "path": "src/web/run.html",
+      "sha256": "5de4cbf51b89924b6434be0c3c7a5c1194fafbface723f9fdfd2399e6edfc42b",
+      "lines": 2,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 2,
+          "result_id": "res_7e85a763739a7ca81e9f",
+          "request_id": "bpl-audit-continue-20261009-043"
+        }
+      ]
+    },
+    {
+      "path": "src/web/prepare.ts",
+      "sha256": "f1c643a0b1170bd59825ec91300e89d47ecf721627044fdb1762b3856ef96787",
+      "lines": 47,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 47,
+          "result_id": "res_666ee049e31977b067a0",
+          "request_id": "bpl-audit-continue-20261009-044"
+        }
+      ]
+    },
+    {
+      "path": "src/web/preparation-gate.ts",
+      "sha256": "ef136cb6d3d36cecdd583ec36dda86e41a752af725c5eb8aebe92b0ad48bbae2",
+      "lines": 31,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 31,
+          "result_id": "res_666ee049e31977b067a0",
+          "request_id": "bpl-audit-continue-20261009-044"
+        }
+      ]
+    },
+    {
+      "path": "src/web/participate.html",
+      "sha256": "78c2bcea12b86bb9ada7b8d2f4b3778dfddf76a553c651f5ecfd3fd4ef9cf933",
+      "lines": 2,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 2,
+          "result_id": "res_666ee049e31977b067a0",
+          "request_id": "bpl-audit-continue-20261009-044"
+        }
+      ]
+    },
+    {
+      "path": "src/web/participant.ts",
+      "sha256": "1caf6c040f8c6456b174221b94423c450e9f0cf432c469214fd830faf5e76a04",
+      "lines": 37,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 37,
+          "result_id": "res_666ee049e31977b067a0",
+          "request_id": "bpl-audit-continue-20261009-044"
+        }
+      ]
+    },
+    {
+      "path": "src/web/participant.css",
+      "sha256": "98b68c0ce191e007dba75158a4450978e0dfc6e231c222e261bff682b3268572",
+      "lines": 93,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 93,
+          "result_id": "res_d3117a0add085ffaf6ef",
+          "request_id": "bpl-audit-continue-20261009-045"
+        }
+      ]
+    },
+    {
+      "path": "src/web/participant-theme.ts",
+      "sha256": "dc430828bbfe67031649b6280aa3abe00e6e8b74c21f139b44bb0abd47223251",
+      "lines": 19,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 19,
+          "result_id": "res_d3117a0add085ffaf6ef",
+          "request_id": "bpl-audit-continue-20261009-045"
+        }
+      ]
+    },
+    {
+      "path": "src/web/participant-api.ts",
+      "sha256": "8dcfd11796143665492bb8f0498123ff4580f2b6a4e64376ba0c15fa40213630",
+      "lines": 33,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 33,
+          "result_id": "res_d3117a0add085ffaf6ef",
+          "request_id": "bpl-audit-continue-20261009-045"
+        }
+      ]
+    },
+    {
+      "path": "src/web/simulate.html",
+      "sha256": "4258f948eaec6830a84f6b0dfa8715ae777f81e7d08be8bece009a643768300d",
+      "lines": 2,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 2,
+          "result_id": "res_d3117a0add085ffaf6ef",
+          "request_id": "bpl-audit-continue-20261009-045"
+        }
+      ]
+    },
+    {
+      "path": "src/web/session-gate.ts",
+      "sha256": "e5acd63168f2c4de3d158fc49f83b8964d145a902814265ace94188880c69c9f",
+      "lines": 31,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 31,
+          "result_id": "res_8374cca5bdd5842fddd3",
+          "request_id": "bpl-audit-continue-20261009-046"
+        }
+      ]
+    },
+    {
+      "path": "src/web/scale-input.ts",
+      "sha256": "86e9598ec16095e386bbff2c95da5ce42cf907723d0ffb4350fd3571ac329c5f",
+      "lines": 46,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 46,
+          "result_id": "res_8374cca5bdd5842fddd3",
+          "request_id": "bpl-audit-continue-20261009-046"
+        }
+      ]
+    },
+    {
+      "path": "src/web/runner.css",
+      "sha256": "2d9abcba2a095600accae6583a5a3f8cec2839df3156e5730e0517beae694140",
+      "lines": 9,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 9,
+          "result_id": "res_8374cca5bdd5842fddd3",
+          "request_id": "bpl-audit-continue-20261009-046"
+        }
+      ]
+    },
+    {
+      "path": "src/web/runner-input.ts",
+      "sha256": "c88d6abd6647fee6a38097f11d79fbdd18de1751a9604662e788c4724cd13dfb",
+      "lines": 40,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 40,
+          "result_id": "res_8374cca5bdd5842fddd3",
+          "request_id": "bpl-audit-continue-20261009-046"
+        },
+        {
+          "start": 1,
+          "end": 40,
+          "result_id": "res_01bdff69d35c7db8877e",
+          "request_id": "bpl-audit-targeted-20261009-001"
+        }
+      ]
+    },
+    {
+      "path": "src/web/style.css",
+      "sha256": "df87e4eab6aa813111bed3e0b4a73c6d47a1b4c0a61f57e582003e9272574629",
+      "lines": 42,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 42,
+          "result_id": "res_8374cca5bdd5842fddd3",
+          "request_id": "bpl-audit-continue-20261009-046"
+        }
+      ]
+    },
+    {
+      "path": "src/web/stimulus.ts",
+      "sha256": "b4d629c68eeec6209680e137607dd65fed773797bde7ea5749c788285a15938b",
+      "lines": 14,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 14,
+          "result_id": "res_8374cca5bdd5842fddd3",
+          "request_id": "bpl-audit-continue-20261009-046"
+        }
+      ]
+    },
+    {
+      "path": "src/web/simulate.ts",
+      "sha256": "692775d330906c9538ac13acec761214c3d06d5d85f81f286243a94d1bcb47c1",
+      "lines": 31,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 31,
+          "result_id": "res_630c97aa2cce1987a674",
+          "request_id": "bpl-audit-continue-20261009-047"
+        }
+      ]
+    },
+    {
+      "path": "src/web/survey-page.ts",
+      "sha256": "1421d784eddf7f6cd91d21479febc9c44ca9a07bc4ad39a3ee3adf1d60aaca63",
+      "lines": 222,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 222,
+          "result_id": "res_5241a51c5949466c735d",
+          "request_id": "bpl-audit-continue-20261009-048"
+        }
+      ]
+    },
+    {
+      "path": "src/web/survey-demo.ts",
+      "sha256": "310e97e6b0dc6ef104e904b5ab5b6610853dd1327a19d96fff788ee362a04103",
+      "lines": 17,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 17,
+          "result_id": "res_5241a51c5949466c735d",
+          "request_id": "bpl-audit-continue-20261009-048"
+        }
+      ]
+    },
+    {
+      "path": "src/web/text-pager.ts",
+      "sha256": "c43aab095fa10bffb5cee09262423f59728e9d29e798f95ab5d0cc605e91b960",
+      "lines": 58,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 58,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "src/web/wait.ts",
+      "sha256": "efd69c8e8814b44d01c07f2f7674b8a25e650fe5af0319e23c4987b3fd3af53e",
+      "lines": 10,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 10,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "src/web/viewport.ts",
+      "sha256": "45d9755890d26c4386981152e77c4a2a854e66c43b945f30dc88fcb89b224510",
+      "lines": 30,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 30,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": ".env.example",
+      "sha256": "745d975fe62f53efef22f83bf24df60cd2fd23bb2e0a09c1bbc5b19bf5480711",
+      "lines": 12,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 12,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "package.json",
+      "sha256": "84494ba33d73af4dd932aa9df75719cb6324b4200714fd0c5463045e67994e45",
+      "lines": 57,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 57,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha256": "8e337c13a01f907993cac597297d46de8ef76918a7c6185a027d78b3c4f928d6",
+      "lines": 18,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 18,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "tsconfig.base.json",
+      "sha256": "ad2a3ec9a78b5975a2faa132e0e4905fff9dd682ebbcfd65e3c8d95acf1624fa",
+      "lines": 12,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 12,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "tsconfig.server.json",
+      "sha256": "81ca9548af4f81994775ccd06ee9b17392f42c160a91d0871eea537f37e867ab",
+      "lines": 13,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 13,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "tsconfig.web.json",
+      "sha256": "f563b4e27a2060f0a4bf618b3d10cd17af9a781b699c676eacc04680bd6d4640",
+      "lines": 12,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 12,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "d005ad645e36c6297a2b21b3934d3f15e21ef100cdab75c9106965dfc797592b",
+      "lines": 33,
+      "review": "Codex source review; Gemini submitted ranges with readable results",
+      "gemini_complete": true,
+      "gemini_ranges": [
+        {
+          "start": 1,
+          "end": 33,
+          "result_id": "res_25f1a7cc88f6ec878557",
+          "request_id": "bpl-audit-continue-20261009-049"
+        }
+      ]
+    }
+  ],
+  "additional_config_files": [
+    {
+      "path": ".nvmrc",
+      "sha256": "04d43a993a37e6543c8b1cc37d498fa4a10250034ab922207b1a6a1e41e216da",
+      "review": "Codex read; submitted to Gemini in wrapup but reply did not address configuration, not counted as Gemini completed review"
+    },
+    {
+      "path": ".npmrc",
+      "sha256": "15710541251db726de1491304fa7ca666f8eefc2af25e0ebf9a7efa4e1c5980f",
+      "review": "Codex read; submitted to Gemini in wrapup but reply did not address configuration, not counted as Gemini completed review"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "b97755b422621d8d1b9606e775ff7b73668c79203551bc50e46114d7253eb923",
+      "review": "Codex read; submitted to Gemini in wrapup but reply did not address configuration, not counted as Gemini completed review"
+    }
+  ]
+}

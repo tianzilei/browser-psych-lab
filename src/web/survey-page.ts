@@ -1,4 +1,4 @@
-import { evaluate, copyAnswer, axisAnswers, answerMissing, type Page, type Answer, type Question } from '../shared/protocol.js';
+import { evaluate, copyAnswer, axisAnswers, answerMissing, inputMatchRegex, inputMatchMessage, type Page, type Answer, type Question } from '../shared/protocol.js';
 import { el } from './dom.js';
 import { TextPager } from './text-pager.js';
 import { scaleInput } from './scale-input.js';
@@ -9,7 +9,7 @@ const snapshot = (answers: Answers): Answers => Object.fromEntries(Object.entrie
 
 export function mountPage(element: HTMLDivElement, page: Page, previous: Answers, values: Answers,
   revision: (name: string, answer: Answer, data: Answers) => void, complete: (data: Answers) => void,
-  options: { key: string; title: string }) {
+  options: { key: string; title: string; screen?:(question_id:string|undefined)=>void }) {
   const invalid = page.questions.find(q => q.type === 'text' && q.input_purpose !== 'personal' || q.type === 'scale' && (!q.min_label?.trim() || !q.max_label?.trim()));
   if (invalid) {
     element.replaceChildren(el('p', invalid.type === 'scale' ? '此版本未配置量表两端文字，请联系研究者更新问卷。' : '此版本含未标记为个人信息的文字题，请联系研究者更新问卷。'));
@@ -76,13 +76,20 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     let node = inputs.get(q.id);
     if (node) return node;
     node = el('input'); node.type = 'text'; node.name = q.id; node.maxLength = q.max_length!;
+    // Native pattern validation has implicit Unicode `v` semantics and has no
+    // equivalent for the JS `i`/`m` flags. Keep it as an optimization only for
+    // flagless matches; the shared JS matcher remains authoritative.
+    if (q.input_match) {
+      node.title = inputMatchMessage(q.input_match);
+      if (q.input_match.kind === 'preset' || !q.input_match.flags) node.pattern = inputMatchRegex(q.input_match).source;
+    }
     node.value = typeof answers[q.id] === 'string' ? answers[q.id] as string : '';
     node.setAttribute('aria-label', q.title); node.autocomplete = 'off'; node.enterKeyHint = 'done';
     const update = () => save(q, node!.value);
     node.addEventListener('input', update); node.addEventListener('change', update);
     node.addEventListener('compositionstart', () => { composing = true; });
     node.addEventListener('compositionend', () => { composing = false; update(); visibility(); });
-    node.addEventListener('focus', () => { editing=true;document.body.classList.add('typing'); next.textContent = '完成输入'; });
+    node.addEventListener('focus', () => { editing=true;document.body.classList.add('typing');form.style.setProperty('--survey-top',`${element.getBoundingClientRect().top+scrollY}px`); next.textContent = '完成输入'; });
     // Keep the input layout until the explicit Done action. Changing geometry
     // on blur can move the button between pointerdown and click.
     node.addEventListener('blur', requestResize);
@@ -125,10 +132,12 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   function render(focus = false) {
     if (disposed) return;
+    form.style.setProperty('--survey-top',`${element.getBoundingClientRect().top+scrollY}px`);
     const q = question();
     if (q?.type === 'text' && editing) { navigation(); return; }
     screen.classList.toggle('reading-only', !q);
     screen.classList.toggle('selection-question', q?.type !== 'text' && !!q);
+    screen.classList.toggle('single-axis-question', q?.type === 'scale');
     screen.classList.toggle('multi-axis-question', q?.type === 'scales');
     fits = pager.show();
     if (layoutProblem) { message.textContent = ''; layoutProblem = false; }
@@ -160,7 +169,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
       answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
     }
     controlQuestion=fits&&!pager.more?q:undefined;
-    navigation(); if (focus) reading.focus({ preventScroll: true });
+    navigation(); if (focus) reading.focus({ preventScroll: true });options.screen?.(q?.id);
   }
   function show(index: number) {
     if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
@@ -173,6 +182,9 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     if (q?.required && answerMissing(q,answers[q.id])) { message.textContent = q.type==='scales'?'请完成每个坐标轴后继续。':q.type === 'scale' ? '请选择分值后继续。' : q.type === 'text' ? '请填写个人信息后继续。' : '请选择答案后继续。'; return false; }
     if (q?.type === 'text' && typeof answers[q.id] === 'string' && (answers[q.id] as string).length > q.max_length!) {
       message.textContent = `最多 ${q.max_length} 个字符。`; return false;
+    }
+    if (q?.type === 'text' && typeof answers[q.id] === 'string' && q.input_match && !inputMatchRegex(q.input_match).test(answers[q.id] as string)) {
+      message.textContent = inputMatchMessage(q.input_match); return false;
     }
     return true;
   }

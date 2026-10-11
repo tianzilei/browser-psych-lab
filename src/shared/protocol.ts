@@ -1,4 +1,6 @@
 import { ContractError, id, object } from './contract.js';
+import {parseTiming,parseTimingDefaults,parseOrdering,orderTrials} from './trial-design.js';
+import {parseSampling,type Sampling} from './trial-sampling.js';
 export const LAB_SCHEMA = 'lab-events-v1';
 export const RUNNER_VERSION = 'canvas-v1';
 // UTF-16 character budgets. Keep these unchanged for existing frozen protocols.
@@ -7,16 +9,28 @@ export type Condition = { op: 'eq' | 'neq' | 'includes'; question: string; axis?
   | { op: 'and' | 'or'; args: Condition[] } | { op: 'not'; arg: Condition };
 export type AxisAnswer = Record<string, number | null>;
 export type Answer = string | string[] | number | AxisAnswer | null;
+export type InputPreset = 'digits' | 'integer' | 'decimal' | 'letters' | 'alphanumeric' | 'chinese' | 'phone_cn' | 'email';
+export type InputMatch =
+  | { kind: 'preset'; preset: InputPreset; message?: string }
+  | { kind: 'regex'; pattern: string; flags?: string; message?: string };
 export interface ScaleAxis {id:string;title:string;min:number;max:number;min_label:string;max_label:string;labels:string[]}
 export interface Question { id: string; type: 'single' | 'multi' | 'scale' | 'scales' | 'text'; title: string;
-  required: boolean; axes?: ScaleAxis[]; choices?: string[]; min?: number; max?: number; min_label?: string; max_label?: string; labels?: string[]; max_length?: number; input_purpose?: 'personal'; condition?: Condition }
+  required: boolean; axes?: ScaleAxis[]; choices?: string[]; min?: number; max?: number; min_label?: string; max_label?: string; labels?: string[]; max_length?: number; input_purpose?: 'personal'; input_match?: InputMatch; condition?: Condition }
 export interface Page { id: string; title: string; instruction: string; condition?: Condition; questions: Question[] }
-export interface Trial { root_id: string; asset_id: string; image_ms: number; isi_ms: number; correct: string | null }
-export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[] }
+export interface TimingSpec {base: number; jitter: number}
+export interface TimingDefaults {stimulus_ms?: TimingSpec; isi_ms?: TimingSpec; feedback_ms?: TimingSpec}
+export interface Ordering {mode: 'fixed' | 'shuffle' | 'category' | 'balanced'; max_run?: number}
+export interface Feedback {correct: string; incorrect: string; miss: string; neutral: string}
+export interface Rating {prompt:string;labels:string[];items?:string[];age_prompt?:string;age_min?:number;age_max?:number}
+export interface Trial { root_id: string; asset_id?: string; text?: string; category?: string; image_ms: number; isi_ms: number; correct: string | null;
+  timing?: TimingDefaults; timing_general?: (keyof TimingDefaults)[]; feedback_ms?: number }
+export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[];
+  rating?:Rating; sampling?:Sampling;
+  timing_defaults?: TimingDefaults; ordering?: Ordering; response_keys?: Record<string,string>; feedback?: Feedback }
 export interface Variant { id: string; weight: number; group_order: string[]; trial_order: Record<string, string[]> }
 export interface Protocol {
   schema: 'study-v1'; title: string; mode: 'TEST_ONLY' | 'COLLECTION'; pages: Page[]; groups: Group[];
-  consent?: {title:string;text:string};
+  consent?: {title:string;text:string}; timing_defaults?: TimingDefaults;
   ending?: {title:string;text:string};
   variants: Variant[]; layout: { aspect: number; portrait_min_width: number; landscape_min_width: number; background: string; orientation?: 'portrait' | 'landscape' };
   budget: { commit_ms: number; activate_ms: number; margin_ms: number; draw_budget: number;
@@ -54,6 +68,46 @@ function strings(v: unknown, min: number, max: number) {
   const a = list(v, max).map(x => text(x, TEXT_LIMITS.choice));
   if (a.length < min || new Set(a).size !== a.length || a.some(x => !x.trim())) throw new ContractError('INVALID_CHOICES'); return a;
 }
+const INPUT_PRESETS: Record<InputPreset, string> = {
+  digits: '[0-9]+', integer: '-?[0-9]+', decimal: '-?(?:[0-9]+(?:\\.[0-9]+)?)',
+  letters: '[A-Za-z]+', alphanumeric: '[A-Za-z0-9]+', chinese: '[\\u3400-\\u9fff]+',
+  phone_cn: '1[3-9][0-9]{9}', email: '[^\\s@]+@[^\\s@]+\\.[^\\s@]+',
+};
+const INPUT_PRESET_NAMES = new Set(Object.keys(INPUT_PRESETS));
+function inputMatch(v: unknown): InputMatch {
+  const o = object(v); fields(o, ['kind', 'preset', 'pattern', 'flags', 'message']);
+  const message = o.message === undefined ? undefined : text(o.message, 200);
+  if (o.kind === 'preset') {
+    if (typeof o.preset !== 'string' || !INPUT_PRESET_NAMES.has(o.preset)) throw new ContractError('INVALID_INPUT_MATCH');
+    if (o.pattern !== undefined || o.flags !== undefined) throw new ContractError('INVALID_INPUT_MATCH');
+    return { kind: 'preset', preset: o.preset as InputPreset, ...(message === undefined ? {} : { message }) };
+  }
+  if (o.kind !== 'regex' || typeof o.pattern !== 'string' || o.pattern.length < 1 || o.pattern.length > 160)
+    throw new ContractError('INVALID_INPUT_MATCH');
+  const flags = o.flags === undefined ? '' : o.flags;
+  if (typeof flags !== 'string' || !/^i?$/.test(flags))
+    throw new ContractError('INVALID_INPUT_MATCH');
+  // Avoid backreferences/lookarounds and nested unbounded quantifiers. They are
+  // unnecessary for questionnaire identifiers and can make a browser regex
+  // take unbounded time on a 4,000-character answer.
+  const bounded = [...o.pattern.matchAll(/\{(\d+)(?:,(\d+))?\}/g)];
+  const hasUnsafeQuantifier = /(?:^|[^\\])[+*?]/.test(o.pattern)
+    || bounded.length > 1
+    || bounded.some(m => Number(m[1]) > 4000 || (m[2] !== undefined && Number(m[2]) > 4000));
+  if (/[()|]/.test(o.pattern) || /(?:^|[^\\])\./.test(o.pattern) || /\\[1-9]|\{\d+,\}/.test(o.pattern) || hasUnsafeQuantifier)
+    throw new ContractError('UNSAFE_INPUT_MATCH');
+  try { new RegExp(`^(?:${o.pattern})$`, flags); } catch { throw new ContractError('INVALID_INPUT_MATCH'); }
+  return { kind: 'regex', pattern: o.pattern, ...(flags ? { flags } : {}), ...(message === undefined ? {} : { message }) };
+}
+export function inputMatchPattern(match: InputMatch): string {
+  return match.kind === 'preset' ? INPUT_PRESETS[match.preset] : match.pattern;
+}
+export function inputMatchRegex(match: InputMatch): RegExp {
+  return new RegExp(`^(?:${inputMatchPattern(match)})$`, match.kind === 'regex' ? (match.flags ?? '') : '');
+}
+export function inputMatchMessage(match: InputMatch): string {
+  return match.message ?? '输入格式不符合要求。';
+}
 function condition(v: unknown, prior: Map<string,Question>, depth = 0): Condition {
   if (depth > 8) throw new ContractError('CONDITION_TOO_DEEP'); const o = object(v);
   if (o.op === 'not') { fields(o, ['op', 'arg']); return { op: 'not', arg: condition(o.arg, prior, depth + 1) }; }
@@ -84,7 +138,7 @@ export function evaluate(c: Condition | undefined, answers: Record<string, Answe
 }
 export function parseProtocol(value: unknown): Protocol {
   const p = object(value);
-  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending']);
+  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending', 'timing_defaults']);
   if (p.schema !== 'study-v1' || !['TEST_ONLY', 'COLLECTION'].includes(String(p.mode))) throw new ContractError('INVALID_PROTOCOL_SCHEMA');
   const prior = new Map<string,Question>(); const ids = new Set<string>();
   const unique = (v: unknown) => { const s = id(v); if (ids.has(s)) throw new ContractError('DUPLICATE_PROTOCOL_ID'); ids.add(s); return s; };
@@ -93,10 +147,11 @@ export function parseProtocol(value: unknown): Protocol {
     const result: Page = { id: unique(page.id), title: text(page.title, TEXT_LIMITS.title), instruction: text(page.instruction, TEXT_LIMITS.instruction), questions: [] };
     if (page.condition) result.condition = condition(page.condition, prior);
     result.questions = list(page.questions, 30).map(value => {
-      const q = object(value); fields(q, ['id', 'type', 'title', 'required', 'choices', 'min', 'max', 'min_label', 'max_label', 'labels', 'axes', 'max_length', 'input_purpose', 'condition']);
+      const q = object(value); fields(q, ['id', 'type', 'title', 'required', 'choices', 'min', 'max', 'min_label', 'max_label', 'labels', 'axes', 'max_length', 'input_purpose', 'input_match', 'condition']);
       if (!['single', 'multi', 'scale', 'scales', 'text'].includes(String(q.type)) || typeof q.required !== 'boolean') throw new ContractError('INVALID_QUESTION');
       const result: Question = { id: unique(q.id), title: text(q.title, TEXT_LIMITS.question), type: q.type as Question['type'], required: q.required };
       if(q.input_purpose!==undefined){if(q.type!=='text'||q.input_purpose!=='personal')throw new ContractError('INVALID_INPUT_PURPOSE');result.input_purpose='personal';}
+      if(q.input_match!==undefined){if(q.type!=='text')throw new ContractError('INVALID_INPUT_MATCH');result.input_match=inputMatch(q.input_match);}
       if(q.type==='scale'&&q.choices!==undefined)throw new ContractError('SCALE_CHOICES_NOT_ALLOWED');
       if(q.axes!==undefined&&q.type!=='scales')throw new ContractError('INVALID_SCALE_AXES');
       if(q.type==='scales'){
@@ -136,20 +191,55 @@ export function parseProtocol(value: unknown): Protocol {
     refresh_min_hz: number(b.refresh_min_hz, 20, 240), refresh_max_hz: number(b.refresh_max_hz, 20, 240),
     quantization: 'ceil-frame', environment_id: id(b.environment_id) };
   if (budget.refresh_min_hz > budget.refresh_max_hz) throw new ContractError('INVALID_REFRESH_RANGE');
+  const general=p.timing_defaults===undefined?undefined:parseTimingDefaults(p.timing_defaults);
   const groups: Group[] = list(p.groups, 20).map(value => {
-    const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials']);
-    const choices = strings(g.choices, 2, 6); const repeats = number(g.repeats, 0, 2, true);
-    const trials: Trial[] = list(g.trials, 100).map(value => {
-      const t = object(value); fields(t, ['root_id', 'asset_id', 'image_ms', 'isi_ms', 'correct']);
-      const image_ms = number(t.image_ms, 1, 60000); const isi_ms = number(t.isi_ms, 0, 60000);
+    const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials','timing_defaults','ordering','response_keys','feedback','rating','sampling']);
+    const choices = strings(g.choices, 2, g.rating===undefined?6:11); const repeats = number(g.repeats, 0, 2, true);
+    const defaults=general||g.timing_defaults!==undefined?{...general,...(g.timing_defaults===undefined?{}:parseTimingDefaults(g.timing_defaults))}:undefined;
+    const trials: Trial[] = list(g.trials, g.rating!==undefined&&g.sampling!==undefined?200:100).map(value => {
+      const t = object(value); fields(t, ['root_id', 'asset_id', 'image_ms', 'isi_ms', 'correct','text','category','timing','feedback_ms','timing_general']);
+      const timing=t.timing===undefined?{}:parseTimingDefaults(t.timing);
+      const inherited=t.timing_general===undefined?[]:list(t.timing_general,3).map(v=>{
+        if(!['stimulus_ms','isi_ms','feedback_ms'].includes(String(v)))throw new ContractError('INVALID_TIMING_SOURCE');return v as keyof TimingDefaults;});
+      for(const [phase,field] of [['stimulus_ms','image_ms'],['isi_ms','isi_ms'],['feedback_ms','feedback_ms']] as const){
+        if(inherited.includes(phase)){if(!defaults?.[phase]||timing[phase]||t[field]!==defaults[phase]!.base)throw new ContractError('INVALID_TIMING_SOURCE');continue;}
+        if(t[field]!==undefined){if(timing[phase]){if(t[field]!==timing[phase]!.base)throw new ContractError('AMBIGUOUS_TRIAL_TIMING');continue;}
+          if(defaults?.[phase]||typeof t[field]!=='number')timing[phase]=parseTiming(t[field]);}
+        else if(defaults?.[phase]&&!timing[phase])inherited.push(phase);
+      }
+      const stimulus=timing.stimulus_ms??defaults?.stimulus_ms,interval=timing.isi_ms??defaults?.isi_ms,feedbackTime=timing.feedback_ms??defaults?.feedback_ms;
+      const image_ms = number(stimulus?.base??t.image_ms, 1, 60000); const isi_ms = number(interval?.base??t.isi_ms, 0, 60000);
+      if(stimulus&&stimulus.base-stimulus.jitter<1)throw new ContractError('INVALID_STIMULUS_DURATION');
       if (t.correct !== null && !choices.includes(String(t.correct))) throw new ContractError('INVALID_CORRECT_ANSWER');
-      if (repeats && isi_ms < budget.commit_ms + budget.activate_ms + budget.margin_ms) throw new ContractError('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
-      return { root_id: unique(t.root_id), asset_id: id(t.asset_id), image_ms, isi_ms, correct: t.correct as string | null };
+      if (repeats && isi_ms-(interval?.jitter??0) < budget.commit_ms + budget.activate_ms + budget.margin_ms) throw new ContractError('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
+      if((t.text===undefined)===(t.asset_id===undefined))throw new ContractError('ONE_STIMULUS_REQUIRED');
+      const result:Trial={ root_id: unique(t.root_id), ...(t.text!==undefined?{text:text(t.text,200)}:{asset_id:id(t.asset_id)}), image_ms, isi_ms, correct: t.correct as string | null };
+      if(result.text!==undefined&&!result.text.trim())throw new ContractError('INVALID_TEXT_STIMULUS');
+      if(t.category!==undefined)result.category=id(t.category);
+      if(Object.keys(timing).length)result.timing=timing;
+      if(inherited.length)result.timing_general=inherited;
+      if(feedbackTime||t.feedback_ms!==undefined)result.feedback_ms=number(feedbackTime?.base??t.feedback_ms,0,60000);
+      return result;
     });
-    if (!trials.length || trials.reduce((n, t) => n + (t.image_ms + t.isi_ms) * (repeats + 1), 0) > budget.max_group_ms)
+    const maxTime=(t:Trial,phase:keyof TimingDefaults,base:number)=>{const spec=t.timing?.[phase]??defaults?.[phase];return spec?spec.base+spec.jitter:base;};
+    if (!trials.length || trials.reduce((n, t) => n + (maxTime(t,'stimulus_ms',t.image_ms)+maxTime(t,'isi_ms',t.isi_ms)+maxTime(t,'feedback_ms',t.feedback_ms??0)) * (repeats + 1), 0) > budget.max_group_ms)
       throw new ContractError('GROUP_TIME_BUDGET_EXCEEDED');
-    const group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
-    if(new TextEncoder().encode(JSON.stringify(worstAuditPayload(group,budget.draw_budget))).length>120*1024)throw new ContractError('GROUP_AUDIT_SIZE_BUDGET_EXCEEDED');return group;
+    const group:Group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
+    if(g.rating!==undefined){
+      const r=object(g.rating);fields(r,['prompt','labels','items','age_prompt','age_min','age_max']);const prompt=text(r.prompt,TEXT_LIMITS.question),labels=strings(r.labels,choices.length,choices.length),items=r.items===undefined?undefined:strings(r.items,1,20);
+      const age_prompt=r.age_prompt===undefined?undefined:text(r.age_prompt,TEXT_LIMITS.question), age_min=r.age_min===undefined?0:number(r.age_min,0,120,true), age_max=r.age_max===undefined?120:number(r.age_max,0,120,true);
+      if(age_min>age_max||(age_prompt===undefined&&(r.age_min!==undefined||r.age_max!==undefined))||(age_prompt!==undefined&&age_min===age_max))throw new ContractError('INVALID_RATING_AGE');
+      if(!prompt.trim()||choices.some((c,i)=>c!==String(i+1))||repeats!==0||defaults||g.ordering!==undefined||g.response_keys!==undefined||g.feedback!==undefined||trials.some(t=>t.correct!==null||!t.asset_id||t.timing||t.feedback_ms||t.image_ms!==1)||new Set(trials.map(t=>t.asset_id)).size!==trials.length)throw new ContractError('INVALID_SELF_PACED_RATING');
+      group.rating={prompt,labels,...(items?{items}:{}),...(age_prompt?{age_prompt,age_min,age_max}:{})};
+    }
+    if(g.sampling!==undefined){if(!group.rating)throw new ContractError('SAMPLING_REQUIRES_RATING');group.sampling=parseSampling(g.sampling,trials);}
+    if(defaults)group.timing_defaults=defaults;
+    if(g.ordering!==undefined){group.ordering=parseOrdering(g.ordering);orderTrials(trials,group.ordering,[1,2,3,4]);}
+    if(g.response_keys!==undefined){const keys=object(g.response_keys);if(Object.keys(keys).length!==choices.length||Object.keys(keys).some(k=>!choices.includes(k))
+      ||new Set(Object.values(keys)).size!==choices.length||Object.values(keys).some(k=>typeof k!=='string'||! /^(Key[A-Z]|Digit[0-9]|Arrow(Left|Right|Up|Down)|Space|Enter)$/.test(k)))throw new ContractError('INVALID_RESPONSE_KEYS');
+      group.response_keys=keys as Record<string,string>;}
+    if(g.feedback!==undefined){const f=object(g.feedback);fields(f,['correct','incorrect','miss','neutral']);group.feedback={correct:text(f.correct,100),incorrect:text(f.incorrect,100),miss:text(f.miss,100),neutral:text(f.neutral,100)};}
+    if(!group.rating&&new TextEncoder().encode(JSON.stringify(worstAuditPayload(group,budget.draw_budget))).length>120*1024)throw new ContractError('GROUP_AUDIT_SIZE_BUDGET_EXCEEDED');return group;
   });
   if (!pages.length && !groups.length) throw new ContractError('EMPTY_STUDY');
   const variants: Variant[] = list(p.variants, 20).map(value => {
@@ -159,7 +249,7 @@ export function parseProtocol(value: unknown): Protocol {
       || Object.keys(trial_order).length !== groups.length) throw new ContractError('INVALID_VARIANT_ORDER');
     const result: Variant = { id: unique(v.id), weight: number(v.weight, 1, 20, true), group_order: order, trial_order: {} };
     for (const g of groups) {
-      const ids = list(trial_order[g.id], 100).map(id);
+      const ids = list(trial_order[g.id], g.rating&&g.sampling?200:100).map(id);
       if (ids.length !== g.trials.length || new Set(ids).size !== ids.length || ids.some(k => !g.trials.some(t => t.root_id === k))) throw new ContractError('INVALID_TRIAL_ORDER');
       result.trial_order[g.id] = ids;
     } return result;
@@ -170,9 +260,9 @@ export function parseProtocol(value: unknown): Protocol {
   if (typeof l.background !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(l.background)) throw new ContractError('INVALID_BACKGROUND');
   let ending:Protocol['ending'];if(p.ending!==undefined){const e=object(p.ending);fields(e,['title','text']);ending={title:text(e.title,TEXT_LIMITS.title),text:text(e.text,TEXT_LIMITS.instruction)};if(!ending.title.trim()||!ending.text.trim())throw new ContractError('INVALID_ENDING');}
   let consent:Protocol['consent'];if(p.consent!==undefined){const c=object(p.consent);fields(c,['title','text']);consent={title:text(c.title,TEXT_LIMITS.title),text:text(c.text,TEXT_LIMITS.instruction)};if(!consent.title.trim()||!consent.text.trim())throw new ContractError('INVALID_CONSENT');}
-  return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),
-    layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, 200, 2000, true),
-      landscape_min_width: number(l.landscape_min_width, 200, 2000, true), background: l.background,
+  return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),...(general?{timing_defaults:general}:{}),
+    layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, groups.length>0&&groups.every(g=>g.rating)?120:200, 2000, true),
+      landscape_min_width: number(l.landscape_min_width, groups.length>0&&groups.every(g=>g.rating)?120:200, 2000, true), background: l.background,
       ...(l.orientation!==undefined?{orientation:l.orientation as 'portrait'|'landscape'}:{}) }, budget };
 }
 export function validateQuestionnaire(p:Protocol, strict=false) {
@@ -206,7 +296,7 @@ export function pageSnapshot(page: Page, all: Record<string, Answer>, supplied: 
       if (q.type === 'single' && (typeof answer !== 'string' || !q.choices!.includes(answer))) throw new ContractError('INVALID_ANSWER');
       if (q.type === 'multi' && (!Array.isArray(answer) || new Set(answer).size !== answer.length || answer.some(a => !q.choices!.includes(a)))) throw new ContractError('INVALID_ANSWER');
       if (q.type === 'scale' && (typeof answer !== 'number' || !Number.isInteger(answer) || answer < q.min! || answer > q.max!)) throw new ContractError('INVALID_ANSWER');
-      if (q.type === 'text' && (typeof answer !== 'string' || answer.length > q.max_length!)) throw new ContractError('INVALID_ANSWER');
+      if (q.type === 'text' && (typeof answer !== 'string' || answer.length > q.max_length! || (q.input_match!==undefined && !inputMatchRegex(q.input_match).test(answer)))) throw new ContractError('INVALID_ANSWER');
     }
     result[q.id] = { state: empty ? 'UNANSWERED' : 'ANSWERED', answer }; answers[q.id] = answer;
   } return result;

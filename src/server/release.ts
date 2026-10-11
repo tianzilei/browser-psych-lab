@@ -16,7 +16,7 @@ async function retainFile(source:string,target:string,hash:string){
   catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   await mkdir(dirname(target),{recursive:true,mode:0o700});const temp=join(dirname(target),`.tmp-${randomUUID()}`);
   try{
-    await copyFile(source,temp);await chmod(temp,0o600);const copied=await openPrivate(temp);try{await copied.sync();}finally{await copied.close();}
+    await copyFile(source,temp);await chmod(temp,0o600);const copied=await openPrivate(temp);try{try{await copied.sync();}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}}finally{await copied.close();}
     if(await fileHash(temp)!==hash)throw new Error('COPIED_ARTIFACT_HASH_MISMATCH');
     try{await link(temp,target);}catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST'||await fileHash(target)!==hash)throw error;}
   }finally{await unlink(temp).catch(error=>{if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;});}

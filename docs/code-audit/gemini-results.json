@@ -1,0 +1,3110 @@
+{
+  "schema": "gemini-audit-results-v1",
+  "notice": "Raw Gemini opinions; many are rejected. Read gemini-review-notes.md and 2026-10-09.md for adjudicated findings.",
+  "conversation_url": "https://gemini.google.com/app/71c7ead686e53505",
+  "records": [
+    {
+      "batch": null,
+      "request_id": "bpl-audit-20261009-001",
+      "files": [
+        {
+          "path": "src/server/main.ts",
+          "start": 1,
+          "end": 97
+        },
+        {
+          "path": "src/server/auth.ts",
+          "start": 1,
+          "end": 25
+        },
+        {
+          "path": "src/server/private-files.ts",
+          "start": 1,
+          "end": 46
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-20261009-001",
+        "stage": "COMPLETED",
+        "result_id": "res_795118873fb2bed6fa20",
+        "content": "```\n<GenerateWidget type=\"inline_visualization\" height=\"600px\">\n<skills>chart</skills>\n\n**Idea:** 漏洞优先级分布与影响矩阵\n**Visual type:** bar\n**Data specification:**\n- **Data structure:** { priority: string, count: number }\n- **Initial values:** [\n    { \"priority\": \"P0 (严重)\", \"count\": 1 },\n    { \"priority\": \"P1 (高)\", \"count\": 2 },\n    { \"priority\": \"P2 (中)\", \"count\": 2 }\n  ]\n- **Mapping:** x=priority, y=count\n**User controls:** None — hover/click\n**Interactivity:** hover shows finding count\n**Animation:** None\n</GenerateWidget>\n```\n\n### 问题 1: Windows 环境下目录同步崩溃导致持久化写失败\n\n- **优先级**: P0\n- **位置**: `src/server/private-files.ts:8` (`syncDirectory`)\n- **触发条件**: 在 Windows 平台（用户明确包含“Windows开发”环境）下执行 `syncDirectory(path)`，例如在 `writeDurable`、`receiveUpload` 或 `publishExclusive` 中调用时。\n- **影响**: Windows 对目录调用 `fs.open(path, O_RDONLY)` 并执行 `f.sync()` / `fsync` 会直接抛出 `EPERM` 或 `EISDIR` 异常，导致本地开发环境下所有依赖目录落盘同步的文件写入、资产上传与发布逻辑直接报错崩溃。\n- **修复建议**: 检测平台环境；在 `process.platform === 'win32'` 时跳过目录 `fsync`，或对目录 `open`/`sync` 的 `EPERM`/`EISDIR` 错误做兼容降级处理：`export async function syncDirectory(path: string) {\n  if (process.platform === 'win32') return;\n  const f = await open(path, constants.O_RDONLY);\n  try { await f.sync(); } finally { await f.close(); }\n}`\n\n### 问题 2: 祖先目录权限检查在 Windows 下直接阻断服务启动\n\n- **优先级**: P1\n- **位置**: `src/server/private-files.ts:16-17` (`privateRoot`)\n- **触发条件**: Windows 环境启动服务并执行 `privateRoot(resolve(...))`。\n- **影响**: Windows 平台上 `st.uid` 为 `undefined`，`st.mode & 0o022` 判定规则与 POSIX 权限不一致。当检查至驱动器根路径或项目父级目录时，`st.uid === 0` 条件不满足，且权限位可能触发 `UNSAFE_PRIVATE_STORAGE_ANCESTOR` 抛错，导致在 Windows 开发机上无法正常启动服务。\n- **修复建议**: 针对非 POSIX 平台（如 `process.platform === 'win32'`）跳过 `uid` 和 `st.mode & 0o022` 的 POSIX 专用校验分支，仅在 Linux 等类 Unix 生产环境中强制执行。\n\n### 问题 3: 令牌桶限流器惰性清理机制导致内存长期泄漏\n\n- **优先级**: P1\n- **位置**: `src/server/auth.ts:20` (`RateLimits.take`)\n- **触发条件**: 攻击者使用海量不同 IP 或恶意 key 持续发起偶发请求，且每个 key 间隔在 5 分钟以内被触碰一次，或者新 key 持续生成使得清理逻辑每次只能清理已过期的 key。\n- **影响**: `take()` 内的 `for(const [k,v] of this.buckets)` 仅在 key 超过 300 秒未访问时清理。当并发 key 达到 `cap`（2000）且未满 5 分钟时，后续不同正常请求会持续触发 `503 RATE_LIMIT_CAPACITY` 拒绝服务；同时每次 `take` 遍历整个 Map 带来 $O(N)$ 开销，在受攻击时放大 CPU 消耗。\n- **修复建议**: 达到容量上限时，采用 LRU / FIFO 策略淘汰最旧记录，而不是直接对新合法请求抛出 503 阻断；或分离周期性定时清理任务。\n\n### 问题 4: Fastify 路由静态文件扩展名大小写与挂载边界问题\n\n- **优先级**: P2\n- **位置**: `src/server/main.ts:74-85` (`fastifyStatic` 配置)\n- **触发条件**: 生产环境部署在 Windows 文件系统开发调试生产构建，或静态请求路径包含大写/混合字符；且未显式指定 `wildcard: true`。\n- **影响**: Windows 对路径不区分大小写，`replaceAll('\\\\', '/')` 虽做了分隔符转换，但如果 Vite 输出产物包含二级路径或特定静态拓展，`assetPath.startsWith('assets/')` 可能产生命中偏差；此外，Fastify 静态插件默认配置下若被前置 Hook 或未处理异常截获，易造成缓存响应头不一致。\n- **修复建议**: 统一将 `assetPath.toLowerCase().startsWith('assets/')` 进行判断，并在路由级别固化匹配行为。\n\n### 问题 5: openPrivate 在 Windows 上可能因 O_NOFOLLOW 行为不一致抛出异常\n\n- **优先级**: P2\n- **位置**: `src/server/private-files.ts:24` (`openPrivate`)\n- **触发条件**: Windows 平台下调用 `openPrivate(path)` 读取私有文件。\n- **影响**: Node.js 底层 `uv_fs_open` 在 Windows 上对 `O_NOFOLLOW` 的支持和行为在不同版本与文件系统上可能引发异常（或无法正确识别符号链接），同时 Windows 目录的 `st.uid` 缺失会导致 `st.uid !== 0` 误判阻断。\n- **修复建议**: 对 Windows 环境的 `st.uid` 检查增加 `st.uid !== undefined` 前置判定，确保跨平台开发环境的文件操作一致性。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": null,
+      "request_id": "bpl-audit-20261009-003",
+      "files": [
+        {
+          "path": "src/server/lab-routes.ts",
+          "start": 1,
+          "end": 183
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-20261009-003",
+        "stage": "COMPLETED",
+        "result_id": "res_babafc123d1efbbf0ffb",
+        "content": "### 1. `charged` 配额记账在请求进入路由前提前抛错时发生永久泄漏\n\n- **优先级**: P0\n- **文件与行号**: `src/server/lab-routes.ts:31-34`\n- **触发条件**: 客户端发起非 `GET` 请求，前置校验通过后进入计费逻辑：`receiving++`、`receivingBytes += bytes` 并记录 `charged.set(request.id, bytes)`。紧接着在第 34 行执行 Content-Type 检查：`if(!upload&&!request.headers['content-type']?.startsWith('application/json'))throw new ContractError('JSON_REQUIRED',415);`若此时抛出 `JSON_REQUIRED` 异常（或后续任何 hook 提前抛错），Fastify 的处理流未进入完成/响应阶段，若未触发已挂载的 `onResponse`/`onRequestAbort`，或者更典型地： 在客户端提前断开连接时，`reply.raw.destroy()` 发生，但在特定生命周期报错场景下，`onResponse` 不保证每次抛出原生同步异常时都能被正常调用清理。 更直接的触发路径是：第 31 行在 `charged.set(request.id, bytes)` 写入前，如果客户端传了多个相同 `request.id`（例如客户端伪造或代理重置），或者 Fastify 生成重复请求 ID 时发生覆盖； 最致命的是：**`app.addHook('onRequestAbort', ...)` 触发时会执行 `release(request)`，随后 Fastify 关闭请求仍然会触发 `onResponse` 再次执行 `release(request)`**。 虽然 `charged.delete(r.id)` 会防止二次扣减 `receivingBytes`，但如果请求被 abort 时已经将 key 删掉，而并发请求下 `receiving` 计数器在 abort 与 error 交织时极易失步，导致 `receivingBytes` 最终死锁在上限，持续向所有正常上传抛出 `503 RECEIVE_QUEUE_FULL`。\n- **影响**: 全局写入/上传并发队列计数器永久泄露，服务器对外全部非 GET 请求持续拒绝服务（503）。\n- **修复建议**: 将资源配额计数器的增减绑定在带状态的生命周期 Guard 中，或使用 `try...finally` 与已有的单一 hook 机制，确保单个请求无论通过何种路径退出（完成、抛错、终止），配额只释放一次且必被释放。\n\n### 2. Job 轮询与并发重试时的竞争条件：覆盖更新与重复任务执行\n\n- **优先级**: P1\n- **文件与行号**: `src/server/lab-routes.ts:57-65`, `src/server/lab-routes.ts:67-75`, `src/server/lab-routes.ts:93-98`\n- **触发条件**: 客户端调用 `/api/lab/studies/:study/package`、`/upload` 或 `/jobs/:kind` 时，前端因超时进行幂等重试（发送相同的 `x-request-id` / `job_id`）。\n- **影响**:\n  1. 在 `package` 路由中（第 58 行）：无论旧任务处于何种状态，代码首先无条件执行：`await admin(request,'package.begin',{request_id:job,job_id:job,study_id:study,name});`如果旧 Job 已经在 `maintenance.run` 执行中（状态为 `RUNNING`），再次调用 `package.begin` 会尝试将其重置或在 writer 端报错；\n  2. 紧接着读取 `original = await admin(request, 'job.get', ...)`：`if(original.state==='READY') ...\nif(original.state!=='RUNNING') throw new ContractError('UPLOAD_RECOVERY_REQUIRED',409);\ntry {\n  const temp = ...;\n  return await maintenance.run('PACKAGE', ...);\n}`如果前一个相同 `job` 的后台异步任务仍在维护 Worker 中运行（`RUNNING` 状态），当前重试请求在判断 `original.state === 'RUNNING'` 通过后，**会再次调用 `maintenance.run('PACKAGE', ...)` 重复派发同一任务**。由于 `maintenance` 只有一个 Worker，重复派发同名 Job 会导致文件被二次解包覆盖或触发任务冲突，且若第一个任务刚好在第二个任务上传完 temp 文件时完成，会导致无效的文件读写和状态冲突。\n- **修复建议**: 在 `original.state === 'RUNNING'` 时，应将请求挂起等待正在运行的任务完成并返回结果，或者返回正在处理状态（如 202/轮询），严禁对已处于 `RUNNING` 状态的 Job 再次调用 `maintenance.run()`。\n\n### 3. 上传重试命中 READY 缓存时未清理临时文件泄漏磁盘\n\n- **优先级**: P1\n- **文件与行号**: `src/server/lab-routes.ts:60`, `src/server/lab-routes.ts:70`\n- **触发条件**: 客户端发起幂等重试，此时 Job 已经在上一次执行中完成，状态为 `READY`。代码执行：`if(original.state==='READY'){\n  const result=JSON.parse(original.result) as {hash:string},\n  temp=await receiveUpload(root,job,request.body as Readable);\n  const matches=await fileHash(temp.path)===result.hash;\n  await unlink(temp.path);\n  if(!matches)throw new ContractError('UPLOAD_IDEMPOTENCY_CONFLICT',409);\n  return {job_id:job,result};\n}`如果客户端上传的内容与之前不一致，`matches` 为 `false`；或者在 `fileHash(temp.path)` 计算过程中出错，代码在 `await unlink(temp.path)` 之前若抛出异常，或者在 `!matches` 时直接抛出 409。 更严重的是：**在第 70 行 `/upload` 路由中**：`try{\n  const temp=await receiveUpload(root,intent.asset_id,request.body as Readable);\n  const original=await admin(request,'job.get',{job_id:job}) as {state:string;result:string};\n  if(original.state==='READY'){\n    const result=JSON.parse(original.result) as {info:{hash:string}};\n    const matches=await fileHash(temp.path)===result.info.hash;\n    await unlink(temp.path);\n    if(!matches)throw new ContractError('UPLOAD_IDEMPOTENCY_CONFLICT',409);\n    return {job_id:job,result};\n  }`如果 `!matches` 成立抛出 `UPLOAD_IDEMPOTENCY_CONFLICT`，该异常会被外层的 `catch(error)` 捕获！ 进入 catch 块后，代码会无条件执行：`catch(error){await writer.request({operation:'lab/internal.job.finish',data:{job_id:job,state:'RECOVERY_REQUIRED',error:...}})...}`**这会将原本已经处于 `READY` 正常状态的已完成 Job 强制篡改为 `RECOVERY_REQUIRED`（损坏）！**\n- **影响**: 攻击者或因网络重传发送不同 payload 的重试请求，会直接摧毁已经成功就绪（READY）的 Asset/Package 状态，迫使其实验资产不可用且需要人工维护介入。\n- **修复建议**: 区分幂等校验冲突与上传系统异常；在进入 `catch` 标记 `RECOVERY_REQUIRED` 前，排除业务层面的 `ContractError`（如 `UPLOAD_IDEMPOTENCY_CONFLICT`）。\n\n### 4. 资源下载与流传输中 `release` 监听竞争导致 ticket 提前归还/泄漏\n\n- **优先级**: P2\n- **文件与行号**: `src/server/lab-routes.ts:133-149`\n- **触发条件**: 参与者下载大图或弱网传输中断：`const release=()=>{closed=true;connection.abort(new Error('ASSET_CONNECTION_CLOSED'));stream?.destroy();done?.();};\nreply.raw.once('finish',release);reply.raw.once('close',release);`\n- **影响**:\n  1. `reply.raw.once('finish', release)` 与 `reply.raw.once('close', release)` 均绑定了相同的 `release` 回调。在 Node.js HTTP 响应生命周期中，正常结束时会先触发 `finish`，紧接着触发底层 socket 的 `close`。虽然 `done?.()` 内部实现可能做了幂等（标待定：需确认 `preparation.transfer` 返回的 `done` 是否幂等），但在 Fastify 发送流时，若在流开始传输前鉴权或 `openPrivate` 抛出错误，进入外层 `catch`：`}catch(error){done?.();throw error;}`此时外层 catch 执行了 `done?.()`，而 Fastify 异常处理流程向客户端发送 500/409 时关闭底层响应，又会再次触发 `reply.raw` 的 `close` 事件执行 `release`，导致 `done?.()` 被二次调用，可能破坏 PreparationQueue 的内部并发槽位计数（Slot Count 变为负数或越界溢出）。\n- **修复建议**: 使用布尔标志保护 `done` 的只执行一次语义：`let cleaned = false;\nconst safeDone = () => { if (!cleaned) { cleaned = true; done?.(); } };`\n\n### 5. 管理员登出与凭证注销缺少 Session-ID/Token 撤销持久化关联\n\n- **优先级**: P2\n- **文件与行号**: `src/server/lab-routes.ts:51`\n- **触发条件**: 管理员执行退出登录 `POST /api/auth/logout`。\n- **影响**: 代码执行 `admin(request, 'admin.logout')`，并将客户端 Cookie 的 Max-Age 设为 0。但通过查看 `admin()` 封装：`const admin=(request:FastifyRequest,op:string,data:Record<string,unknown>={})=>writer.request({\n  operation:`lab/${op}`,\n  credential_hash:digest(cookie(request,'lab_admin')),\n  data:{...data,csrf:request.headers['x-csrf-token']??''}\n});`在退出请求中，仅向 `admin.logout` 传递了空对象 `{}`，且未显式指定当前需要吊销的 `token_hash`（全依赖外层传递的 `credential_hash`，标待定：需核实 `lab/admin.logout` 底层实现是否精确吊销该 hash）。更重要的是，如果客户端在反向代理后面未带 Cookie 发送 logout，或者携带了过期的 Cookie，接口无法对无 Cookie 状态进行防御性阻断。\n- **修复建议**: 显式校验 `cookie(request, 'lab_admin')` 必须存在且符合十六进制格式，否则直接返回 401，避免向 DB Writer 提交无效凭证哈希。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 1,
+      "request_id": "bpl-audit-all-20261009-001",
+      "files": [
+        {
+          "path": "deploy/production.env.example",
+          "start": 1,
+          "end": 19
+        },
+        {
+          "path": "deploy/nginx.conf",
+          "start": 1,
+          "end": 37
+        },
+        {
+          "path": "deploy/browser-psych-lab.service",
+          "start": 1,
+          "end": 29
+        },
+        {
+          "path": "deploy/browser-psych-lab-backup.timer",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "deploy/browser-psych-lab-backup.service",
+          "start": 1,
+          "end": 14
+        },
+        {
+          "path": "deploy/1c2g.conf",
+          "start": 1,
+          "end": 8
+        },
+        {
+          "path": "scripts/smoke.mjs",
+          "start": 1,
+          "end": 51
+        },
+        {
+          "path": "scripts/setup.mjs",
+          "start": 1,
+          "end": 22
+        },
+        {
+          "path": "scripts/release.mjs",
+          "start": 1,
+          "end": 23
+        },
+        {
+          "path": "scripts/references.mjs",
+          "start": 1,
+          "end": 55
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-all-20261009-001",
+        "stage": "PENDING_VERIFICATION",
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser closed the connection",
+          "request_id": "bpl-audit-all-20261009-001",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "batch": 2,
+      "request_id": null,
+      "files": [
+        {
+          "path": "scripts/profile-mixed.mjs",
+          "start": 1,
+          "end": 51
+        },
+        {
+          "path": "scripts/profile-frontend.mjs",
+          "start": 1,
+          "end": 40
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-002",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 3,
+      "request_id": null,
+      "files": [
+        {
+          "path": "scripts/profile-foundation.mjs",
+          "start": 1,
+          "end": 81
+        },
+        {
+          "path": "scripts/profile-bandwidth.mjs",
+          "start": 1,
+          "end": 85
+        },
+        {
+          "path": "scripts/preview-tls.mjs",
+          "start": 1,
+          "end": 27
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-003",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 4,
+      "request_id": null,
+      "files": [
+        {
+          "path": "scripts/preview-questionnaire.mjs",
+          "start": 1,
+          "end": 111
+        },
+        {
+          "path": "scripts/precompress.mjs",
+          "start": 1,
+          "end": 21
+        },
+        {
+          "path": "scripts/lib.mjs",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "scripts/doctor.mjs",
+          "start": 1,
+          "end": 60
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-004",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 5,
+      "request_id": null,
+      "files": [
+        {
+          "path": "scripts/dev.mjs",
+          "start": 1,
+          "end": 30
+        },
+        {
+          "path": "scripts/browser-server.mjs",
+          "start": 1,
+          "end": 17
+        },
+        {
+          "path": "scripts/backup.mjs",
+          "start": 1,
+          "end": 11
+        },
+        {
+          "path": "scripts/auth-setup.mjs",
+          "start": 1,
+          "end": 18
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-005",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 6,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 1,
+          "end": 131
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-006",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 7,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 132,
+          "end": 249
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-007",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 8,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 250,
+          "end": 324
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-008",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 9,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 325,
+          "end": 388
+        },
+        {
+          "path": "tests/browser/environment.spec.ts",
+          "start": 1,
+          "end": 46
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-009",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 10,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/browser/collection.spec.ts",
+          "start": 1,
+          "end": 113
+        },
+        {
+          "path": "src/server/collection-routes.ts",
+          "start": 1,
+          "end": 60
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-010",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 11,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/collection-store.ts",
+          "start": 1,
+          "end": 198
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-011",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 12,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/collection-store.ts",
+          "start": 199,
+          "end": 351
+        },
+        {
+          "path": "tests/runner-browser.config.ts",
+          "start": 1,
+          "end": 7
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-012",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 13,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/shared/trial-design.ts",
+          "start": 1,
+          "end": 89
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-013",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 14,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/shared/scheduler.ts",
+          "start": 1,
+          "end": 217
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-014",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 15,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/shared/run-replay.ts",
+          "start": 1,
+          "end": 108
+        },
+        {
+          "path": "src/shared/questionnaire-json.ts",
+          "start": 1,
+          "end": 58
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-015",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 16,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/shared/protocol.ts",
+          "start": 1,
+          "end": 166
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-016",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 17,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/shared/protocol.ts",
+          "start": 167,
+          "end": 264
+        },
+        {
+          "path": "src/shared/prng.ts",
+          "start": 1,
+          "end": 41
+        },
+        {
+          "path": "src/shared/lab-contract.ts",
+          "start": 1,
+          "end": 42
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-017",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 18,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/shared/contract.ts",
+          "start": 1,
+          "end": 103
+        },
+        {
+          "path": "src/server/image-package.ts",
+          "start": 1,
+          "end": 65
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-018",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 19,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/db-worker.ts",
+          "start": 1,
+          "end": 48
+        },
+        {
+          "path": "src/server/database.ts",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "src/server/lab-schema.ts",
+          "start": 1,
+          "end": 88
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-019",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 20,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 1,
+          "end": 166
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-020",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 21,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 167,
+          "end": 288
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-021",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 22,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 289,
+          "end": 435
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-022",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 23,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 436,
+          "end": 528
+        },
+        {
+          "path": "src/web/admin.html",
+          "start": 1,
+          "end": 3
+        },
+        {
+          "path": "src/web/admin.css",
+          "start": 1,
+          "end": 4
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-023",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 24,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/admin.ts",
+          "start": 1,
+          "end": 66
+        },
+        {
+          "path": "src/web/asset-download.ts",
+          "start": 1,
+          "end": 65
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-024",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 25,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/writer.ts",
+          "start": 1,
+          "end": 106
+        },
+        {
+          "path": "tests/fixtures/writer-process.mjs",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "src/server/session-admission.ts",
+          "start": 1,
+          "end": 60
+        },
+        {
+          "path": "tests/fixtures/stalled-worker.mjs",
+          "start": 1,
+          "end": 14
+        },
+        {
+          "path": "src/server/runner-encoding.ts",
+          "start": 1,
+          "end": 17
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-025",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 26,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/runner-asset-policy.ts",
+          "start": 1,
+          "end": 37
+        },
+        {
+          "path": "src/server/restore.ts",
+          "start": 1,
+          "end": 42
+        },
+        {
+          "path": "src/server/release.ts",
+          "start": 1,
+          "end": 54
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-026",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 27,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/preparation-queue.ts",
+          "start": 1,
+          "end": 68
+        },
+        {
+          "path": "src/server/maintenance.ts",
+          "start": 1,
+          "end": 43
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-027",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 28,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/maintenance-worker.ts",
+          "start": 1,
+          "end": 125
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-028",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 29,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/server/maintenance-worker.ts",
+          "start": 126,
+          "end": 169
+        },
+        {
+          "path": "src/web/ending-page.ts",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "src/web/dom.ts",
+          "start": 1,
+          "end": 26
+        },
+        {
+          "path": "src/web/diagnostics.ts",
+          "start": 1,
+          "end": 7
+        },
+        {
+          "path": "src/web/diagnostics.html",
+          "start": 1,
+          "end": 30
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-029",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 30,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/admin-auth.test.mjs",
+          "start": 1,
+          "end": 62
+        },
+        {
+          "path": "src/web/consent-page.ts",
+          "start": 1,
+          "end": 27
+        },
+        {
+          "path": "src/web/consent-gate.ts",
+          "start": 1,
+          "end": 26
+        },
+        {
+          "path": "src/web/local-store.ts",
+          "start": 1,
+          "end": 99
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-030",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 31,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/ledger.ts",
+          "start": 1,
+          "end": 53
+        },
+        {
+          "path": "src/web/index.html",
+          "start": 1,
+          "end": 3
+        },
+        {
+          "path": "src/web/environment.ts",
+          "start": 1,
+          "end": 35
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-031",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 32,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/orientation-gate.ts",
+          "start": 1,
+          "end": 40
+        },
+        {
+          "path": "src/web/main.ts",
+          "start": 1,
+          "end": 59
+        },
+        {
+          "path": "src/web/p0.html",
+          "start": 1,
+          "end": 20
+        },
+        {
+          "path": "tests/helpers/lab-fixture.mjs",
+          "start": 1,
+          "end": 27
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-032",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 33,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/asset-compatibility.test.mjs",
+          "start": 1,
+          "end": 76
+        },
+        {
+          "path": "tests/helpers/run-trace.mjs",
+          "start": 1,
+          "end": 21
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-033",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 34,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/collection.test.mjs",
+          "start": 1,
+          "end": 135
+        },
+        {
+          "path": "tests/unit/consent.test.mjs",
+          "start": 1,
+          "end": 35
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-034",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 35,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/runner-browser/runner.spec.ts",
+          "start": 1,
+          "end": 97
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-035",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 36,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/lab.test.mjs",
+          "start": 1,
+          "end": 80
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-036",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 37,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/maintenance.test.mjs",
+          "start": 1,
+          "end": 45
+        },
+        {
+          "path": "tests/unit/multi-scale.test.mjs",
+          "start": 1,
+          "end": 38
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-037",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 38,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/p0.ts",
+          "start": 1,
+          "end": 107
+        },
+        {
+          "path": "tests/unit/writer.test.mjs",
+          "start": 1,
+          "end": 54
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-038",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 39,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/trial-design.test.mjs",
+          "start": 1,
+          "end": 138
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-039",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 40,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/session-admission.test.mjs",
+          "start": 1,
+          "end": 61
+        },
+        {
+          "path": "tests/unit/scheduler.test.mjs",
+          "start": 1,
+          "end": 92
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-040",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 41,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/runner-release.test.mjs",
+          "start": 1,
+          "end": 77
+        },
+        {
+          "path": "tests/unit/run-replay.test.mjs",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "tests/unit/questionnaire-json.test.mjs",
+          "start": 1,
+          "end": 38
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-041",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 42,
+      "request_id": null,
+      "files": [
+        {
+          "path": "tests/unit/process-crash.test.mjs",
+          "start": 1,
+          "end": 48
+        },
+        {
+          "path": "tests/unit/preparation.test.mjs",
+          "start": 1,
+          "end": 66
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-042",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 43,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/run.ts",
+          "start": 1,
+          "end": 113
+        },
+        {
+          "path": "src/web/run.html",
+          "start": 1,
+          "end": 2
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-043",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 44,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/prepare.ts",
+          "start": 1,
+          "end": 47
+        },
+        {
+          "path": "src/web/preparation-gate.ts",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "src/web/participate.html",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "path": "src/web/participant.ts",
+          "start": 1,
+          "end": 37
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-044",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 45,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/participant.css",
+          "start": 1,
+          "end": 93
+        },
+        {
+          "path": "src/web/participant-theme.ts",
+          "start": 1,
+          "end": 19
+        },
+        {
+          "path": "src/web/participant-api.ts",
+          "start": 1,
+          "end": 33
+        },
+        {
+          "path": "src/web/simulate.html",
+          "start": 1,
+          "end": 2
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-045",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 46,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/session-gate.ts",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "src/web/scale-input.ts",
+          "start": 1,
+          "end": 46
+        },
+        {
+          "path": "src/web/runner.css",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "src/web/runner-input.ts",
+          "start": 1,
+          "end": 40
+        },
+        {
+          "path": "src/web/style.css",
+          "start": 1,
+          "end": 42
+        },
+        {
+          "path": "src/web/stimulus.ts",
+          "start": 1,
+          "end": 14
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-046",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 47,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/simulate.ts",
+          "start": 1,
+          "end": 31
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-047",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 48,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/survey-page.ts",
+          "start": 1,
+          "end": 222
+        },
+        {
+          "path": "src/web/survey-demo.ts",
+          "start": 1,
+          "end": 17
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-048",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 49,
+      "request_id": null,
+      "files": [
+        {
+          "path": "src/web/text-pager.ts",
+          "start": 1,
+          "end": 58
+        },
+        {
+          "path": "src/web/wait.ts",
+          "start": 1,
+          "end": 10
+        },
+        {
+          "path": "src/web/viewport.ts",
+          "start": 1,
+          "end": 30
+        },
+        {
+          "path": ".env.example",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "path": "package.json",
+          "start": 1,
+          "end": 57
+        },
+        {
+          "path": "playwright.config.ts",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "tsconfig.base.json",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "path": "tsconfig.server.json",
+          "start": 1,
+          "end": 13
+        },
+        {
+          "path": "tsconfig.web.json",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "path": "vite.config.ts",
+          "start": 1,
+          "end": 33
+        }
+      ],
+      "result": {
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser is not connected",
+          "request_id": "bpl-audit-all-20261009-049",
+          "retryable": false,
+          "remediation": {
+            "reason": "browser_running",
+            "browser": "Google Chrome",
+            "message": "Google Chrome is already running but no Gemini tab is bound; open https://gemini.google.com/app in it"
+          }
+        }
+      }
+    },
+    {
+      "batch": 2,
+      "request_id": "bpl-audit-resume-20261009-002",
+      "files": [
+        {
+          "path": "scripts/profile-mixed.mjs",
+          "start": 1,
+          "end": 51
+        },
+        {
+          "path": "scripts/profile-frontend.mjs",
+          "start": 1,
+          "end": 40
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-resume-20261009-002",
+        "stage": "COMPLETED",
+        "result_id": "res_f5f3411c45f08bd58963",
+        "content": "未发现可确认缺陷。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 3,
+      "request_id": "bpl-audit-resume-20261009-003",
+      "files": [
+        {
+          "path": "scripts/profile-foundation.mjs",
+          "start": 1,
+          "end": 81
+        },
+        {
+          "path": "scripts/profile-bandwidth.mjs",
+          "start": 1,
+          "end": 85
+        },
+        {
+          "path": "scripts/preview-tls.mjs",
+          "start": 1,
+          "end": 27
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-resume-20261009-003",
+        "stage": "PENDING_VERIFICATION",
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser closed the connection",
+          "request_id": "bpl-audit-resume-20261009-003",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "batch": 4,
+      "request_id": "bpl-audit-final-20261009-004",
+      "files": [
+        {
+          "path": "scripts/preview-questionnaire.mjs",
+          "start": 1,
+          "end": 111
+        },
+        {
+          "path": "scripts/precompress.mjs",
+          "start": 1,
+          "end": 21
+        },
+        {
+          "path": "scripts/lib.mjs",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "scripts/doctor.mjs",
+          "start": 1,
+          "end": 60
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-final-20261009-004",
+        "stage": "PENDING_VERIFICATION",
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser closed the connection",
+          "request_id": "bpl-audit-final-20261009-004",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "batch": 5,
+      "request_id": "bpl-audit-complete-20261009-005",
+      "files": [
+        {
+          "path": "scripts/dev.mjs",
+          "start": 1,
+          "end": 30
+        },
+        {
+          "path": "scripts/browser-server.mjs",
+          "start": 1,
+          "end": 17
+        },
+        {
+          "path": "scripts/backup.mjs",
+          "start": 1,
+          "end": 11
+        },
+        {
+          "path": "scripts/auth-setup.mjs",
+          "start": 1,
+          "end": 18
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-005",
+        "stage": "COMPLETED",
+        "result_id": "res_2c34d7a09ab1c2f1b704",
+        "content": "### 1. `scripts/dev.mjs:20`：以进程组信号终止子进程时导致父进程同组自杀\n\n- **文件/行号**：`scripts/dev.mjs:20`\n- **触发条件**：在 Linux/macOS 环境下按 Ctrl+C，或某个子进程异常退出触发 `stop()`。\n- **影响**：`spawn` 传入了 `detached: true`，但未为子进程重设会话或新进程组 leader 时，子进程的 `child.pid` 并不必然等同于独立的 PGID。若直接调用 `process.kill(-child.pid, 'SIGTERM')` 且子进程仍与主进程同属一个进程组，负数 PID 会向该进程组发送信号，导致主进程自身被 `SIGTERM` 立即杀死，未能平稳完成剩余清理逻辑。\n\n### 2. `scripts/browser-server.mjs:14-16`：异步导入失败触发同步与异步清理竞态及重复清理\n\n- **文件/行号**：`scripts/browser-server.mjs:14-16`\n- **触发条件**：第 15 行 `await import('../dist/server/main.js')` 抛出异常（例如端口被占用、文件缺失）。\n- **影响**：`catch` 块立即异步执行 `await rm(directory)` 并抛出错误；进程随后以非零状态触发 `exit` 事件，行 14 注册的 `process.once('exit')` 又同步调用 `rmSync(directory)`。同时对已删除的临时目录进行二次删除与并发清理，在部分文件系统或平台上会触发无保护的二次系统调用异常。\n\n### 3. `scripts/backup.mjs:10`：finally 块登出请求缺少错误捕获导致覆盖核心错误栈\n\n- **文件/行号**：`scripts/backup.mjs:9-10`\n- **触发条件**：第 9 行备份请求因服务器崩溃/重启或超时抛错，随后进入 `finally`。\n- **影响**：`finally` 块中向同一服务器发送 `/api/auth/logout` 缺少 `try...catch`。在服务器不可用或超时的相同原因下，登出 `fetch` 同样会失败并抛出异常，直接覆盖第 9 行核心备份失败的原始错误原因与调用栈。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 6,
+      "request_id": "bpl-audit-complete-20261009-006",
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 1,
+          "end": 388
+        }
+      ],
+      "result": {
+        "result_id": "res_7f0e340ae9426626f64d",
+        "kind": "message",
+        "content": "### 1. `tests/browser/lab.spec.ts:18`：UUID 校验格式与真实 session_id 长度不匹配导致 teardown 泄露\n\n- **路径/行号**：`tests/browser/lab.spec.ts:18`\n- **触发条件**：测试运行结束触发 `afterEach` -> `finishSessions(context)`。\n- **影响**：正则 `/^lab_[a-f0-9-]{36}$/` 仅匹配形如标准 UUID（36 字符）的 cookie 名。但前序批次代码（`src/shared/contract.ts:id` / `session_id` 派生规则）中部分会话 ID 使用 64 位十六进制哈希或不带短横线的 ID。当 cookie 名不为 36 位连字符格式时，条件静默跳过，导致后置 teardown 无法终止会话，未释放的并发 session 持续占用 `SESSION_CONCURRENCY` 槽位，影响后续测试。\n\n### 2. `tests/browser/lab.spec.ts:15`：多 context 复用登录态时丢失 Cookie Domain/Path 配置\n\n- **路径/行号**：`tests/browser/lab.spec.ts:12,15`\n- **触发条件**：第二个测试用例调用 `signIn(context)` 命中缓存时执行 `await context.addCookies(cached.cookies)`。\n- **影响**：第 15 行提取 cookie 时直接从 `context.cookies()` 中 filter 得到原始对象，但未显式指定注入目标 URL/Domain。在 Playwright 中跨 context 添加 cookies 若缺失 `url` 或 `domain` 规范化字段，可能导致后续对包含端口的 `origin`（`[http://127.0.0.1:3107](http://127.0.0.1:3107)`）发送请求时未携带 `lab_admin` cookie，从而产生偶发 401 失败。\n\n### 3. `tests/browser/lab.spec.ts:114`：IME 合成未完成时触发 submit 绕过本地事件原子递增断言（待确认）\n\n- **路径/行号**：`tests/browser/lab.spec.ts:116-118`\n- **触发条件**：在注入 `compositionstart` 与未完成的 `isComposing` 输入事件时直接调用 `form.requestSubmit()`。\n- **影响**：第 117 行触发 submit 之后紧接着发送 `compositionend`，但在未完成组合输入态被提交拦截时，如果浏览器实现未清空临时组合输入，第 118 行的 `expect.poll` 判定本地事件数 `raw` 是否为 5 存在微任务调度时序竞争，在较慢环境中可能超时挂起。",
+        "next_offset": 1298,
+        "done": true,
+        "total_length": 1298,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": false
+      }
+    },
+    {
+      "batch": 7,
+      "request_id": "bpl-audit-complete-20261009-007",
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 1,
+          "end": 388
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-007",
+        "stage": "COMPLETED",
+        "result_id": "res_a680afaeafafc024ed50",
+        "content": "### 1. `tests/browser/lab.spec.ts:225`：`route.fetch()` 后调用 `route.abort()` 触发 Playwright API 协议冲突\n\n- **路径/行号**：`tests/browser/lab.spec.ts:225`\n- **触发条件**：运行第 225 行 `await page.route('**/api/lab/jobs/export', async route => { exportPosts++; await route.fetch(); await route.abort(); });`。\n- **影响**：Playwright 中 `route.fetch()` 会实际向下游发送网络请求并返回 `APIResponse`，但它不会自动完成路由处理。紧接着对同一 `route` 调用 `route.abort()` 会引发 CDP/Playwright 报错 `Error: Route is already handled` 或导致未处理的异步 Promise rejection，使得测试用例在拦截阶段直接异常中断。\n- **修复**：若需模拟网络中断或异常，应直接调用 `await route.abort();`，或者在捕获 `route.fetch()` 异常后中止，而非在已完成 `fetch` 后对同一请求句柄再次调用 `abort()`。\n\n### 2. `tests/browser/lab.spec.ts:217,228`：`waitForEvent('download')` 与触发点击存在时序竞争风险\n\n- **路径/行号**：`tests/browser/lab.spec.ts:217, 222, 228`\n- **触发条件**：在机器负载较高或 CI 环境执行时，`const firstDownload = page.waitForEvent('download'); await card.getByRole('button', ...).click();`。\n- **影响**：若服务端响应较快或浏览器先派发点击事件并立刻触发下载导航，若 `waitForEvent` 注册与按钮物理点击未通过 `Promise.all` 正确包装绑定（官方推荐模式：`Promise.all([page.waitForEvent('download'), button.click()])`），可能在特定时序下错过早期触发的下载事件，导致 `waitForEvent` 永久超时挂起。\n\n### 3. `tests/browser/lab.spec.ts:201`：`compileQuestionnaire` 结果浅拷贝后删除属性未清理嵌套 layout 对象\n\n- **路径/行号**：`tests/browser/lab.spec.ts:201`\n- **触发条件**：`Object.assign(p, compileQuestionnaire(definition)); delete p.layout.orientation;`。\n- **影响**：`Object.assign(p, ...)` 为浅拷贝，`p.layout` 直接引用了 `compileQuestionnaire` 生成的内部 `layout` 对象。直接 `delete p.layout.orientation` 虽然移除了属性，但若 `sampleProtocol` 初始化时 `layout` 存在默认的只读定义或类型约束，修改同一对象引用可能在并发或后续其他用例重用时产生隐蔽的属性污染（待确认：取决于 `setup` 中 `sampleProtocol` 的隔离性）。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 8,
+      "request_id": "bpl-audit-complete-20261009-008",
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 1,
+          "end": 388
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-008",
+        "stage": "COMPLETED",
+        "result_id": "res_d1e93e4f1f207b2e3568",
+        "content": "### 1. `tests/browser/lab.spec.ts:286-287`：文件选择器因异步校验竞争导致上传按钮状态断言偶发失败\n\n- **路径/行号**：`tests/browser/lab.spec.ts:286-287`\n- **触发条件**：`setInputFiles` 同时或相继触发问卷 JSON 和图片 ZIP 的 `change` 事件。\n- **影响**：前端 `json.input.onchange` 在第 4 批次/前面批次实现中是异步读取文件（`await file.text()`）并执行编译与 Schema 校验，在未校验完成前 `upload.disabled = true`。测试代码在行 286 设置完两个输入后，紧接着在行 287 执行 `await expect(page.getByRole('button', {name: '上传并生成版本'})).toBeEnabled()`，未显式等待 `语法与内容校验通过` 状态就绪，若事件循环微任务延迟或文件解析较慢，断言会因按钮尚处于 `disabled` 状态而超时抛错。\n- **修复**：在点击上传前增加对前置校验状态的显式等待，例如 `await expect(page.getByText('语法与内容校验通过', {exact: false})).toBeVisible()`。\n\n### 2. `tests/browser/lab.spec.ts:313`：`page.route` 拦截中读取 DOM 导致网络请求处理管线发生死锁/竞争\n\n- **路径/行号**：`tests/browser/lab.spec.ts:313`\n- **触发条件**：在 `page.route('**/api/**', async route => { ... })` 内部调用了 `await page.locator('#status').innerText()`。\n- **影响**：Playwright 的 `route` 拦截器运行在主测试执行流中，在此回调内部执行异步 DOM 查询（`page.locator(...).innerText()`）会触发额外的 CDP 评估调用。若此时待拦截的 `/api/` 请求刚好阻塞了页面的某个渲染事件或 DOM 正在发生突变，该 CDP 评估可能被挂起，进而导致整个 `route.continue()` 无法执行，造成请求超时与测试流死锁。\n- **修复**：不在 `page.route` 拦截器内部做异步页面 DOM 状态读取；改为通过上下文标志位或页面事件监听来同步记录请求路径。\n\n### 3. `tests/browser/lab.spec.ts:271`：竖屏到横屏尺寸突变未等待方向门禁生效即执行文本输入\n\n- **路径/行号**：`tests/browser/lab.spec.ts:271`\n- **触发条件**：`await page.setViewportSize({width: 390, height: 260})`（宽度大于高度，触发横屏判定）。\n- **影响**：测试在行 271 将视口设为 `390x260`（横向比），本意是模拟输入法弹起缩小视口（高度变小但保留竖屏判定），但若浏览器重新计算 `currentOrientation` 时由于未激活输入框焦点（`document.activeElement` 不是输入框），可能被直接识别为真实横屏，从而重新触发 `#orientation-gate` 遮罩出现。后续紧跟的 `await fit(page)` 将因为元素被遮挡或尺寸突变而断言失败（待确认：需核实 `fit(page)` 时输入框是否依然保持聚焦）。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 9,
+      "request_id": "bpl-audit-complete-20261009-009",
+      "files": [
+        {
+          "path": "tests/browser/lab.spec.ts",
+          "start": 1,
+          "end": 388
+        },
+        {
+          "path": "tests/browser/environment.spec.ts",
+          "start": 1,
+          "end": 46
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-009",
+        "stage": "COMPLETED",
+        "result_id": "res_f4bce26a79a70cf64dd0",
+        "content": "### 1. `tests/browser/lab.spec.ts:331`：`page.route` 未能处理重试与并发下载导致 Promise 解析器丢失/挂起\n\n- **路径/行号**：`tests/browser/lab.spec.ts:330-332`\n- **触发条件**：浏览器端由于网络延迟、ServiceWorker 拦截或客户端自身逻辑对图片资产发起第二次请求/预检请求。\n- **影响**：`let requested!: () => void; const downloading = new Promise<void>(r => requested = r);` 仅支持单次触发。若前置流程触发了两次请求，第 331 行的 `requested()` 再次执行虽无害，但在行 331 内硬编码了 `await new Promise(r => setTimeout(r, 22000))`。当测试生命周期结束或测试超时（默认/自定义 60s）时，该 22 秒定时器仍在持有底层连接，若在并发上下文中触发上下文销毁，容易导致 CDP 连接被强行截断抛出未捕获错误。\n\n### 2. `tests/browser/lab.spec.ts:344`：对 `context.request.get` 响应断言 `content-encoding` 存在客户端自动解压误报风险\n\n- **路径/行号**：`tests/browser/lab.spec.ts:344`\n- **触发条件**：执行 `const plain = await context.request.get(..., { headers: { 'Accept-Encoding': 'br;q=0,gzip;q=0,identity;q=1' } });`。\n- **影响**：Playwright 的 APIRequestContext 基于底层 HTTP 客户端实现，在接收到包含响应头时可能自动解压，或者服务端实际回退。更严重的是，测试在此处直接断言 `expect(plain.headers()['content-encoding']).toBeUndefined()`，但若上游代理/Node.js 实现显式设置了 `content-encoding: identity`（规范允许），该断言将直接失败。\n\n### 3. `tests/browser/lab.spec.ts:351,356`：未捕获的 `unblock` Promise 悬挂与 abort 竞争\n\n- **路径/行号**：`tests/browser/lab.spec.ts:349-356`\n- **触发条件**：在 `page.route` 拦截中执行 `await blocked; await route.abort().catch(() => {});`，若行 354 触发了页面取消导致网络请求先行中断。\n- **影响**：在行 354 点击“取消准备”后调用了 `unblock()`，但如果客户端在调用取消时已经主动 `abort` 了底层的 fetch 连接，紧接着行 351 执行 `route.abort()` 时，Playwright 的 route 句柄可能已失效。尽管加了 `.catch(() => {})`，但若在第 353 行抛出异常进入 `finally`，`unblock()` 虽被调用，若前置 `await incoming` 尚未 resolve（比如准备请求还未到达网络层），测试将直接在 `await incoming` 处永久挂起直到整体超时。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 10,
+      "request_id": "bpl-audit-complete-20261009-010",
+      "files": [
+        {
+          "path": "tests/browser/collection.spec.ts",
+          "start": 1,
+          "end": 113
+        },
+        {
+          "path": "src/server/collection-routes.ts",
+          "start": 1,
+          "end": 60
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-010",
+        "stage": "COMPLETED",
+        "result_id": "res_fd4518342f2ebd6e72d8",
+        "content": "### 1. `tests/browser/collection.spec.ts:48-51,71-75`：`route.fetch()` 后紧随 `route.abort()` 触发 Playwright 路由状态冲突\n\n- **路径/行号**：`tests/browser/collection.spec.ts:48-50` 与 `tests/browser/collection.spec.ts:71-74`\n- **触发条件**：测试执行模拟丢包逻辑：先调用 `await route.fetch()` 成功拉取上游真实响应体，紧接着在第一轮（`requests === 1` 或 `attempts === 1`）执行 `await route.abort()`。\n- **影响**：Playwright 中一旦通过 `route.fetch()` 消费了底层网络上下文，对同一个 route 实例直接调用 `route.abort()` 会违反 CDP 路由状态机逻辑，触发 `Error: Route is already handled` 异常，导致模拟客户端丢 ACK 测试用例在部分 Chromium/Playwright 版本下直接挂掉。\n- **修复**：对需要模拟丢包中断的请求，在 `fetch()` 完成后如需通知客户端连接中断，应在捕获处理后使用 `route.abort()`，或直接在请求阶段拦截中断而不发起上游双重处理；若要保留服务端状态仅丢弃响应，应使用自定义响应重置或低层网络断开。\n\n### 2. `src/server/collection-routes.ts:31-36`：未设置 Content-Length 时提前计费与路由独立 bodyLimit 冲突\n\n- **路径/行号**：`src/server/collection-routes.ts:30-36` 与 `src/server/collection-routes.ts:38`\n- **触发条件**：客户端向 `/api/p0/sessions` 发起 POST 请求且未携带 `Content-Length` 头（如使用 chunked transfer encoding）。\n- **影响**：第 30 行由于没有 `content-length`，将 `length` 默认赋值为 `LIMITS.request_bytes`（通常为 64KB~1MB），导致第 33 行按全量上限计算保留额 `charge = length * 2 + 1024` 并占用并发缓冲。但 `/api/p0/sessions` 在第 38 行配置了局部 `bodyLimit: 1024`。若 chunked 数据体在 1024 字节到 `LIMITS.request_bytes` 之间，Fastify 会在解析 body 时抛出 `FST_ERR_CTP_BODY_TOO_LARGE` (413)，虽然在 `onResponse` 会触发 `release`，但在高频 chunked 建连下会导致全局 `receivingBytes` 被不必要地过度扣减，提前触发 `RECEIVE_QUEUE_FULL` (503)。\n\n### 3. `src/server/collection-routes.ts:43-44`：Cookie 路径精确绑定与跨子路径请求鉴权（待确认）\n\n- **路径/行号**：`src/server/collection-routes.ts:43`\n- **触发条件**：客户端访问 `/api/p0/sessions/:session` 根路径本身（即第 54 行的 `view` 操作）。\n- **影响**：第 43 行设置 `Path=/api/p0/sessions/${sid}`，但没有末尾斜杠。若浏览器根据 RFC 6265 规则处理 Path 匹配，`/api/p0/sessions/${sid}` 会命中，但部分旧代理或严格路径匹配实现对无末尾斜杠的精确子树匹配可能导致对某些根路径操作请求未携带该 cookie，产生偶发 401。需核实客户端所有调用路径是否均严格为 `/api/p0/sessions/:session/*`。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 11,
+      "request_id": "bpl-audit-complete-20261009-011",
+      "files": [
+        {
+          "path": "src/server/collection-store.ts",
+          "start": 1,
+          "end": 351
+        }
+      ],
+      "result": {
+        "result_id": "res_839613aba6c2f0a8efa8",
+        "kind": "message",
+        "content": "### 1. `src/server/collection-store.ts:98`：`p0_diagnostics` 插入语句占位符与参数个数不匹配导致运行时 SQL 报错\n\n- **路径/行号**：`src/server/collection-store.ts:98`\n- **触发条件**：调用内部私有方法 `this.diagnostic(session, scope, code, detail)` 记录审计诊断日志时。\n- **影响**：SQL 语句为 `INSERT INTO p0_diagnostics VALUES (?,?,?,?,?,?)`（共 6 个占位符），但传入参数仅有 5 个：`randomUUID(), session, scope, code, JSON.stringify(detail), this.now()`（注：表定义 `p0_diagnostics` 共有 6 列：`diagnostic_id, session_id, scope, code, detail, created_at`）。由于 `VALUES` 里写了 6 个 `?` 但传参恰好只有 6 个表达式，表面看似对应，但注意第 98 行：`this.run('INSERT INTO p0_diagnostics VALUES (?,?,?,?,?,?)', randomUUID(), session, scope, code, JSON.stringify(detail), this.now());`实际上是 6 个参数匹配 6 列。但核对上游与下游调用：若 `scope` 为 `null`，better-sqlite3 处理正常；但如果在任何调用点未在单一事务保护下运行，当写入抛错时会导致事务中断（此处实际参数数量一致，待确认该行是否存在其他调用依赖）。\n\n### 2. `src/server/collection-store.ts:108`：幂等冲突时未将错误持久化导致并发重试状态穿透\n\n- **路径/行号**：`src/server/collection-store.ts:105-110`\n- **触发条件**：客户端使用相同 `request_id` 但不同的请求体 `data` 并发发起请求，命中 `prior.hash !== requestHash`。\n- **影响**：代码执行了 `INSERT OR IGNORE INTO p0_request_conflicts ...` 并返回 `new CommittedRejection(new ContractError('IDEMPOTENCY_CONFLICT', 409))`，但**未更新** `p0_requests` 中该请求的 `response` 字段（保持为 `NULL`）。当该冲突请求结束且后续带有合法哈希的重试到来时，若原初请求仍在执行或处于未完成态，后续请求会反复被当成未决请求或无法获得稳定的最终响应回执。\n\n### 3. `src/server/collection-store.ts:167`：非当前活跃 permit 的事件被误判为 INVALID_EXECUTION_POSITION\n\n- **路径/行号**：`src/server/collection-store.ts:166-168`\n- **触发条件**：进行多 trial/permit 切换或重放补交已关闭 permit 的事件时，代码通过 `this.view(session.session_id).permit?.permit_id` 比对 `e.payload.permit_id`。\n- **影响**：`this.view(...)` 仅查询 `ORDER BY rowid DESC LIMIT 1` 的最后一条 permit。如果受试者在异步网络重传中提交上一个 permit 的合法尾部事件，但服务端已经颁发了下一个新的 permit，此时 `this.view().permit?.permit_id` 已变为新 permit，导致旧 permit 的完全合法事件在第 167 行被错误判定为 `INVALID_EXECUTION_POSITION` 并被永久打入 `QUARANTINED` 隔离区，破坏了乱序/重传数据的幂等接管。",
+        "next_offset": 1825,
+        "done": true,
+        "total_length": 1825,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 12,
+      "request_id": "bpl-audit-complete-20261009-012",
+      "files": [
+        {
+          "path": "src/server/collection-store.ts",
+          "start": 1,
+          "end": 351
+        },
+        {
+          "path": "tests/runner-browser.config.ts",
+          "start": 1,
+          "end": 7
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-012",
+        "stage": "COMPLETED",
+        "result_id": "res_565140bec302f733a289",
+        "content": "### 1. `src/server/collection-store.ts:293`：封印非首屏 Scope 时强制要求路径等于 `PROTOCOL.page_id` 导致实验组无法被 Seal\n\n- **路径/行号**：`src/server/collection-store.ts:293`\n- **触发条件**：受试者完成带有刺激呈现的实验组（Group），提交该组的 manifest 进行 `seal` 操作（此时 `manifest.scope` 为形如 `${PROTOCOL.group_id}-${randomUUID()}` 的动态 scope，`manifest.path` 通常为 `[page_id, group_id]` 或仅包含该组路径）。\n- **影响**：第 293 行无条件执行校验：`if (manifest.path.join('/') !== PROTOCOL.page_id) throw new ContractError('INVALID_PATH');`对于第 294 行支持的非首屏事件组（`required = manifest.scope === PROTOCOL.page_id ? 1 : 4`），若其 `manifest.path` 包含 group 标识或多级路径，将被直接抛出 `400 INVALID_PATH` 拦截，导致除了问卷首页外，任何真正的实验试次组都无法完成封印（Seal），进而无法推进到 `finalize`。\n\n### 2. `src/server/collection-store.ts:318,321`：`finalize` 失败重置状态时违反不可逆状态转移触发器抛出 SQL 异常\n\n- **路径/行号**：`src/server/collection-store.ts:318, 321` 与行 77-79\n- **触发条件**：会话调用 `finalize`，先将状态更新为 `FINALIZING`（第 318 行），随后在第 319-320 行检查发现前置条件不满足（例如缺少必要 Seal、存在未决诊断日志等），执行第 321 行的回滚代码：`this.run(\"UPDATE p0_sessions SET state='ACTIVE' WHERE session_id=?\", sid);`\n- **影响**：第 77-79 行定义的 SQLite 触发器为：`CREATE TRIGGER IF NOT EXISTS p0_terminal BEFORE UPDATE OF state ON p0_sessions\n WHEN OLD.state IN ('COMPLETED','TERMINATED') AND NEW.state<>OLD.state\n BEGIN SELECT RAISE(ABORT,'irreversible session'); END;`同时若底层存在限制（或后续状态扩展中将 `FINALIZING` 视同终态），更直接的问题是：第 318 行先无条件将数据库行变更为 `FINALIZING`，若在此处因断电/进程重启崩溃，该 session 状态永久卡在 `FINALIZING`；且在返回 `{ status: 'WAITING' }` 这种非终态响应时提前更改了会话的持久化状态，使得后续针对该 session 的其他只读或并发事务观测到虚假的 `FINALIZING` 中间态。\n\n### 3. `src/server/collection-store.ts:208-214`：哈希冲突诊断调用丢失必填参数导致 SQL 执行失败\n\n- **路径/行号**：`src/server/collection-store.ts:215-217` 与第 98 行 `this.diagnostic(...)`\n- **触发条件**：受试者提交重复的 `event_id` 但内容哈希不一致（`existing` 存在，触发 `EVENT_ID_HASH_CONFLICT`），或单个事件被判定为 `QUARANTINED`。\n- **影响**：第 216 行执行：`this.diagnostic(session.session_id, existing?.scope ?? e.scope, reason, ref);`结合前一批次第 98 行定义的 `this.diagnostic`：`this.run('INSERT INTO p0_diagnostics VALUES (?,?,?,?,?,?)', randomUUID(), session, scope, code, JSON.stringify(detail), this.now());`此处传入的参数为 `(session.session_id, scope, reason, ref)` 共 4 个入参。而在 `this.diagnostic` 的声明中，第 4 个形参是 `code: string`，第 5 个形参是 `detail: unknown`。调用方仅传了 4 个实参，导致 `detail` 为 `undefined`，序列化为字符串 `\"undefined\"`（非合法 JSON 串）写入 `detail TEXT NOT NULL` 列；且在第 320 行 `SELECT 1 FROM p0_diagnostics WHERE session_id=?` 查询时，这条异常记录将导致该 session 永久无法 `finalize`。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 13,
+      "request_id": "bpl-audit-complete-20261009-013",
+      "files": [
+        {
+          "path": "src/shared/trial-design.ts",
+          "start": 1,
+          "end": 89
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-013",
+        "stage": "COMPLETED",
+        "result_id": "res_ab4bebd8e58460bca1a7",
+        "content": "### 1. `realizeTrials` 未设置默认值导致缺失时长的试次输出 `NaN`\n\n- **路径/行号**：`src/shared/trial-design.ts:71-85`\n- **触发条件**：试次未显式配置 `timing[phase]`，且所在 `group.timing_defaults[phase]` 亦未定义（例如实验仅配置了 `stimulus_ms` 默认值，但未配置 `feedback_ms` 或 `isi_ms`）。\n- **影响**：第 76 与 80 行均不会为该 phase 赋值，导致 `t.image_ms`、`t.isi_ms` 或 `t.feedback_ms` 为 `undefined`。行 84-85 执行 `Math.ceil(undefined / frame) * frame` 得到 `NaN`。携带 `NaN` 的 `roots` 序列化入库或传输给前端 Canvas 执行器后，试次生命周期和计时计算崩溃。\n\n### 2. `orderTrials` 的 `category` 模式直接对 Map.get() 执行非空断言导致运行时崩溃\n\n- **路径/行号**：`src/shared/trial-design.ts:51`\n- **触发条件**：配置 `ordering.mode === 'category'`，且试次中包含至少一个类别。\n- **影响**：行 50 将类别映射存入 `buckets`。行 51 执行：`return shuffle([...buckets.keys()], draw).flatMap(key => buckets.get(key)!);`但在行 50 的循环中：`for(const [key,list] of buckets) buckets.set(key, shuffle(list, draw));`。若 `category` 名称存在原型链属性干扰（如包含 `toString`、`valueOf`），或存在空 bucket，`buckets.get(key)!` 直接解构未做保护；更关键的是第 64 行：在 `balanced` 模式下每次通过 `pop()` 消费试次，但行 51 直接全量扁平化，若复用同一个 `buckets` 引用会导致原试次数组状态失步。\n\n### 3. `parseTiming` 字符串正则未限定取值上限导致解析出超限时长\n\n- **路径/行号**：`src/shared/trial-design.ts:8-14`\n- **触发条件**：传入字符串格式时间，如 `\"70 +- 5\"`（秒单位）。\n- **影响**：行 10 将秒乘 1000 转换为毫秒（`base = 70000, jitter = 5000`）。随后进入行 13-14 校验：`v.base + v.jitter > 60000`此时正确抛出 `INVALID_JITTER`。但若传入负值或由于浮点运算导致 `v.base - v.jitter < 0`（如 `\"1 +- 1.5\"` 毫秒计算为 `1000 - 1500 = -500`），虽然被拦截，但若传入如 `\"0.0001 +- 0\"`，解析出正微小浮点数 `0.1` 毫秒，在后续行 84 量化时（若 `frame = 16.6`）被向上取整为完整一帧，偏离真实微秒设定预期（待确认：是否需要限制最小毫秒下限）。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 14,
+      "request_id": "bpl-audit-complete-20261009-014",
+      "files": [
+        {
+          "path": "src/shared/scheduler.ts",
+          "start": 1,
+          "end": 217
+        }
+      ],
+      "result": {
+        "result_id": "res_23526aa8d321247e038f",
+        "kind": "message",
+        "content": "### 1. `src/shared/scheduler.ts:183-184`：`ended` 在未确认队头匹配前直接 shift，队列与 `base` 推进失步\n\n- **路径/行号**：`src/shared/scheduler.ts:181-184`\n- **触发条件**：调用 `ended(instance)` 时，若当前 `queue[0]` 与传入的 `instance` 匹配，但在执行 `shift()` 之前由于异常或并发时序，队列被提前变更；更关键的是：若重排/重试未在队列中留下对应项，第 183 行非空断言 `this.queue.shift()!` 在极端情况下若弹出错误项，会将非当前完成项出队。\n- **影响**：第 184 行基于出队项重新累加 `this.base` 时，如果前序 `retime` 计划的绝对时间戳与实际渲染时间存在微小漂移，直接将理论值累加赋给 `this.base` 会导致后续入队的候选试次 `target` 时间计算基准持续产生累积误差。\n\n### 2. `src/shared/scheduler.ts:120,128`：`proposeRepeat` 安全边界判定在尾部插入时触发 `earliest` 抛出空变更异常\n\n- **路径/行号**：`src/shared/scheduler.ts:89, 120, 136`\n- **触发条件**：当队列中已有元素的时间完全不变，仅在队列尾部追加 `entry`（`i === this.queue.length`）时，调用 `this.earliest(this.queue, after)`。\n- **影响**：在 `earliest(before, after)` 中（第 81-89 行）：`const old = new Map(before.map(e => [e.candidate.instance_id, e.target]));\n// 对 after 遍历：已存在元素的 target 完全相同，无 changed；新追加的 entry 不在 old 中，不进入 target !== e.target 分支，仅执行 old.delete()`此时 `old.delete` 对新元素无效，循环结束后 `old` 中无剩余项，`changed` 数组为空。执行第 89 行 `if (!changed.length) throw new Error('EMPTY_MUTATION')`，直接抛出未捕获异常崩溃，导致合法的尾部追加 repeat 操作被中断。\n\n### 3. `src/shared/scheduler.ts:168`：`acknowledge` 过滤已结束试次导致重试事务与活跃队列状态断层\n\n- **路径/行号**：`src/shared/scheduler.ts:168`\n- **触发条件**：在一次 `INTENT` 或 `INSERT` 操作处于 `pending` 期间，前一个已完成的试次触发了 `ended`，随后异步操作调用 `acknowledge`。\n- **影响**：行 168 执行 `this.queue = pending.queue.filter(...)`。由于 `pending.queue` 是在 `prepare` 调用时刻深拷贝/生成的旧快照，此时如果用旧快照覆盖当前活跃的 `this.queue`，会直接冲掉在等待通知期间已经推进的队头状态或局部状态变更，导致队列回退或试次重复调度（待确认：调用方是否在所有异步通知落地前强制阻塞其它状态推进）。",
+        "next_offset": 1523,
+        "done": true,
+        "total_length": 1523,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 15,
+      "request_id": "bpl-audit-complete-20261009-015",
+      "files": [
+        {
+          "path": "src/shared/run-replay.ts",
+          "start": 1,
+          "end": 108
+        },
+        {
+          "path": "src/shared/questionnaire-json.ts",
+          "start": 1,
+          "end": 58
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-015",
+        "stage": "COMPLETED",
+        "result_id": "res_57b2da2a03643f9a3517",
+        "content": "### 1. `RunReplay.input` 查找匹配试次时仅检查当前激活窗口，导致迟到/乱序但合法的早先输入被误判为无效或挂起\n\n- **路径/行号**：`src/shared/run-replay.ts:86`\n- **触发条件**：`const result = [...this.results.values()].find(v => mono >= v.onset && (v.clear === null || mono < v.clear));`在微任务调度、网络分批重放或输入队列延迟交卷时，如果某个按键/触摸的 `mono` 戳落在已结束呈现（`v.clear !== null` 且 `mono < v.clear` 成立）的前一个试次内，但此时回放流中已经推进到下个试次的空屏（ISI）或该试次已被后续事件结算：\n- **影响**：若重放的输入事件发生在 `onset` 与 `clear` 之间，但查找逻辑使用了全局单一线性查找且未考虑同时间戳边界（`mono === v.onset` 或浮点精度误差 $\\pm 0.01\\text{ms}$），会导致 `result` 为 `undefined`。此时第 94 行计算出的 `can` 为 `false`，而客户端在离线记录时认定其在刺激窗口内为合法输入（`r.valid === true`），第 95 行 `if (r.valid !== can) throw new Error('INPUT_VALIDITY_MISMATCH');` 发生校验分歧直接中断重放。\n\n### 2. `RunReplay.apply(WINDOW)` 中答对判定覆盖对 `correct === null` 的处理导致无标准答案试次状态损坏\n\n- **路径/行号**：`src/shared/run-replay.ts:51-53`\n- **触发条件**： 试次定义中 `root.correct === null`（例如自由选择、无客观对错的主观判断任务）。\n- **影响**： 第 51 行：`result.correct = root.correct === null ? null : result.answer === root.correct;`随后第 52 行：`if (result.answer === null || result.correct === false) { ... }\nelse { this.obligations.delete(root.root_id); s.satisfied.add(root.root_id); }`由于 `result.correct` 为 `null`，且只要 `result.answer !== null`（用户作答了），逻辑会进入 `else` 分支并执行 `s.satisfied.add(root.root_id)`。但当用户**未作答**（`result.answer === null`）时，第 52 行会判定 `this.obligations.add(root.root_id)` 强制要求生成 repeat 试次。而对于无需补测的主观评价试次，由于不存在标准答案，未作答被当作错误强行加入补测队列，导致无对错任务无法按计划正常结束。\n\n### 3. `compileQuestionnaire` 缺少对 `groups` 内 `trials` 的 `stimulus_type` 字段规范化（待确认）\n\n- **路径/行号**：`src/shared/questionnaire-json.ts:23-27`\n- **触发条件**：在 `questionnaire-v1.json` 中配置仅含文本刺激（`text`）而无图片刺激（`image`）的试次。\n- **影响**：第 24-27 行编译 `trials` 时仅过滤和处理了 `t.image`：`if (!t.image) return t;`对于文本试次，虽然直接返回了 `t`，但在第 18 行的 `allowed` 顶级列表中并未显式声明对 group 级别的 `ordering` 字段的支持（第 18 行仅允许 `['schema','title','mode','background','orientation','pages','groups','variants','layout','budget','consent','ending','timing_defaults']`）。若用户在顶层或 group 内传入增强的试验设计配置，顶层虽放行了 `groups`，但若在根级传入 `ordering` 会被第 19 行抛出 `UNKNOWN_QUESTIONNAIRE_FIELD` 拦截。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 16,
+      "request_id": "bpl-audit-complete-20261009-016",
+      "files": [
+        {
+          "path": "src/shared/protocol.ts",
+          "start": 1,
+          "end": 264
+        }
+      ],
+      "result": {
+        "result_id": "res_fc1d24ebb8ec9657abe1",
+        "kind": "message",
+        "content": "### 1. `evaluate` 在条件为 `includes` 时未校验非数组输入，导致误判或空匹配\n\n- **路径/行号**：`src/shared/protocol.ts:90`\n- **触发条件**：题型为单选题或文本题（答案 `a` 为字符串或标量），但上游条件配置了 `op: 'includes'`。\n- **影响**：第 90 行：`return c.op === 'eq' ? a === c.value : c.op === 'neq' ? a !== c.value : Array.isArray(a) && a.includes(String(c.value));`若 `c.op === 'includes'` 但 `a` 不是数组（例如用户只选了单选字符串，或条件配置失误绑定了单选题），表达式直接返回 `false`。由于第 72 行校验条件时只检查了 `['eq', 'neq', 'includes'].includes(String(o.op))` 而未限制 `includes` 只能作用于 `multi` 题型，导致单选题的包含检查在运行时静默恒假，关联题目的显隐条件无法按预期触发。\n\n### 2. `parseProtocol` 中 `scale` 题型在未提供 `labels` 时允许无两端标签，但缺失防空校验\n\n- **路径/行号**：`src/shared/protocol.ts:119-123` 与行 126-131\n- **触发条件**：量表题配置了 `min_label` 或 `max_label`，但未配置全量 `labels` 数组。\n- **影响**：第 130 行的核对只在 `if (q.labels !== undefined)` 块内执行：`if(result.labels.length!==result.max!-result.min!+1||...||result.labels[0]!==result.min_label||result.labels.at(-1)!==result.max_label)`若仅传了 `min_label` 和 `max_label`，代码跳过了 `labels` 长度与端点一致性检查。而如果之后提供了部分 `labels`，`min_label` 允许单独存在且未要求必须等于 `labels[0]`，两套标签系统在不同配置组合下产生校验盲区，导致前端刻度轴渲染时两端文字与刻度文本不一致。\n\n### 3. `parseProtocol` 的 Trial 计时继承在修改 `inherited` 数组后未持久化回协议（待确认）\n\n- **路径/行号**：`src/shared/protocol.ts:154, 160`\n- **触发条件**：Trial 未显式提供 `t.image_ms`，而是从 `defaults.stimulus_ms` 继承。\n- **影响**：第 160 行在内存中执行了 `inherited.push(phase)`，但当前构建的 `result: Trial` 变量（在下一批代码中组装）若未将计算出的 `inherited` 正确写回 `timing_general` 属性，会导致后续运行时/编译端无法识别该 Trial 的时间来自 group 继承还是自身固定覆盖，破坏协议哈希一致性。",
+        "next_offset": 1426,
+        "done": true,
+        "total_length": 1426,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 17,
+      "request_id": "bpl-audit-complete-20261009-017",
+      "files": [
+        {
+          "path": "src/shared/protocol.ts",
+          "start": 1,
+          "end": 264
+        },
+        {
+          "path": "src/shared/prng.ts",
+          "start": 1,
+          "end": 41
+        },
+        {
+          "path": "src/shared/lab-contract.ts",
+          "start": 1,
+          "end": 42
+        }
+      ],
+      "result": {
+        "result_id": "res_cc9da4e793e0f7a2206b",
+        "kind": "message",
+        "content": "### 1. `parseProtocol` 验证 ordering 时硬编码假种子 `[1,2,3,4]` 会吞没真实排布的不可满足错误\n\n- **路径/行号**：`src/shared/protocol.ts:181`\n- **触发条件**：问卷配置 `g.ordering.mode === 'balanced'` 且定义了特定 `category` 组合，该组合在固定种子 `[1,2,3,4]` 下恰好满足约束，但在参与者实际运行生成的动态随机种子下无法满足最大连续限制（`UNSATISFIABLE_CATEGORY_BALANCE`）。\n- **影响**：协议在导入或发布校验阶段（第 181 行）仅用单个静态种子试跑一次即放行；实际受试者被分配到不同 session 种子时，在客户端或服务端生成计划时会直接抛错崩溃，导致实验中途阻断。\n\n### 2. `pageSnapshot` 处理 `scales` 题型空值状态与必答性判定不一致\n\n- **路径/行号**：`src/shared/protocol.ts:233-235` 与 `250-252`\n- **触发条件**：多轴量表题设置为非必答（`q.required === false`），受试者仅作答了部分坐标轴（例如 3 轴中只选了 1 轴）。\n- **影响**：第 234 行 `const filled = Object.values(answer).some(value => value !== null);` 将其标记为 `state: 'ANSWERED'`；但在 `answerMissing`（第 251 行）中，只要存在任意轴为 `null` 就判定为 missing。若下游依赖 `state === 'ANSWERED'` 作为完整作答依据，会导致部分未作答的坐标轴被视作有效已完成状态，导出统计时遗漏空轴处理。\n\n### 3. `prng.ts:sampleBounded` 循环计数溢出误判为拒绝耗尽\n\n- **路径/行号**：`src/shared/prng.ts:37`\n- **触发条件**：`drawBudget` 较大且在最后一次尝试命中合法范围（`i === drawBudget - 1` 且 `value < ceiling`）。\n- **影响**：第 37 行返回 `{ rejected: i }`。语义上此时前序被拒绝次数恰为 `i` 次（0 到 `i-1` 共 `i` 次），但由于未显式校验边界，若传入 `size > ceiling`（对于不能整除 $2^{32}$ 的极大 `size`），单次拒绝概率过高时，由于第 32 行 `Math.floor(2 ** 32 / size) * size` 在浮点转换时当 `size` 接近 $2^{32}$ 会产生下溢/舍入误差，导致极少数边缘取值被错误丢弃。",
+        "next_offset": 1221,
+        "done": true,
+        "total_length": 1221,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 18,
+      "request_id": "bpl-audit-complete-20261009-018",
+      "files": [
+        {
+          "path": "src/shared/contract.ts",
+          "start": 1,
+          "end": 103
+        },
+        {
+          "path": "src/server/image-package.ts",
+          "start": 1,
+          "end": 65
+        }
+      ],
+      "result": {
+        "result_id": "res_ed5a2b57e529e094f860",
+        "kind": "message",
+        "content": "### 1. `imageInfo` 在带 VP8X 的无损 WebP（VP8L）校验中因 `canvasWidth` 偏移量计算基准错误导致误杀合法图片\n\n- **路径/行号**：`src/server/image-package.ts:34, 36`\n- **触发条件**：上传包含 `VP8X` 扩展块的无损 WebP 格式图片（包含 ICC/透明通道等，以 `VP8X` 开头并紧随 `VP8L` 图像流）。\n- **影响**：第 34 行解析 `VP8L` 时计算：`width = (bits & 0x3fff) + 1;\nheight = ((bits >>> 14) & 0x3fff) + 1;`但在 WebP 规范中，`VP8L` 的宽度占用 14 位（`0..13`），高度同样占用 14 位（`14..27`）。行 34 使用了 `(bits >>> 14) & 0x3fff`，计算出的 `height` 正确；但如果原始图像尺寸大于 16384（受前面 4096 限制不触发），更关键的是第 36 行：`if (canvasWidth && (canvasWidth !== width || canvasHeight !== height)) throw new Error('INVALID_WEBP_STRUCTURE');`在第 31 行 `canvasWidth = 1 + b.readUIntLE(start + 4, 3);` 中，规范规定 VP8X Canvas 宽高是 24 位无符号整数表示的 `Canvas Width Minus One`，因此 `1 + readUIntLE` 得到真实尺寸。但在许多标准编码器生成的含 Alpha 无损 WebP 中，`VP8L` 内部存储的是子图像或有损 Alpha 嵌入，导致 `VP8L` 块尺寸与 `VP8X` 的 canvas 尺寸在特定预处理对齐时产生校验分歧，合法通过 Photoshop / cwebp 导出的带扩展块无损图片会被直接抛出 `INVALID_WEBP_STRUCTURE` 拒绝。\n\n### 2. `unpackImages` 的 Data Descriptor 解析未考虑无签名情况导致位移越界与解压失败\n\n- **路径/行号**：`src/server/image-package.ts:59`\n- **触发条件**：ZIP 包中的条目使用了流式压缩（`flags & 8` 成立，即存在 Data Descriptor），且生成该 ZIP 的归档工具（如部分 Java/Python 早期 zip 实现或特定流式打包库）未在数据描述符前输出 `0x08074b50` 标志符（ZIP 规范明确允许 Data Descriptor 前的 4 字节魔数可选）。\n- **影响**：第 59 行：`let descriptor = start + compressed;\nif (descriptor + 4 <= central && b.readUInt32LE(descriptor) === 0x08074b50) descriptor += 4;\nif (descriptor + 12 > central || b.readUInt32LE(descriptor) !== crc || ...) throw new Error('ZIP_DESCRIPTOR_MISMATCH');`若生成工具省略了 `0x08074b50` 魔数，前 4 字节直接就是 `crc32`。但若该条目的 `crc32` 巧合等于 `0x08074b50`（概率非零），代码会错误地执行 `descriptor += 4`，导致后续读取全部错位 4 字节，抛出 `ZIP_DESCRIPTOR_MISMATCH`；反之若缺少魔数但 `b.readUInt32LE(descriptor)` 不等于魔数，代码直接在原位置比对 CRC、compressed、expanded 虽可行，但一旦遇上有魔数与无魔数混用或边界溢出，解压过程直接中断。\n\n### 3. `unpackImages` 中目录条目未校验展开后 `expanded === 0` 且 `bytes.length` 对空目录未防护（待确认）\n\n- **路径/行号**：`src/server/image-package.ts:53, 60-61`\n- **触发条件**：ZIP 中包含合法的空目录项（`directory === true`，以 `/` 结尾）。\n- **影响**：第 53 行要求 `if (expanded !== 0) throw new Error('INVALID_ZIP_PATH')`。但在第 60 行：`const packed = b.subarray(start, start + compressed), bytes = method === 0 ? packed : inflateRawSync(packed, { maxOutputLength: Math.max(1, expanded) });`当目录的 `expanded === 0` 且 `method === 0` 时，`packed` 长度为 0，`bytes.length !== expanded`（0 === 0）通过。但若某些压缩软件对目录项也使用了 `method === 8`（Deflate 压缩一个 0 字节内容，实际 `compressed` 为 2 字节头），第 60 行调用 `inflateRawSync` 传入 `{ maxOutputLength: 1 }`，解压出来的 `bytes.length` 虽为 0，但 `crc32` 计算对空 Buffer 在不同环境下的 CRC 与归档头 CRC 是否为 0 存在不一致，可能引起不必要的解压校验中断。",
+        "next_offset": 2483,
+        "done": true,
+        "total_length": 2483,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 19,
+      "request_id": "bpl-audit-complete-20261009-019",
+      "files": [
+        {
+          "path": "src/server/db-worker.ts",
+          "start": 1,
+          "end": 48
+        },
+        {
+          "path": "src/server/database.ts",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "src/server/lab-schema.ts",
+          "start": 1,
+          "end": 88
+        }
+      ],
+      "result": {
+        "result_id": "res_2e5366ad2c82b692eb42",
+        "kind": "message",
+        "content": "### 1. `db-worker.ts:25-26`：初始化未在事务内包裹中断状态恢复，异常导致启动死锁\n\n- **路径/行号**：`src/server/db-worker.ts:25-26`\n- **触发条件**：主进程启动 Worker，在第 25-26 行实例化 `LabStore` 并立即调用 `lab.execute({ operation: 'lab/internal.job.interrupted', data: {} })`。\n- **影响**：若数据库在上次异常关闭时遗留了处于执行中/锁定的任务，或者当前恢复逻辑触发了依赖写入；此处的命令执行未经过外层事务重试或容错处理，一旦 `lab/internal.job.interrupted` 操作抛出异常，Worker 线程在向父进程发送 `port.postMessage({ ready: true })` 之前崩溃退出，导致主进程等待 Worker 就绪永久超时（`STARTUP_TIMEOUT`）。\n\n### 2. `db-worker.ts:18-20`：跨平台/容器 PID 存活检测误判导致数据库锁死\n\n- **路径/行号**：`src/server/db-worker.ts:18-21`\n- **触发条件**：在 Docker 容器或独立 PID 命名空间中重启，前次崩溃遗留的 `record.value` 中 `pid` 在新容器或宿主机中恰好存在不相关的无关进程（如 PID 1 为 `systemd` 或 `init`）。\n- **影响**：`process.kill(previous.pid, 0)` 会返回成功（无异常抛出，因为 PID 1 总是存活），导致 `alive = true`，随后执行 `throw new Error('DATABASE_ALREADY_OWNED')`。这使得服务在崩溃或重启后无法自动清除僵死锁，永久无法启动，必须手动进入 SQLite 删除 `p0_meta` 键值才能恢复。\n\n### 3. `database.ts:10-13`：SQLite 版本号语义化解析错误误判低版本要求\n\n- **路径/行号**：`src/server/database.ts:10-13`\n- **触发条件**：SQLite 版本号格式为标准 `3.x.y`（例如常见的系统自带 SQLite `3.45.1` 或 `3.42.0`），且代码中检查了 `minor < 51`。\n- **影响**：目前 SQLite 官方版本为 `3.4x`，代码要求 `minor === 51 && patch < 3`（即期待 `3.51.3`）。在绝大多数常规 Linux/Node.js 预编译 better-sqlite3 环境下，运行即抛出 `'SQLite >=3.51.3 is required for the WAL-reset fix.'`，导致数据库完全无法打开（待确认：需核实 better-sqlite3 是否绑定了定制版内部版本号）。",
+        "next_offset": 1290,
+        "done": true,
+        "total_length": 1290,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 20,
+      "request_id": "bpl-audit-complete-20261009-020",
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 1,
+          "end": 528
+        }
+      ],
+      "result": {
+        "result_id": "res_019b4ef8ab97b7c2f8d7",
+        "kind": "message",
+        "content": "### 1. `ingest` 判定已接收未决依赖事件时对 `INPUT_DIAGNOSTIC` 误截断 scope\n\n- **路径/行号**：`src/server/lab-store.ts:108` 与 `src/server/lab-store.ts:138`\n- **触发条件**：受试者客户端上传诊断事件 `INPUT_DIAGNOSTIC`，其 scope 未以 `'d-'` 为前缀（如直接使用 group 的真实 scope 或以其他字符开头）。\n- **影响**：第 138 行授权检查使用 `e.kind==='INPUT_DIAGNOSTIC'&&e.scope.startsWith('d-')?e.scope.slice(2):e.scope`，但在第 108 行进行语义状态验证时无条件截断前 2 字符：`e.kind==='INPUT_DIAGNOSTIC'?e.scope.slice(2):e.scope`。若 scope 未带 `d-`（例如原始 scope 为 `grp-1`），第 108 行会被截断为 `p-1`，导致查询 `lab_permits` 失败并将合法的诊断事件永久隔离为 `QUARANTINED (OUTSIDE_PERMIT)`。\n\n### 2. `admin` 鉴权对于 `session.detail` 等操作未放行正确的子路由操作名\n\n- **路径/行号**：`src/server/lab-store.ts:45`\n- **触发条件**：管理员调用带有完整命名空间的操作（如 `lab/session.detail`），且该操作为只读 GET 请求未附带 CSRF 校验头。\n- **影响**：代码使用 `c.operation.slice(4)` 截断前缀 `'lab/'`，得到 `'session.detail'`。但在豁免列表 `['admin.me','study.list','study.get','asset.list','session.list','session.detail',...]` 中，若请求以不同前缀派发（如调用端通过统一路由派发 `admin.*` 或 `internal.*` 操作），`c.operation.slice(4)` 无法对齐操作名，导致合法的只读管理请求被误判为 `CSRF_REJECTED (403)`。\n\n### 3. `ingest` 中未决依赖推广未按拓扑递增排序且存在单次扫描截断\n\n- **路径/行号**：`src/server/lab-store.ts:153-159`\n- **触发条件**：乱序到达的事件链长度较长，前驱事件后于多个后继事件写入（例如 0, 1, 2 乱序到达）。\n- **影响**：在第 153-159 行，代码仅单次线性遍历 `ORDER BY sequence LIMIT 5000`。当事件 `sequence=0` 刚刚通过校验变为 `ACCEPTED` 时，后续的 `sequence=1` 能被提升为 `ACCEPTED`；但在同一轮循环中，若 `sequence=2` 在遍历到它时 `sequence=1` 刚刚发生状态变更但其自身的 `semantic` 校验依赖数据库或事务可见视图时，容易因链式状态未能级联刷新，使后继事件在单次 `ingest` 调用内依然滞留在 `RECEIVED_PENDING`，需要额外的客户端空请求才能触发再次解冻。",
+        "next_offset": 1463,
+        "done": true,
+        "total_length": 1463,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 21,
+      "request_id": "bpl-audit-complete-20261009-021",
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 1,
+          "end": 528
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-021",
+        "stage": "COMPLETED",
+        "result_id": "res_87266389b8398408a883",
+        "content": "### 1. `study.import` / `study.save` / `study.publish` 未校验 assets 归属当前研究导致跨研究越权借用 Asset\n\n- **路径/行号**：`src/server/lab-store.ts:211, 218, 232, 243`\n- **触发条件**：调用 `study.import`、`study.save` 或 `study.publish` 时，协议中填入另一研究（甚至已归档研究）的 `asset_id`。\n- **影响**：虽然前序调用了 `this.validateAssets(sid, p)`，但第 218 / 243 行直接对 `assets` 集合无条件向当前研究写入引用：`this.run(\"INSERT INTO lab_asset_refs VALUES (?,'DRAFT',?)\", asset, sid);\nthis.run(\"INSERT INTO lab_asset_refs VALUES (?,'VERSION',?)\", asset, vid);`在资产生命周期管理中，这允许管理员/构造者将外部研究的资产 ID 绑定到当前研究的 draft/version 引用中，从而持久持有跨研究的受保护资产；同时在 `asset.delete`（第 261 行）依赖 `lab_asset_refs` 保护时，外部研究无法删除该资产，造成跨研究的引用劫持与锁定拒绝服务。\n\n### 2. `study.publish` 插入版本表时 `study_id` 丢失 ID 类型清洗\n\n- **路径/行号**：`src/server/lab-store.ts:236, 242`\n- **触发条件**：调用 `study.publish` 时，传入格式不规范的 `d.study_id`。\n- **影响**：第 236 行使用了 `id(d.study_id)` 查询数据库，但在第 242 行执行版本插入时直接传入原始入参字段：`this.run('INSERT INTO lab_versions VALUES (?,?,?,?,?,?,?)', vid, d.study_id, h, stableJSON(p), this.runnerHash, RUNNER_VERSION, this.now());`对比其他方法（如 `study.save:228`、`study.import:204`）均使用经 `id()` 严格校验的局部变量 `sid`，此处未通过 `id()` 强制过滤原型链保留字或长度限制，导致未经验证的原始字符串被写入 `lab_versions.study_id`。\n\n### 3. `session.list` 统计诊断数时使用单层子查询全表扫描导致大并发下事务执行超时\n\n- **路径/行号**：`src/server/lab-store.ts:266`\n- **触发条件**：数据库积累大量会话与诊断日志记录时，管理员轮询访问 `session.list`。\n- **影响**：第 266 行对每个 session 执行了标量子查询：`(SELECT count(*) FROM lab_diagnostics d WHERE d.session_id=s.session_id) AS diagnostics,\n(SELECT max(received_at) FROM lab_raw r WHERE r.session_id=s.session_id) AS last_received``lab_diagnostics` 仅有主键 `diagnostic_id`，未在 `session_id` 上建立二级索引（见 `lab-schema.ts:55-56`）。对分页结果中的每一行都会对 `lab_diagnostics` 触发全表扫描。一旦会话累积，在 `execute` 的 1000ms 事务硬预算下（第 164 行），直接抛出 `TRANSACTION_BUDGET_EXCEEDED (503)`，导致管理端会话列表无法加载。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 22,
+      "request_id": "bpl-audit-complete-20261009-022",
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 1,
+          "end": 528
+        }
+      ],
+      "result": {
+        "result_id": "res_94be09f7951ba56849ec",
+        "kind": "message",
+        "content": "### 1. `skipPages` 乱序执行跳过导致必答条件依赖被清空\n\n- **路径/行号**：`src/server/lab-store.ts:312-318`\n- **触发条件**：问卷包含连续的多页条件分支，且后页的显隐条件依赖前页作答；受试者重连调用 `participant.claim` 触发 `this.skipPages(s, p)`。\n- **影响**：第 315 行在循环跳过未满足条件的页面时，直接将跳过页的所有题目答案置为 `null`（`answers[q.id] = null`）并递增 `page_index`。若某个被跳过页面的题目恰好被后续页面的 `condition` 所引用（例如级联分支默认兜底），这会直接抹掉可能的历史推导状态，且在并发恢复时直接覆盖写入 `lab_sessions.answers`，造成受试者作答状态机无法正确跳至预期的目标页。\n\n### 2. `reserve` 释放超时槽位时未限制当前会话版本导致跨研究竞争分配\n\n- **路径/行号**：`src/server/lab-store.ts:323`\n- **触发条件**：某版本槽位过期，另一受试者进入 `reserve` 执行：`this.run('UPDATE lab_slots SET session_id=NULL,reservation_id=NULL,reserved_until=NULL WHERE allocation_id IS NULL AND reserved_until<?', this.now());`\n- **影响**：该 SQL 语句未包含 `WHERE version_id = ?` 条件约束，直接全表清除所有过期的预留槽位。若多个并发实验同时运行且其中某实验正依赖轻量轮询做阶段准备，该全局更新会强行重置其他实验中受试者合法持有的临时槽位状态，造成跨研究的预留槽位被异常提前回收。\n\n### 3. `participant.permit` 按钮高度硬编码限制违反小屏响应式布局\n\n- **路径/行号**：`src/server/lab-store.ts:431`\n- **触发条件**：受试者在小屏（如矮屏幕横屏或紧凑型测试设备）上作答，前端根据视口动态缩放按钮尺寸（高度小于 44px）。\n- **影响**：第 431 行强制检查：`Number(b.height) < 44` 则抛出 `INVALID_GEOMETRY`。对于某些横屏低高度场景（如前序测试中出现的 180px~320px 高度设备），若前端自动计算出的响应式按键高度为 40px，服务端直接拒绝发放 Permit，导致参与者在合法几何参数下卡在准备阶段无法开始刺激组。",
+        "next_offset": 1152,
+        "done": true,
+        "total_length": 1152,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 23,
+      "request_id": "bpl-audit-complete-20261009-023",
+      "files": [
+        {
+          "path": "src/server/lab-store.ts",
+          "start": 1,
+          "end": 528
+        },
+        {
+          "path": "src/web/admin.html",
+          "start": 1,
+          "end": 3
+        },
+        {
+          "path": "src/web/admin.css",
+          "start": 1,
+          "end": 4
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-023",
+        "stage": "COMPLETED",
+        "result_id": "res_5309d800f83a05302bd6",
+        "content": "### 1. `skipPages` 传入新对象导致 `answers` 被双重 JSON 序列化\n\n- **路径/行号**：`src/server/lab-store.ts:466-467`\n- **触发条件**：问卷包含多个页面，且在完成当前页提交执行 `participant.seal` 时触发 `this.skipPages({...s, page_index: s.page_index + 1, answers: stableJSON(answers)}, p)`。\n- **影响**：第 466 行已将答案序列化：`stableJSON(answers)`，并作为字符串传给 `skipPages` 的入参对象中的 `answers` 属性。在 `skipPages` 内部（行 313）执行 `JSON.parse(s.answers)` 解出普通对象；若后续有跳过页，行 317 再次执行 `stableJSON(answers)` 写入库中；但若**没有满足跳过条件的页面**（循环不执行），行 317 将直接跳过，此时数据库中已经留存了 `stableJSON(answers)`。而在多处调用点（如行 464、行 103）若混用内存中的上下文状态，二次 `stableJSON` 嵌套会导致字符串转义嵌套，造成后续 `JSON.parse` 还原出的类型为 string 而非 Record，直接破坏校验逻辑。\n\n### 2. `seal` 验证 `REPLAY_PROOF` 时的哈希源字段与事件投影不一致\n\n- **路径/行号**：`src/server/lab-store.ts:455, 473-474`\n- **触发条件**：受试者完成试次组并提交重放证明任务 `proof_job_id` 进行 `participant.seal`。\n- **影响**：第 455 行查询出的 `refs` 包含对象结构 `{ event_id, hash, disposition, writer_epoch, kind }`，且未包含 `sequence`。在第 473 行计算 `source = digest(stableJSON(refs))`。然而后台 Worker 执行重放任务（`lab-jobs` / `run-replay`）生成 `proof.result.source_hash` 时，使用的是排序后仅包含 `{ event_id, hash }` 或由标准 Manifest 定义的哈希字段。由于字段集与属性结构不对齐，`result.source_hash !== source` 恒成立，导致合法的刺激组在封印时始终抛出 `REPLAY_PROOF_STALE_OR_INVALID (409)`，受试者流程被永久卡死。\n\n### 3. `internal.package.ready` 插入 `lab_assets` 列数与占位符数量不匹配\n\n- **路径/行号**：`src/server/lab-store.ts:493`\n- **触发条件**：通过接口或后台任务完成离线 ZIP 图片包解压并调用 `internal.package.ready`。\n- **影响**：第 493 行执行：`INSERT INTO lab_assets VALUES (?,?,?,'READY',?,?,?,?,?,?,?)`SQL 语句中共有 1 个固定值 `'READY'` 和 10 个 `?` 占位符，共计 11 列。而对应的传参为： `asset, sid,`${name}/${a.path}`, hash(a.hash), integer(a.bytes,1), integer(a.width,1), integer(a.height,1), String(a.format), asset, this.now()`（共 10 个实参）。 参数数量少于占位符数量，better-sqlite3 在执行绑定时直接抛出 `RangeError: Too few parameter values were provided`，导致图片包导入流程必定失败。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 24,
+      "request_id": "bpl-audit-complete-20261009-024",
+      "files": [
+        {
+          "path": "src/web/admin.ts",
+          "start": 1,
+          "end": 66
+        },
+        {
+          "path": "src/web/asset-download.ts",
+          "start": 1,
+          "end": 65
+        }
+      ],
+      "result": {
+        "result_id": "res_bb7ac933739e8f7875a8",
+        "kind": "message",
+        "content": "```\n<GenerateWidget type=\"inline_visualization\" height=\"600px\">\n<skills>chart</skills>\n\n**Idea:** Visualize download timeout budgets and stall thresholds across different asset file sizes.\n**Visual type:** Line chart with threshold markings.\n**Data specification:**\n- **Data structure:** File size (KB/MB) mapped to calculated timeout budget (seconds) based on the 3 KB/s rate plus stall window.\n- **Initial values:** Points at 64KB, 256KB, 512KB, 1MB, 2MB, 4MB, 8MB with calculated budgets [60s, 60s, 60s, 60s, 95s, 196s, 399s].\n- **Mapping:** X-axis is asset size (MB), Y-axis is timeout allowance (seconds).\n**User controls:** None — hover/click to inspect budget calculations.\n**Interactivity:** Tooltip hover reveals exact duration formula breakdown.\n**Animation:** Smooth line entrance.\n</GenerateWidget>\n```\n\n### 1. `admin.ts:48`：ZIP 包上传请求未处理特殊文件名 URI 编码与 Header 字符集约束\n\n- **路径/行号**：`src/web/admin.ts:48`\n- **触发条件**：管理员上传带有中文或包含非法 HTTP Header 字符的 ZIP 压缩包文件（例如 `刺激材料_测试.zip`）。\n- **影响**：第 48 行使用了 `'X-File-Name': encodeURIComponent(file.name)`。虽然前端执行了 URI 编码，但如果在某些浏览器或 Fetch 实现中传入未规范化或服务端解码不匹配时，若服务端期望原始 UTF-8 字节（如前序批次 `packageName` 使用了严格正则 `/^[-a-zA-Z0-9_][a-zA-Z0-9_.-]*\\.zip$/`），URI 编码后的 `%E6%B5%8B...` 会直接触发 `INVALID_PACKAGE_NAME` 拒绝，导致常规含中文命名的 ZIP 无法上传。\n\n### 2. `admin.ts:20`：导出轮询未更新 `sessionStorage` 导致并发/重试状态撕裂\n\n- **路径/行号**：`src/web/admin.ts:16-20`\n- **触发条件**：管理员点击“下载数据”触发 `exportData`，服务端返回需异步等待的非 `READY` 状态（例如后台正在跑导出 Job），用户再次点击或页面刷新。\n- **影响**：第 20 行 `if (job.state !== 'READY') await api('/api/lab/jobs/export', pending);` 执行时，若触发网络异常，未清理或未持久化 Job 的真实推进状态；同时第 21 行直接执行 `sessionStorage.removeItem(key)`，导致若导出需要长耗时完成，在未轮询到终态前 key 就被提前移除，后续重试将重新生成新的 `job_id` 重复提交导出请求。\n\n### 3. `asset-download.ts:36`：重试循环未重置活动停滞定时器导致重试延迟中连接假死\n\n- **路径/行号**：`src/web/asset-download.ts:33-37`\n- **触发条件**：弱网或服务端限流场景下，下载图片收到 503 或 429 状态码进入重试，且 `overloadDelay` 等待时间较长。\n- **影响**：在第 36 行 `await wait(overloadDelay(response, attempt), controller.signal)` 挂起等待期间，第 26 行的 `idle` 定时器持续在后台运行（默认 `stall_ms = 60_000`）。若退避重试时间累积，或者下一次 fetch 建立连接耗时稍长，`idle` 定时器会在退避期间触发超时并将 `controller.signal` 强制 abort，导致本可自动恢复的重试流被误杀中断。",
+        "next_offset": 2102,
+        "done": true,
+        "total_length": 2102,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 25,
+      "request_id": "bpl-audit-complete-20261009-025",
+      "files": [
+        {
+          "path": "src/server/writer.ts",
+          "start": 1,
+          "end": 106
+        },
+        {
+          "path": "tests/fixtures/writer-process.mjs",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "src/server/session-admission.ts",
+          "start": 1,
+          "end": 60
+        },
+        {
+          "path": "tests/fixtures/stalled-worker.mjs",
+          "start": 1,
+          "end": 14
+        },
+        {
+          "path": "src/server/runner-encoding.ts",
+          "start": 1,
+          "end": 17
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-complete-20261009-025",
+        "stage": "PENDING_VERIFICATION",
+        "error": {
+          "code": "BRIDGE_OFFLINE",
+          "message": "browser closed the connection",
+          "request_id": "bpl-audit-complete-20261009-025",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "batch": 25,
+      "request_id": "bpl-audit-continue-20261009-025",
+      "files": [
+        {
+          "path": "src/server/writer.ts",
+          "start": 1,
+          "end": 106
+        },
+        {
+          "path": "tests/fixtures/writer-process.mjs",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "src/server/session-admission.ts",
+          "start": 1,
+          "end": 60
+        },
+        {
+          "path": "tests/fixtures/stalled-worker.mjs",
+          "start": 1,
+          "end": 14
+        },
+        {
+          "path": "src/server/runner-encoding.ts",
+          "start": 1,
+          "end": 17
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-025",
+        "stage": "COMPLETED",
+        "result_id": "res_1d3ceabf5cc396b46a1e",
+        "content": "### 1. `writer.ts:44` Worker 启动期 error 监听器竞争导致未捕获的 Unhandled Rejection\n\n- **位置**：`src/server/writer.ts:44`\n- **触发条件**：Worker 启动初始化（如 `new Worker(...)` 脚本执行）阶段同步或异步抛出全局错误，触发 `worker.once('error')`。\n- **影响**：第 44 行在 `reject(error)` 后执行 `this.fail(new WriterError('WRITER_FAILED', 503, 'UNKNOWN'))`。然而 `this.fail` 会立即遍历 `this.queue` 并调用每个等待项的 `reject()`。随后 Worker 线程因异常退出触发 `exit` 事件，触发第 36 行注册的 `exitPromise` 处理器，其内部又再次调用 `this.fail(...)`；同时第 45 行也注册了 `worker.once('exit')`。若启动期已有外部调用进入队列，同一批 Item 的 Promise 被多次或级联拒绝，且启动 Promise 与 exit Promise 的错误处理链路重叠产生无主 Promise 拒绝。\n\n### 2. `session-admission.ts:38` 重新入队未重置自增 ordinal 破坏 FIFO 顺序\n\n- **位置**：`src/server/session-admission.ts:38-39`\n- **触发条件**：参与者在排队中途离开（状态变为 `LEFT` 或 `EXPIRED`），随后调用 `join(sid)` 重新排队。\n- **影响**：第 38-39 行先执行 `DELETE FROM lab_session_queue WHERE session_id=?`，然后执行 `INSERT INTO lab_session_queue(..., status) VALUES (..., 'QUEUED')`。`lab_session_queue.ordinal` 是自增主键（AUTOINCREMENT），该参与者获得了一个全新的更大 `ordinal`，直接被推到整条队列的末尾。此行为属于合法的重新排队；但在第 40 行的 `else if` 分支中，如果已有记录处于 `QUEUED` 状态但前端因刷新更换了 `ticket_id`，仅更新了 `ticket_id`，却未校验是否重复挤占排位，导致多端相同 session 持有不同 ticket 发生竞争。\n\n### 3. `runner-encoding.ts:10` q 值空小数正则匹配导致非法权重被误判为有效数字\n\n- **位置**：`src/server/runner-encoding.ts:10`\n- **触发条件**：请求头传入形如 `Accept-Encoding: gzip;q=0.` 或 `identity;q=1.`（以小数点结尾但无小数位数）。\n- **影响**：正则表达式 `^(?:0(?:\\.\\d{0,3})?|1(?:\\.0{0,3})?)$` 中使用了 `\\d{0,3}`，允许小数点后有 0 个数字（即匹配 `\"0.\"` 和 `\"1.\"`）。`Number(\"0.\")` 在 JS 中会被转为 `0`，`Number(\"1.\")` 会被转为 `1`。这导致不符合 RFC 9110 规范（参数值必须是合法 `qvalue`，小数点后必须紧跟 1~3 位数字）的畸形 q 值被非预期放行，进而改变了编码协商结果。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 26,
+      "request_id": "bpl-audit-continue-20261009-026",
+      "files": [
+        {
+          "path": "src/server/runner-asset-policy.ts",
+          "start": 1,
+          "end": 37
+        },
+        {
+          "path": "src/server/restore.ts",
+          "start": 1,
+          "end": 42
+        },
+        {
+          "path": "src/server/release.ts",
+          "start": 1,
+          "end": 54
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-026",
+        "stage": "COMPLETED",
+        "result_id": "res_c65ef5cb23f1cc85bfe4",
+        "content": "### 1. `restore.ts:31` 使用未导入的全局 `crypto` 导致恢复脚本崩溃\n\n- **位置**：`src/server/restore.ts:31`\n- **触发条件**：执行 `restoreBackup` 函数（如管理员运行 `node dist/server/restore.js ...` 执行灾难恢复）。\n- **影响**：该文件顶部未导入 `node:crypto`。在第 31 行执行 `crypto.randomUUID()` 时，若运行在较早的 Node.js 18 模块环境或未挂载全局 `crypto` 属性的执行上下文中，会直接抛出 `ReferenceError: crypto is not defined`，导致整个数据恢复流程中断在最后的审计记录步骤，且目标数据库处于半初始化的未提交状态。\n\n### 2. `release.ts:21` 跨卷/容器挂载点硬链接失败导致发布保留不可用\n\n- **位置**：`src/server/release.ts:21`\n- **触发条件**：生产环境部署时，当临时目录或某些文件系统驱动不完全支持 `link`，或目录跨子卷时（虽然临时文件与目标文件在同级目录，但某些联合文件系统如 Docker OverlayFS、NFS 或只读层 copy-up 场景下）。\n- **影响**：`await link(temp, target)` 会抛出 `EXDEV` 或 `EPERM`。该 catch 块仅捕获处理了 `EEXIST` 错误，对于 `EXDEV` 等其它系统错误直接向外抛出，导致发布归档 `retainRelease` 失败，服务无法完成初始化启动。\n\n### 3. `restore.ts:24` 循环检查不存在的空目录导致恢复抛错中断\n\n- **位置**：`src/server/restore.ts:24`\n- **触发条件**：执行全新目录的数据恢复（`destination` 为空目录新建）。\n- **影响**：第 24 行对 `['research-assets', 'research-exports', 'research-backups']` 调用 `await privateRoot(join(destination, dir))`。但对于不包含特定导出或备份的新恢复目标，这些子目录在第 23 行根据备份文件解压时并未创建（例如备份中没有导出历史）。`privateRoot` 要求目标目录必须已存在，否则触发 `ENOENT`，导致恢复流程失败。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 27,
+      "request_id": "bpl-audit-continue-20261009-027",
+      "files": [
+        {
+          "path": "src/server/preparation-queue.ts",
+          "start": 1,
+          "end": 68
+        },
+        {
+          "path": "src/server/maintenance.ts",
+          "start": 1,
+          "end": 43
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-027",
+        "stage": "COMPLETED",
+        "result_id": "res_ff9b55c38ada520742f1",
+        "content": "### 1. `preparation-queue.ts:17` `sweep` 立即过滤导致 `touch/transfer` 遭遇状态撕裂与死循环\n\n- **位置**：`src/server/preparation-queue.ts:13-17`\n- **触发条件**：排队票据超时（`time - t.seen >= this.leaseMs` 且 `streams.size === 0`）被触发 `t.closing = true`。\n- **影响**：第 17 行 `this.tickets = this.tickets.filter(t => !t.closing || t.streams.size > 0)` 立即将无活跃 stream 的 `t` 从数组中彻底移除。但客户端在租约到期后若再次发送轮询或握手，第 29 行查询不到该票据直接抛出 `PREPARATION_TICKET_EXPIRED` (409)；对于 `legacyTransfer`（第 59 行），轮询内部遇到 `PREPARATION_TICKET_EXPIRED` 错误无法静默重试，直接中断传输。\n\n### 2. `maintenance.ts:24` 正常退出的消息丢失与 Promise 未决超时风险\n\n- **位置**：`src/server/maintenance.ts:19-24`\n- **触发条件**：Worker 线程在发送最终 `{ result }` 消息后立即同步执行 `process.exit(0)`。\n- **影响**：在 Node.js `worker_threads` 中，`message` 事件与 `exit` 事件派发顺序存在竞争。若 `exit` 事件先于父线程事件循环中排队的 `message` 触发（或代码返回前提前退出），`code === 0` 会使得 `worker.once('exit')` 的监听器直接跳过 `reject` 且不处理结果，而 `timer` 已经被清除。Promise 永远处于 pending 状态，导致外部调用永久挂起直到全局超时。\n\n### 3. `maintenance.ts:20` 异步链未捕获异常导致 Worker 事件监听器与定时器泄漏\n\n- **位置**：`src/server/maintenance.ts:20-22`\n- **触发条件**：Worker 发送 `PIN_REQUIRED` 阶段消息后，`this.call('backup.pin', ...)` 抛出异常（例如数据库死锁或 RPC 超时）。\n- **影响**：第 20 行虽然写了 `.catch(reject)`，但第 18 行的 `timer`（120s 超时定时器）未被清除。同时，在进入 catch 后第 37 行虽然执行了 `await worker.terminate()`，但如果调用者外层没有取消定时器，定时器句柄会持续阻止进程在异常时平稳退出。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 28,
+      "request_id": "bpl-audit-continue-20261009-028",
+      "files": [
+        {
+          "path": "src/server/maintenance-worker.ts",
+          "start": 1,
+          "end": 125
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-028",
+        "stage": "COMPLETED",
+        "result_id": "res_bc3cc35e194e822a25dd",
+        "content": "### 1. `copyTree` 在递归处理子目录时向目标路径写入未创建的嵌套目录\n\n- **位置**：`src/server/maintenance-worker.ts:19-21`\n- **触发条件**：运行 `BACKUP` 流程备份 runner 目录，且 runner 内部存在二级及以上子目录（例如 `assets/chunks/vendor.js`）。\n- **影响**：第 19 行仅在顶层调用时执行了 `await mkdir(target, { mode: 0o700 })`。在第 21 行递归调用 `copyTree(from, to, files, ...)` 时，`to` 是一个尚未创建的子目录路径。代码进入新一级 `copyTree` 后虽然第 19 行会创建该目录，但在读取文件执行 `copyChecked(from, to)` 时，如果 `name` 为文件，其目标路径直接拼在 `target` 下；若目录结构中存在同级或深层路径，一旦 `target` 父级未显式递归创建（`mkdir` 缺少 `{ recursive: true }`），抛出 `ENOENT` 异常导致整个备份任务失败并进入 `RECOVERY_REQUIRED` 状态。\n\n### 2. `EXPORT` 打开文件未在异常路径中确保关闭文件描述符导致 FD 泄漏\n\n- **位置**：`src/server/maintenance-worker.ts:112-118`\n- **触发条件**：运行 `EXPORT` 任务时，`sid` 查询不存在（第 116 行 `STUDY_NOT_FOUND`）或在 `db.exec('BEGIN')` 阶段发生异常。\n- **影响**：第 112 行使用同步方式打开独占文件描述符 `const fd = openSync(...)`，而 `try` 块直到第 118 行才开始。若在第 116 行抛出 `STUDY_NOT_FOUND` 或数据库操作失败，执行流程直接中断且未执行 `closeSync(fd)`，导致工作线程内文件描述符泄漏，且目标目录遗留未同步的独占锁定文件。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 29,
+      "request_id": "bpl-audit-continue-20261009-029",
+      "files": [
+        {
+          "path": "src/server/maintenance-worker.ts",
+          "start": 126,
+          "end": 169
+        },
+        {
+          "path": "src/web/ending-page.ts",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "src/web/dom.ts",
+          "start": 1,
+          "end": 26
+        },
+        {
+          "path": "src/web/diagnostics.ts",
+          "start": 1,
+          "end": 7
+        },
+        {
+          "path": "src/web/diagnostics.html",
+          "start": 1,
+          "end": 30
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-029",
+        "stage": "COMPLETED",
+        "result_id": "res_dd620136d0d107b78feb",
+        "content": "### 1. `maintenance-worker.ts:158` 导出哈希源格式与单行记录不一致\n\n- **位置**：`src/server/maintenance-worker.ts:157-158`\n- **触发条件**：执行 `EXPORT` 任务写入 `asset_refs` 表数据时。\n- **影响**：第 158 行执行 `source.update(stableJSON(refs))`，漏掉了表名前缀与换行符 `\\0` / `\\n`（前述所有表均遵循 `${table}\\0${encoded}\\n` 规范）。而第 158 行输出到 CSV 的内容为 `${cell('asset_refs')},${cell(stableJSON(refs))}\\r\\n`，且未将 `refs` 计入 `rows` 计数（`rows++` 被遗漏），导致最终生成的 `manifest.rows` 与 CSV 实际数据行数不一致，且 `source_hash` 无法被标准反序列化校验程序按行验证。\n\n### 2. `maintenance-worker.ts:146` 量表坐标轴标签索引越界导致运行时抛错\n\n- **位置**：`src/server/maintenance-worker.ts:146`\n- **触发条件**：导出的历史数据中，多轴量表题（`scales`）的某轴记录了越界数值（如前端版本变更或容错写入了低于 `axis.min` 或高于 `axis.max` 的异常值 `value`）。\n- **影响**：第 146 行直接使用 `axis.labels[value - axis.min]` 索引数组。如果 `value < axis.min`，下标为负数得到 `undefined`；若数值超出上限同样为 `undefined`，虽然 `stableJSON` 会将其转换为 `null`，但当未进行有效值防护且后续处理期望其为 string 时，会导致生成的 `label` 与配置脱节；更严重的是，若用户回答为浮点数，计算出的非整数下标导致 `label` 恒为 `undefined`。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 30,
+      "request_id": "bpl-audit-continue-20261009-030",
+      "files": [
+        {
+          "path": "tests/unit/admin-auth.test.mjs",
+          "start": 1,
+          "end": 62
+        },
+        {
+          "path": "src/web/consent-page.ts",
+          "start": 1,
+          "end": 27
+        },
+        {
+          "path": "src/web/consent-gate.ts",
+          "start": 1,
+          "end": 26
+        },
+        {
+          "path": "src/web/local-store.ts",
+          "start": 1,
+          "end": 99
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-030",
+        "stage": "COMPLETED",
+        "result_id": "res_93b15bb84b31e033837a",
+        "content": "### 1. `src/web/consent-gate.ts:19` 闭包变量调用顺序导致 `pagehide` 监听器无法正确清理\n\n- **路径/行号**：`src/web/consent-gate.ts:16-22`\n- **触发条件**：受试者在同意书弹窗展示期间切换页面或触发 `pagehide` 事件。\n- **影响**：第 19 行 `cancel = () => { dispose(); reject(new Error('页面已关闭。')); };` 在定义前赋值，但第 20 行定义 `read()` 时在内部对外部局部变量 `dispose` 重新赋值（`dispose = mountConsent(...)`）。如果用户在 `read()` 初次执行前或异常分支中直接触发 `pagehide`，`cancel()` 执行时内部引用的 `dispose` 仍为第 16 行初始化的空函数 `() => {}`，导致 `mountConsent` 注册的 `ResizeObserver` 和相关事件监听器未能及时断开，产生内存泄漏。\n\n### 2. `src/web/consent-page.ts:14, 18` 动态调整窗口导致状态不同步阻塞用户同意\n\n- **路径/行号**：`src/web/consent-page.ts:14, 18`\n- **触发条件**：受试者阅读完同意书至末页后，旋转屏幕或改变浏览器视口大小，触发第 19 行的 `ResizeObserver` 进而执行 `render()`。\n- **影响**：第 18 行用户点击同意时仅判定 `if (fits && !pager.more)`。若视口缩小导致当前段落文本无法完全容纳（`fits` 变为 `false`），`agree.disabled` 被设为 `true`；但当受试者随后放大视口使 `fits` 恢复为 `true` 时，若 `TextPager` 内部分页计算因尺寸重排重置了当前页或 `pager.more` 的状态，而 `render()` 未主动重算受试者是否已读完全部内容，受试者即使已阅读至末页，也会被判定为未读完而无法点击“我已阅读并同意”，流程被永久阻塞。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 31,
+      "request_id": "bpl-audit-continue-20261009-031",
+      "files": [
+        {
+          "path": "src/web/ledger.ts",
+          "start": 1,
+          "end": 53
+        },
+        {
+          "path": "src/web/index.html",
+          "start": 1,
+          "end": 3
+        },
+        {
+          "path": "src/web/environment.ts",
+          "start": 1,
+          "end": 35
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-031",
+        "stage": "COMPLETED",
+        "result_id": "res_6701bf6ed48da01e896f",
+        "content": "### 1. `src/web/ledger.ts:35`：`append` 时 `pending` 清单遗漏当前追加事件\n\n- **路径/行号**：`src/web/ledger.ts:35`\n- **触发条件**：调用 `append` 传入 `pendingPath` 参数，试图在写入最后一个事件（如 `PAGE_SNAPSHOT`）的同时生成 `pending[scope]` 封印清单。\n- **影响**：第 35 行通过 `old = await tx.objectStore('events').index('scope').getAll(scope)` 读取历史事件构造 manifest。在同一事务内，第 33 行刚 `add(row)` 的当前事件由于尚未提交或索引视图未立即可见，`old` 列表中缺少当前这条新生成的事件。导致生成的 `manifest.events` 缺失终结事件，后续服务端校验比对报错 `PAGE_MANIFEST_MISMATCH` 或 `INTEGRITY_UNCONFIRMED`，封印直接失败。\n\n### 2. `src/web/ledger.ts:50`：未生成事件前调用 `reconciliation` 抛出空指针异常\n\n- **路径/行号**：`src/web/ledger.ts:50`\n- **触发条件**：会话在某 scope（如首个页面或未开始的组）尚未写入任何事件时即触发终止或异常退出，随后调用 `reconciliation(scope, path)`。\n- **影响**：第 50 行无防护执行 `head = m.heads[scope]!`，随后直接访问 `head.sequence`。当该 scope 从未调用过 `append` 时，`m.heads[scope]` 为 `undefined`，立即抛出 `TypeError: Cannot read properties of undefined (reading 'sequence')`，导致对账清单生成流程崩溃，无法生成有效的对账证据。\n\n### 3. `src/web/environment.ts:24`：未检查 `isSecureContext` 环境导致非安全上下文访问异常\n\n- **路径/行号**：`src/web/environment.ts:24-25`\n- **触发条件**：在非安全上下文（如局域网 HTTP IP 访问测试）下打开页面并采集环境信息。\n- **影响**：第 24 行直接访问全局标识符 `crossOriginIsolated`，在部分未定义该变量的旧版或非标准 Web 视口中会直接抛出 `ReferenceError: crossOriginIsolated is not defined`；同时第 25 行直接取 `crypto.subtle`，在非安全上下文中其为 `undefined`，虽转为布尔值，但第 24 行未捕获的全局变量访问会导致 `collectEnvironment()` 整体抛错，阻断参与者环境信息上报。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 32,
+      "request_id": "bpl-audit-continue-20261009-032",
+      "files": [
+        {
+          "path": "src/web/orientation-gate.ts",
+          "start": 1,
+          "end": 40
+        },
+        {
+          "path": "src/web/main.ts",
+          "start": 1,
+          "end": 59
+        },
+        {
+          "path": "src/web/p0.html",
+          "start": 1,
+          "end": 20
+        },
+        {
+          "path": "tests/helpers/lab-fixture.mjs",
+          "start": 1,
+          "end": 27
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-032",
+        "stage": "COMPLETED",
+        "result_id": "res_9c4251363ab0f82830f2",
+        "content": "### 1. `src/web/orientation-gate.ts:24` 初始化未持有引用导致全生命周期遮罩泄漏\n\n- **路径/行号**：`src/web/orientation-gate.ts:24, 31-38`\n- **触发条件**：调用 `requireOrientation(version)` 进入 `initialize`，且当前问卷配置了 `meta.orientation`。\n- **影响**：第 24 行直接执行 `await watchOrientation(meta.orientation).passed;`，未保存返回的 `dispose` 函数引用。当设备方向调整正确后，`passed` Promise 完成，但由于未调用 `dispose()`，第 34-36 行挂载在 `window`、`screen.orientation` 上的 3 个事件监听器永久驻留；更严重的是，第 27-30 行创建的全局 DOM 元素 `<div id=\"orientation-gate\">` 未被移除，后续若用户再次旋转屏幕，该遮罩层将被残留的事件回调重新激活并永久截获交互。\n\n### 2. `src/web/orientation-gate.ts:13` 切换不同问卷版本时单例 Promise 阻断方向重新加载\n\n- **路径/行号**：`src/web/orientation-gate.ts:12-13`\n- **触发条件**：在单页应用中完成上一问卷或从一个版本切换到另一版本，再次调用 `requireOrientation(newVersion)`。\n- **影响**：第 12 行定义了全局模块变量 `let gate: Promise<void> | undefined;`。第 13 行使用 `gate ??= initialize(version)...`，一旦首次调用完成，`gate` 永远为已 resolve 的 Promise。切换到新版本后，代码不会重新请求 `/metadata`，无法获取新版本的 `requiredOrientation`、背景色与标题，而是直接沿用旧版本的 `requiredOrientation` 执行 `waitForOrientation`，导致不同屏幕方向要求的问卷在路由切换后校验失效。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 33,
+      "request_id": "bpl-audit-continue-20261009-033",
+      "files": [
+        {
+          "path": "tests/unit/asset-compatibility.test.mjs",
+          "start": 1,
+          "end": 76
+        },
+        {
+          "path": "tests/helpers/run-trace.mjs",
+          "start": 1,
+          "end": 21
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-033",
+        "stage": "COMPLETED",
+        "result_id": "res_b50b8c76a2e31189c30c",
+        "content": "### 1. `tests/helpers/run-trace.mjs:13`：`INPUT` 记录缺少必需的 `clock_origin` 导致回放校验抛错\n\n- **路径/行号**：`tests/helpers/run-trace.mjs:13` 与 `src/shared/run-replay.ts:15, 80`\n- **触发条件**：测试辅助函数 `trace(p)` 传入非 `TEST_ONLY` 环境（例如真实环境 ID）的 plan 时，或者在回放中触发 `INPUT` 事件重放。\n- **影响**：第 13 行构造 `INPUT` 记录时未设置 `clock_origin` 字段。在 `RunReplay.apply` 及 `RunReplay.input`（`src/shared/run-replay.ts:80`）中：`const origin = r.clock_origin ?? 0;\nconst mono = r.raw_timestamp <= r.at + origin + 1 && r.raw_timestamp >= 0\n  ? r.raw_timestamp - origin\n  : r.raw_timestamp - r.time_origin - origin;`在第 13 行中，`raw_timestamp` 被设置为 `t + 10`（远小于 `time_origin: 123000`）。当进入第二分支时，`mono` 计算为 `(t + 10) - 123000 < 0`，紧接着在行 81 触发：`if (!Number.isFinite(mono) || Math.abs(mono - r.input_time!) > .01 || mono < 0 || mono > r.at + 1)\n  throw new Error('INPUT_CLOCK_AMBIGUITY');``mono < 0` 导致直接抛出 `INPUT_CLOCK_AMBIGUITY` 异常，使得生成有实际输入的追踪轨迹必然失败。\n\n### 2. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 34,
+      "request_id": "bpl-audit-continue-20261009-034",
+      "files": [
+        {
+          "path": "tests/unit/collection.test.mjs",
+          "start": 1,
+          "end": 135
+        },
+        {
+          "path": "tests/unit/consent.test.mjs",
+          "start": 1,
+          "end": 35
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-034",
+        "stage": "COMPLETED",
+        "result_id": "res_d8446c67bea6f9d47618",
+        "content": "未发现可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 35,
+      "request_id": "bpl-audit-continue-20261009-035",
+      "files": [
+        {
+          "path": "tests/runner-browser/runner.spec.ts",
+          "start": 1,
+          "end": 97
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-035",
+        "stage": "COMPLETED",
+        "result_id": "res_9e334d3a3bc6c0ce8588",
+        "content": "未发现可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 36,
+      "request_id": "bpl-audit-continue-20261009-036",
+      "files": [
+        {
+          "path": "tests/unit/lab.test.mjs",
+          "start": 1,
+          "end": 80
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-036",
+        "stage": "COMPLETED",
+        "result_id": "res_ee0f7979feea433d6da9",
+        "content": "未发现可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 37,
+      "request_id": "bpl-audit-continue-20261009-037",
+      "files": [
+        {
+          "path": "tests/unit/maintenance.test.mjs",
+          "start": 1,
+          "end": 45
+        },
+        {
+          "path": "tests/unit/multi-scale.test.mjs",
+          "start": 1,
+          "end": 38
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-037",
+        "stage": "COMPLETED",
+        "result_id": "res_2fa8f5569179dc93e263",
+        "content": "未发现可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 38,
+      "request_id": "bpl-audit-continue-20261009-038",
+      "files": [
+        {
+          "path": "src/web/p0.ts",
+          "start": 1,
+          "end": 107
+        },
+        {
+          "path": "tests/unit/writer.test.mjs",
+          "start": 1,
+          "end": 54
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-038",
+        "stage": "COMPLETED",
+        "result_id": "res_e931bf4f112ae2e8ff62",
+        "content": "### 1. `p0.ts:100` 未持有锁分支发起无凭证认证请求导致 401 失败\n\n- **路径/行号**：`src/web/p0.ts:98-102`\n- **触发条件**：用户在多标签页或重复窗口中打开页面，后打开的页面未能获取 Web Lock（`!lock` 分支），且本地存储已存在之前生成的 `state.session`。\n- **影响**：第 100 行在只读回显逻辑中尝试请求 `api<SessionView>(/api/p0/sessions/${state.session.session_id})`。但由于这是一个新的或独立的页面上下文，尚未像第 57 行（`restore`）那样通过提交 `state.credential` 换取/重置服务端的 Session 认证 Cookie，该纯 GET 请求直接触发服务端 401 `UNAUTHORIZED` 异常进入 `catch` 块。导致只读提示未能展示目标会话状态，且 `session` 变量保持 `undefined`，使得随后的 `unknownClose` 兜底关闭按钮因无法读取 `session.permit` 而被错误隐藏。\n\n### 2. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 39,
+      "request_id": "bpl-audit-continue-20261009-039",
+      "files": [
+        {
+          "path": "tests/unit/trial-design.test.mjs",
+          "start": 1,
+          "end": 138
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-039",
+        "stage": "COMPLETED",
+        "result_id": "res_ed24d8cae52399f57f7e",
+        "content": "未发现可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 40,
+      "request_id": "bpl-audit-continue-20261009-040",
+      "files": [
+        {
+          "path": "tests/unit/session-admission.test.mjs",
+          "start": 1,
+          "end": 61
+        },
+        {
+          "path": "tests/unit/scheduler.test.mjs",
+          "start": 1,
+          "end": 92
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-040",
+        "stage": "COMPLETED",
+        "result_id": "res_90c283e8aa426ec4b427",
+        "content": "未发现可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 41,
+      "request_id": "bpl-audit-continue-20261009-041",
+      "files": [
+        {
+          "path": "tests/unit/runner-release.test.mjs",
+          "start": 1,
+          "end": 77
+        },
+        {
+          "path": "tests/unit/run-replay.test.mjs",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "tests/unit/questionnaire-json.test.mjs",
+          "start": 1,
+          "end": 38
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-041",
+        "stage": "COMPLETED",
+        "result_id": "res_f3cbb47c2c2a767ff301",
+        "content": "### 1. `run-replay.test.mjs:26` 输入记录时间戳不一致触发断言失败\n\n- **路径/行号**：`tests/unit/run-replay.test.mjs:26`\n- **触发条件**：运行单元测试第 24-29 行的晚期校正回放测试用例。\n- **影响**：第 26 行构造测试数据 `late = { type: 'INPUT', at: 1210, pointer_id: 7, input_time: 1100, raw_timestamp: 1100, time_origin: 100000, ... }`。在回放引擎 `RunReplay.input`（`src/shared/run-replay.ts:80-81`）校验中，由于 `raw_timestamp: 1100` 小于 `time_origin: 100000`，引擎会计算 `mono = raw_timestamp - time_origin = -98900 < 0`，紧接着在检查 `Math.abs(mono - r.input_time) > .01 || mono < 0` 时直接抛出 `INPUT_CLOCK_AMBIGUITY`，导致第 28 行期望的校正回放逻辑无法执行，测试代码自身存在时间基准构造缺陷。\n\n### 2. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 42,
+      "request_id": "bpl-audit-continue-20261009-042",
+      "files": [
+        {
+          "path": "tests/unit/process-crash.test.mjs",
+          "start": 1,
+          "end": 48
+        },
+        {
+          "path": "tests/unit/preparation.test.mjs",
+          "start": 1,
+          "end": 66
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-042",
+        "stage": "COMPLETED",
+        "result_id": "res_d7fd079d47ab72b3859e",
+        "content": "### 1. `process-crash.test.mjs:15` 异步退出监听在非确定性退出时可能造成全局悬挂\n\n- **路径/行号**：`tests/unit/process-crash.test.mjs:15`\n- **触发条件**：子进程在测试结束清理（`t.after`）前已经触发系统异常或操作系统主动回收，此时 `child.exitCode` 或 `child.signalCode` 仍为 `null`（尚未被 Node.js IPC 事件循环读取）。\n- **影响**：第 15 行先注册 `const exited = once(child, 'exit')` 再调用 `child.kill('SIGKILL')` 并 `await exited`。若子进程此时已经处于僵尸态或连接已关闭而不再派发新的 `exit` 事件，该 Promise 将无限期挂起，导致单测进程超时卡死。\n\n### 2. `preparation.test.mjs:42` 原生 HTTP 服务未设置 Content-Length 触发流解析异常\n\n- **路径/行号**：`tests/unit/preparation.test.mjs:41-45`\n- **触发条件**：运行 Node.js 20+ 内置 `fetch` 请求本地通过 `createServer` 创建的 `/slow` 接口（第 42 行）。\n- **影响**：第 42 行使用分块输出 `res.write('a')` ... `res.end('c')`，未显式设置 `Transfer-Encoding: chunked` 或 `Content-Length`。Node.js 针对不同平台的 HTTP 流解析实现差异可能导致 `response.body` 首个 chunk 延迟或分块头缺失，结合测试中给出的极短等待（40ms / 80ms），容易因时钟调度抖动触发提前判定导致非预期超时。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 43,
+      "request_id": "bpl-audit-continue-20261009-043",
+      "files": [
+        {
+          "path": "src/web/run.ts",
+          "start": 1,
+          "end": 113
+        },
+        {
+          "path": "src/web/run.html",
+          "start": 1,
+          "end": 2
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-043",
+        "stage": "COMPLETED",
+        "result_id": "res_7e85a763739a7ca81e9f",
+        "content": "### 1. `run.ts:56` 布局几何校验比较 `actual` 与 `ready` 产生误报阻塞实验开始\n\n- **路径/行号**：`src/web/run.ts:22, 56`\n- **触发条件**：受试者点击“开始本组”按钮，第 56 行比较 `JSON.stringify(actual) !== JSON.stringify(ready)`。\n- **影响**：第 22 行的 `geometry()` 函数通过 `e.getBoundingClientRect()` 采集 `buttons` 的坐标与尺寸。在第 49 行创建布局时，各个 response buttons 处于 `disabled = true` 状态；点击“开始本组”时，第 56 行隐藏了 `start` 按钮（`start.style.visibility = 'hidden'`），部分浏览器引擎在元素重排/滚动条微调或浮点数坐标计算（Subpixel Rendering）下，`getBoundingClientRect` 的 `x/y` 会产生 $10^{-4}$ 级别的微小浮点抖动；由于直接使用 `JSON.stringify` 做全等比对，任何极微小的不一致均会抛出 `'准备后布局已变化，请重新准备。'`，将受试者拦截在任务开始前。\n\n### 2. `run.ts:87` 移动端软键盘或手势缩放触发 `visualViewport.scroll` 误判为异常中断\n\n- **路径/行号**：`src/web/run.ts:87`\n- **触发条件**：在移动端或触摸屏设备上运行图片任务，系统由于偶发微小惯性滑动或布局对齐触发了 `visualViewport` 的 `scroll` 事件。\n- **影响**：第 87 行直接绑定 `visualViewport.addEventListener('scroll', visualChange)`，且 `visualChange` 直接执行 `void stop('VISUAL_VIEWPORT_CHANGED')`。在移动端 WebKit/Blink 中，即使页面锁定了视口，轻微的触摸越界弹性滚动（Rubber-banding / Overscroll）也会分发 `visualViewport.scroll`，导致合法的受试作答被立即判为违规并强行终止（Abort），损坏实验会话。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 44,
+      "request_id": "bpl-audit-continue-20261009-044",
+      "files": [
+        {
+          "path": "src/web/prepare.ts",
+          "start": 1,
+          "end": 47
+        },
+        {
+          "path": "src/web/preparation-gate.ts",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "src/web/participate.html",
+          "start": 1,
+          "end": 2
+        },
+        {
+          "path": "src/web/participant.ts",
+          "start": 1,
+          "end": 37
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-044",
+        "stage": "COMPLETED",
+        "result_id": "res_666ee049e31977b067a0",
+        "content": "### 1. `prepare.ts:13-14` 探针事务与循环竞争导致存储基准测试极易超时被拒\n\n- **路径/行号**：`src/web/prepare.ts:12-15`\n- **触发条件**：低端移动设备或主线程存在短暂垃圾回收时执行 `storageProbe`（外层 10 轮，每轮嵌套 4 次独立读写事务）。\n- **影响**：第 13-14 行使用 `for (let j=0; j<4; j++)` 连续执行包含 `crypto.subtle.digest` 与三表跨对象存储的 `durability: 'strict'` IDB 事务。由于事务连续排队且强刷盘，`commit_ms` 取 10 轮中的最大值（`Math.max(...samples)`）。移动端单次闪存同步抖动极易超过 `p.budget.commit_ms`（默认仅 40ms），导致行 47 直接抛出 `'本地事务耗时超过此版本预算，无法开始该组。'`，受试者在正常设备上被完全阻塞。\n\n### 2. `preparation-gate.ts:21-25` 续租异常未清理定时器导致高频报错风暴\n\n- **路径/行号**：`src/web/preparation-gate.ts:21-25`\n- **触发条件**：参与者已进入准备阶段，后台静默续租（每 20 秒）遭遇瞬时网络错误。\n- **影响**：第 23 行捕获异常后将错误赋给闭包变量 `renewalError = error; onFailure(error);`。此时虽然在行 24 的 `if (!released && !signal.aborted && !renewalError)` 阻止了下一次 `renew()`，但 `onFailure` 回调（`prepare.ts:41`）仅调用了 `preparing.abort(error)`，若外层 `gate.release()` 因 Promise 竞争延迟执行，未被取消的 `pending` 状态与重试逻辑可能引起未捕获的级联 Rejection，并在后续图片下载已完成后仍被 `gate.check()` 判定为失败抛错。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 45,
+      "request_id": "bpl-audit-continue-20261009-045",
+      "files": [
+        {
+          "path": "src/web/participant.css",
+          "start": 1,
+          "end": 93
+        },
+        {
+          "path": "src/web/participant-theme.ts",
+          "start": 1,
+          "end": 19
+        },
+        {
+          "path": "src/web/participant-api.ts",
+          "start": 1,
+          "end": 33
+        },
+        {
+          "path": "src/web/simulate.html",
+          "start": 1,
+          "end": 2
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-045",
+        "stage": "COMPLETED",
+        "result_id": "res_d3117a0add085ffaf6ef",
+        "content": "### 1. `participant-theme.ts:6` 非 6 位 16 进制颜色导致正则匹配返回 null 抛错崩溃\n\n- **路径/行号**：`src/web/participant-theme.ts:6`\n- **触发条件**：问卷协议中的 `layout.background` 配置为 3 位 16 进制短缩写（如 `#fff`、`#000`）或非法长度字符串时，调用 `applyParticipantBackground`。\n- **影响**：第 6 行执行 `background.slice(1).match(/../g)!`。对于短颜色格式（例如 `#fff` 切割后为 `'fff'`），正则匹配得到单元素数组，解构访问 `rgb[2]` 为 `undefined`；若传入其它非偶数长格式，`match` 返回 null，紧随的非空断言直接触发 `TypeError: Cannot read properties of null (reading 'map')`，导致前台主题挂载崩溃，受试页面初始化流程彻底中断。\n\n### 2. `participant-api.ts:27` 遍历空 heads 导致对账请求未执行即完成\n\n- **路径/行号**：`src/web/participant-api.ts:27`\n- **触发条件**：会话被终止（`TERMINATED`）且尚未记录任何事件序列时（例如受试者刚进入准备阶段即异常退出），调用 `reconcile()`。\n- **影响**：第 27 行通过 `for (const scope of Object.keys(m.heads))` 遍历需要对账的作用域。当尚未追加任何事件时，`m.heads` 为空对象，循环直接跳过，未向后端发送任何 `reconcile` 请求以关闭对账通道或获取对账清单报告，导致本地与服务端的对账状态未实际对齐。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 46,
+      "request_id": "bpl-audit-continue-20261009-046",
+      "files": [
+        {
+          "path": "src/web/session-gate.ts",
+          "start": 1,
+          "end": 31
+        },
+        {
+          "path": "src/web/scale-input.ts",
+          "start": 1,
+          "end": 46
+        },
+        {
+          "path": "src/web/runner.css",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "src/web/runner-input.ts",
+          "start": 1,
+          "end": 40
+        },
+        {
+          "path": "src/web/style.css",
+          "start": 1,
+          "end": 42
+        },
+        {
+          "path": "src/web/stimulus.ts",
+          "start": 1,
+          "end": 14
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-046",
+        "stage": "COMPLETED",
+        "result_id": "res_8374cca5bdd5842fddd3",
+        "content": "### 1. `session-gate.ts:28` 租约超时判定单位与基准不一致导致提前报失效\n\n- **路径/行号**：`src/web/session-gate.ts:21, 28`\n- **触发条件**：受试者进入 `awaitSessionAdmission` 并获批 `ACTIVE` 状态，页面调用 `check()` 校验会话状态。\n- **影响**：第 21 行 `sent = performance.now()` 记录的是单调时钟（自页面加载起算的毫秒数，通常为几秒至几分钟）；而服务端返回的 `lease_remaining_ms` 虽然是剩余毫秒，但在部分计算或序列化对齐（如 `lease_until - now`）中若存在绝对时间戳混淆，`sent + result.lease_remaining_ms` 将与真实物理时间解耦。更严重的是，当后台 Tab 挂起或定时器唤醒发生漂移时，第 28 行 `performance.now() >= deadline` 判定为纯客户端单调时间，若首次获得的名额租约在客户端未能在 60s 内成功触发第一次续租，`check()` 会直接抛出 `'参加名额已失效，请重新排队。'`，异常阻断当前题目的提交流程。\n\n### 2. `scale-input.ts:32` 触摸设备点击量表滑轨计算坐标未适配 CSS 缩放及非零 padding\n\n- **路径/行号**：`src/web/scale-input.ts:30-34`\n- **触发条件**：受试者在移动端视口缩放、矮屏幕适配（如 `participant.css:76` 应用了媒体查询 padding 调整）下，直接触摸点击量表滑轨的两端极端值。\n- **影响**：第 32 行写死了 `(event.clientX - rect.left - 11) / Math.max(1, rect.width - 22)`（硬编码了 11px/22px 的 thumb 半径偏移）。当父容器由于响应式 CSS 发生缩放或 thumb 尺寸与实际渲染元素存在差异时，在靠近左右端点边缘点击会发生截断偏移，且第 30 行监听 `pointerdown` 会与原生的 `<input type=\"range\">` 的内建手势发生双重触发（先执行第 33 行的 `commit`，随后原生 range 触发 `input` 与 `change` 再次执行第 28、29 行的 `commit`），造成连续两次重复保存网络调用。\n\n### 3. `stimulus.ts:2` 背景颜色短格式匹配返回 null 抛出未捕获异常\n\n- **路径/行号**：`src/web/stimulus.ts:2`\n- **触发条件**：试次组呈现文本刺激（`drawTextStimulus`），协议中指定的背景色为 3 位 16 进制颜色（如 `#000` 或 `#fff`）。\n- **影响**：第 2 行 `background.slice(1).match(/../g)!` 对 3 位字符进行匹配得到包含单元素的数组，随后 `rgb[1]` 和 `rgb[2]` 为 `undefined`，`parseInt` 产生 `NaN`，反差色计算失效；若为非偶数长度字符串则 `match` 返回 `null`，非空断言抛出 `TypeError: Cannot read properties of null (reading 'map')`，导致 Canvas 刺激绘制失败并终止渲染流程。",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 47,
+      "request_id": "bpl-audit-continue-20261009-047",
+      "files": [
+        {
+          "path": "src/web/simulate.ts",
+          "start": 1,
+          "end": 31
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-047",
+        "stage": "COMPLETED",
+        "result_id": "res_630c97aa2cce1987a674",
+        "content": "### 1. `simulate.ts:18` 页面跨步跳转缺少回退机制导致被跳过页面答案残留\n\n- **路径/行号**：`src/web/simulate.ts:17-18`\n- **触发条件**：问卷包含多页条件分支；模拟者提交某页答案后使后续页被跳过，若在模拟中重置或答案级联变化。\n- **影响**：第 17-18 行在跳过页面时仅自增 `index++`，直接执行 `Object.assign(answers, data)`，但未同步将跳过页面的题目答案重置为 `null`。与正式运行环境（`lab-store.ts` 的 `skipPages`）不同，模拟运行环境保留了脏状态，导致依赖 `answers[key] === null` 或字段不存在的后续条件分支产生不一致的求值结果。\n\n### 2. `simulate.ts:24` 模拟图片未带凭证与研究上下文导致请求 401 失败\n\n- **路径/行号**：`src/web/simulate.ts:24`\n- **触发条件**：在管理端点击已保存研究的“模拟问卷”，且问卷包含真实引用的图片刺激材料（`entry.trial.asset_id` 为正式 UUID 且非 `preview-image-` 前缀）。\n- **影响**：第 24 行直接将图片标签设置为 `image.src = '/api/lab/assets/' + entry.trial.asset_id`。然而该管理端或资源路由要求特定研究的作用域凭证（例如通过研究草稿或者带 CSRF / 认证 Token 的请求），未设置 crossOrigin 或无认证 Cookie 时直接触发 401/403 拒绝，导致模拟界面中已上传的图片无法正确加载与预览。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 48,
+      "request_id": "bpl-audit-continue-20261009-048",
+      "files": [
+        {
+          "path": "src/web/survey-page.ts",
+          "start": 1,
+          "end": 222
+        },
+        {
+          "path": "src/web/survey-demo.ts",
+          "start": 1,
+          "end": 17
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-048",
+        "stage": "COMPLETED",
+        "result_id": "res_5241a51c5949466c735d",
+        "content": "### 1. `survey-page.ts:137-148` 多轴量表节点复用下 `fits` 计算包含隐藏节点且闭包捕获旧值\n\n- **位置**：`src/web/survey-page.ts:137, 146-152`\n- **触发条件**：当前题型为多轴量表（`scales`），答题触发 `save()` 导致 `render()` 执行且进入 `reuse === true` 分支。\n- **影响**：第 146-148 行的 `save` 回调仅在初始构建时绑定，闭包捕获了当次构建时的局部变量；而在第 152 行检测布局是否容纳时，`controlsFit` 遍历了 `axes.flatMap(...)` 中此前旧节点挂载的各个子元素。当屏幕尺寸发生微调或二次渲染重算列数时，`axes-grid` 的 CSS grid 属性被修改，但已复用的 `axes` 节点未重新绑定更新后的轴数据与当前 `answers[q.id]` 状态，导致部分轴在连续交互时 `controlsFit` 使用了陈旧的 DOM 矩形，误判为不适应（`fits = false`）并阻断提交。\n\n### 2. `survey-page.ts:181` 输入法回车/提交与软键盘收起导致连击跳题\n\n- **位置**：`src/web/survey-page.ts:180-186`\n- **触发条件**：文字问答题在移动端软键盘中输入完成，受试者点击“完成输入”按钮（此时 `editing === true`）。\n- **影响**：第 181 行执行 `if (editing) { editing=false; document.body.classList.remove('typing'); inputs.get(question()!.id)?.blur(); requestResize(); return; }`。由于此时未重置 `submitting` 或设置操作防抖，点击“完成输入”会触发一次完整的 blur 事件；而移动端在收起软键盘的瞬间往往紧接着触发一次同位置的 click 事件（或用户误连击），导致下一轮直接进入行 184 的 `validate` 和行 186 的 `show(nextIndex)`，未经用户确认便跳至下一题甚至直接提交整页。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 49,
+      "request_id": "bpl-audit-continue-20261009-049",
+      "files": [
+        {
+          "path": "src/web/text-pager.ts",
+          "start": 1,
+          "end": 58
+        },
+        {
+          "path": "src/web/wait.ts",
+          "start": 1,
+          "end": 10
+        },
+        {
+          "path": "src/web/viewport.ts",
+          "start": 1,
+          "end": 30
+        },
+        {
+          "path": ".env.example",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "path": "package.json",
+          "start": 1,
+          "end": 57
+        },
+        {
+          "path": "playwright.config.ts",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "tsconfig.base.json",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "path": "tsconfig.server.json",
+          "start": 1,
+          "end": 13
+        },
+        {
+          "path": "tsconfig.web.json",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "path": "vite.config.ts",
+          "start": 1,
+          "end": 33
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-continue-20261009-049",
+        "stage": "COMPLETED",
+        "result_id": "res_25f1a7cc88f6ec878557",
+        "content": "### 1. `text-pager.ts:48` 段落边界切分向后退步导致死循环或分页卡死\n\n- **位置**：`src/web/text-pager.ts:48`\n- **触发条件**：`preferParagraphs` 为 true（知情同意书等长文分页场景），当文本在当前容器高度二分测算得出的最大容纳终点 `end` 恰好跨越段落，且前一个段落分隔符 `\\n\\n` 紧邻 `this.start`。\n- **影响**：第 48 行计算 `const boundary = this.text.lastIndexOf('\\n\\n', end - 2) + 2`。若上一个段落尾部距离当前起始点 `this.start` 极近但仍满足 `boundary > this.start` 时，`end` 被截断重置为 `boundary`。而在调用方点击“下一页”时，`starts.push(this.end)` 并将 `this.start` 推进至该 `boundary`；若下一段的首行在当前容器中即使只渲染单个字也超出容器（或再次命中回退条件），会导致 `end === this.start`，使得 `show()` 返回 `false` 并触发界面报错“可见空间不足”，流程永久卡死无法向下翻页。\n\n### 2. `vite.config.ts:16` 非标准配置字段导致生产构建多入口打包失败\n\n- **位置**：`vite.config.ts:16`\n- **触发条件**：执行 `npm run build` 进行生产环境打包。\n- **影响**：第 16 行将多页面输入直接写为 `build.rolldownOptions`。在标准 Vite 6/7/8 工具链中（package.json 指定 `vite: 8.3.3`），Rollup 配置的合法字段名为 `build.rollupOptions`。写成 `rolldownOptions` 会被 Vite 视作未知选项直接忽略，导致打包时回退为默认的单页面入口（仅打包根目录 `index.html`），`dist/web` 目录下缺失 `admin.html`、`participate.html`、`run.html` 等关键 HTML 产物，发布环境直接报 404 无法启动。\n\n### 3. 未发现其他可确认缺陷",
+        "completeness": "complete"
+      }
+    },
+    {
+      "batch": 1,
+      "request_id": "bpl-audit-all-20261009-001",
+      "files": [
+        {
+          "path": "deploy/production.env.example",
+          "start": 1,
+          "end": 19
+        },
+        {
+          "path": "deploy/nginx.conf",
+          "start": 1,
+          "end": 37
+        },
+        {
+          "path": "deploy/browser-psych-lab.service",
+          "start": 1,
+          "end": 29
+        },
+        {
+          "path": "deploy/browser-psych-lab-backup.timer",
+          "start": 1,
+          "end": 9
+        },
+        {
+          "path": "deploy/browser-psych-lab-backup.service",
+          "start": 1,
+          "end": 14
+        },
+        {
+          "path": "deploy/1c2g.conf",
+          "start": 1,
+          "end": 8
+        },
+        {
+          "path": "scripts/smoke.mjs",
+          "start": 1,
+          "end": 51
+        },
+        {
+          "path": "scripts/setup.mjs",
+          "start": 1,
+          "end": 22
+        },
+        {
+          "path": "scripts/release.mjs",
+          "start": 1,
+          "end": 23
+        },
+        {
+          "path": "scripts/references.mjs",
+          "start": 1,
+          "end": 55
+        }
+      ],
+      "result": {
+        "result_id": "res_e2bb91b092e2a5e0c2b7",
+        "kind": "message",
+        "content": "### 1. Nginx 代理未传递真实 IP 导致后端频控与审计失效\n\n- **位置**: `deploy/nginx.conf:21`\n- **触发**: 客户端通过 Nginx 反向代理访问 Fastify 后端。\n- **影响**: Nginx 仅设置了 `proxy_set_header X-Forwarded-For $remote_addr;`，未传递 `X-Real-IP`。由于 `src/server/main.ts` 配置为 `trustProxy: '127.0.0.1'`，Fastify 默认取 `X-Forwarded-For` 最后一个非受信 IP 或直接取反向代理 IP，但更关键的是若经过 CDN/前级代理或单一反代传递时格式不统一，可能导致 `request.ip` 无法稳定映射为真实客户端 IP。在 `lab-routes.ts` 中基于 `request.ip` 进行的登录防爆破限流（`login-${request.ip}`）和入库协变量记录会被同化，使得不同客户端互相挤占限流配额甚至拒绝服务。\n- **修复**: 在 `deploy/nginx.conf` 的 `location /` 与静态路由中补齐反向代理头：`proxy_set_header X-Real-IP $remote_addr;\nproxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`\n\n### 2. 备份定时服务缺少工作目录与产物路径写入权限\n\n- **位置**: `deploy/browser-psych-lab-backup.service:1-14`\n- **触发**: `browser-psych-lab-backup.timer` 触发执行 `scripts/backup.mjs`。\n- **影响**: 备份服务定义了 `User=psychlab` 与 `NoNewPrivileges=true`，但未配置 `ReadWritePaths`（对比主服务 `deploy/browser-psych-lab.service:23` 显式开放了 `/var/lib/browser-psych-lab` 与 `/mnt/psychlab-backup`）。在默认未放行或开启受限保护的环境下，定时任务进程写入备份目标路径（`BACKUP_ROOT`）可能直接触发权限被拒绝（EACCES），导致日常自动备份静默失败。\n- **修复**: 在 `deploy/browser-psych-lab-backup.service` 的 `[Service]` 中添加必要的读写路径授权：`ReadWritePaths=/var/lib/browser-psych-lab /mnt/psychlab-backup`\n\n### 3. release.mjs 扫描目录使用平台相关分隔符导致哈希不一致\n\n- **位置**: `scripts/release.mjs:10`\n- **触发**: 在不同构建环境执行 `node scripts/release.mjs` 生成发布包清单。\n- **影响**: `scan` 函数递归处理子目录时构造文件标识 `key = prefix ?`${prefix}/${name.name}`: name.name;`，但上层直接拼接 `path = join(directory, name.name)`。若在 Windows 开发环境下构建或验证，路径混合斜杠可能进入 `files` 清单，导致 `JSON.stringify(files)` 计算出的 `runnerHash` 与 Linux 生产环境不一致，使生产环境的不可变校验（`retainRelease`）判定为非预期 runner。\n- **修复**: 在生成 `key` 时显式标准化斜杠：`const key = (prefix ? `${prefix}/${name.name}` : name.name).replaceAll('\\\\', '/');`",
+        "next_offset": 1735,
+        "done": true,
+        "total_length": 1735,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 3,
+      "request_id": "bpl-audit-resume-20261009-003",
+      "files": [
+        {
+          "path": "scripts/profile-foundation.mjs",
+          "start": 1,
+          "end": 81
+        },
+        {
+          "path": "scripts/profile-bandwidth.mjs",
+          "start": 1,
+          "end": 85
+        },
+        {
+          "path": "scripts/preview-tls.mjs",
+          "start": 1,
+          "end": 27
+        }
+      ],
+      "result": {
+        "result_id": "res_cc3d7ffe3687440408ec",
+        "kind": "message",
+        "content": "### 1. `previewTLS` 生成证书在 Node.js/OpenSSL 1.1 环境下扩展名不生效\n\n- **位置**: `scripts/preview-tls.mjs:15-16`\n- **触发条件**: 在预装 OpenSSL 1.1.0 或部分非 3.x 较旧 Linux/Unix 发行版环境中运行该脚本时执行 `openssl req -addext ...`。\n- **影响**: OpenSSL 1.1.0 及部分 1.1.1 变种子命令 `req` 尚未完全支持或在部分系统参数下直接拒绝 `-addext` 标志，导致生成 CA 命令直接报错退出，本地预览自签 TLS 生成失败。\n- **修复建议**: 降级使用 `-config` 或写入临时 OpenSSL 配置文件传递扩展属性，或检测 OpenSSL 版本后做参数适配。\n\n### 2. 流量整形代理未在客户端断开时同步销毁下游转换流导致悬挂\n\n- **位置**: `scripts/profile-bandwidth.mjs:31`\n- **触发条件**: 客户端调用或被动中断连接触发 `res.on('close')`。\n- **影响**: 代码注册了 `res.on('close', () => { response.destroy(); shaper.destroy(); })`，但在队列 `queue` 中保存了 `{ chunk, offset, target: this, done }`。若 `target` (即 `shaper`) 已被 destroy，但在 `pump()` 循环触发时，若刚好处于当前 chunk 的多次切片期间，未能即时检查 `this.destroyed`，会导致在某些 Node.js 版本下触发 `ERR_STREAM_DESTROYED` 未捕获异常并抛出。\n- **修复建议**: 在 `pump()` 内部增加对 `item.target.destroyed` 的持续检查并显式调用 `item.done()` 弹出当前项。",
+        "next_offset": 887,
+        "done": true,
+        "total_length": 887,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": 4,
+      "request_id": "bpl-audit-final-20261009-004",
+      "files": [
+        {
+          "path": "scripts/preview-questionnaire.mjs",
+          "start": 1,
+          "end": 111
+        },
+        {
+          "path": "scripts/precompress.mjs",
+          "start": 1,
+          "end": 21
+        },
+        {
+          "path": "scripts/lib.mjs",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "path": "scripts/doctor.mjs",
+          "start": 1,
+          "end": 60
+        }
+      ],
+      "result": {
+        "result_id": "res_72d6534115128fbe29d1",
+        "kind": "message",
+        "content": "### 1. `preview-questionnaire.mjs:40`：相对 URL 传入 `new URL(url, base)` 构造异常导致重定向服务 500\n\n- **文件/行号**：`scripts/preview-questionnaire.mjs:40`\n- **触发条件**：在 `--lan` 模式下，当 HTTP 重定向服务收到畸形请求、非斜杠开头的相对路径，或包含反斜杠等特定非法字符的请求 URL 时（如 `request.url` 为空或非法路径），`new URL(request.url ?? '/', origin)` 解析抛出 `TypeError`。\n- **影响**：由于该 `createServer` 回调内未对 URL 解析进行 `try...catch` 保护，未捕获异常直接冒泡导致重定向 HTTP 进程崩溃退出，移动端无法继续通过 HTTP 端口完成到 HTTPS 的重定向或证书下载。\n\n### 2. `preview-questionnaire.mjs:110`：初始化异常时残留 HTTP 重定向服务器端口监听\n\n- **文件/行号**：`scripts/preview-questionnaire.mjs:44`, `scripts/preview-questionnaire.mjs:110`\n- **触发条件**：在 `--lan` 模式下运行，`redirect.listen(...)` 已成功绑定 `port`，但随后执行的任意步骤抛出异常（例如：`app.inject` 登录失败、ZIP 包读取不存在、或 `post('/api/lab/studies/...')` 失败进入第 110 行的 `catch` 块）。\n- **影响**：`catch` 块仅调用了 `await app.close()`，但 `redirect` 服务的关闭绑定在 `app.server.once('close', ...)` 上（行 45）。在 Fastify 实例未完成全生命周期绑定或直接异常退出时，原生的 `redirect` HTTP 服务可能未收到关闭信号而保持端口监听，导致进程无法正常退出或后续重启遭遇 `EADDRINUSE` 端口占用。\n\n### 3. `precompress.mjs:12`：构建产物目录为空或缺失时抛出未捕获异常\n\n- **文件/行号**：`scripts/precompress.mjs:12`\n- **触发条件**：在尚未执行前端静态资源构建（即 `dist/web/assets` 目录不存在）时，直接执行 `npm run precompress`（或在 CI 流程中执行脚本）。\n- **影响**：`await readdir(directory)` 触发 `ENOENT` 异常未被捕获，脚本异常中断且无明确的前置构建提示。\n- **待确认**：需核实 `package.json` 中的构建脚本管道是否保证 `precompress` 恒在 `vite build` 输出后串行执行。",
+        "next_offset": 1300,
+        "done": true,
+        "total_length": 1300,
+        "completeness": "complete",
+        "request_status": "PENDING_VERIFICATION",
+        "late_result": true
+      }
+    },
+    {
+      "batch": null,
+      "request_id": "bpl-audit-targeted-20261009-001",
+      "files": [
+        {
+          "path": "src/shared/trial-design.ts",
+          "start": 1,
+          "end": 89
+        },
+        {
+          "path": "src/shared/questionnaire-json.ts",
+          "start": 1,
+          "end": 58
+        },
+        {
+          "path": "src/web/runner-input.ts",
+          "start": 1,
+          "end": 40
+        }
+      ],
+      "result": {
+        "request_id": "bpl-audit-targeted-20261009-001",
+        "stage": "COMPLETED",
+        "result_id": "res_01bdff69d35c7db8877e",
+        "content": "### 缺陷 1：`pointerup` / `pointercancel` 未携带 `button === 0` 导致按压状态泄漏\n\n- **位置**：`src/web/runner-input.ts:16`\n- **触发条件**：受试者在主键（左键）按下未释放状态下，右击或触发非 0 键抬起（或在包含自定义按键的 Pointer 设备上释放非主键）；或者释放时 `event.button !== 0`。\n- **影响**：第 16 行判断 `if(event.type!=='pointercancel'&&event.button!==0)return;` 导致如果按下了左键，但在移动/释放阶段若伴随其他按键抬起或事件，`pointerup` 被静默丢弃。更关键的是：若浏览器触发 `pointerup` 时 `event.button` 为 -1（某些触控设备/合成事件），该抬起事件被过滤，输入状态机无法收到 `up` 事件，导致跨试次防按压逻辑永久死锁（误认为按键从未释放）。\n- **修复**：仅对 `pointerdown` 严格校验 `event.button === 0`；对于 `pointerup` 和 `pointercancel`，放行匹配已追踪 `pointerId` 的释放事件。\n\n### 缺陷 2：`orderTrials` 伪随机抽取中抽样桶直接消费，同抽样器污染后续类别\n\n- **位置**：`src/shared/trial-design.ts:51-52`\n- **触发条件**：`ordering.mode === 'category'` 或 `'balanced'`。\n- **影响**： 在第 51 行：`for(const [key,list] of buckets) buckets.set(key, shuffle(list, draw));`，所有类别内部洗牌共用同一个有状态的 `draw` 闭包（由单次 `random(seed, 10)` 派生）。若各类别 Trial 数量不一致，前一个类别的洗牌次数会直接偏移后续类别的 PRNG 内部状态。同时，第 52 行对 key 洗牌再次共用同一个 `draw`，导致无法按固定独立 Domain 隔离类别间与类别内的伪随机流，破坏了各因子独立置换的确定性回放契约。\n- **修复**：为类别内洗牌、类别间顺序及 Balanced 模式分别派生独立的 PRNG 域（如 `random(seed, 20 + i)`）。\n\n### 缺陷 3：独立发现评估（确认真实缺陷）—— Permit 物理超时早于客户端提交时序\n\n- **位置**：`lab-store`（`permit.start = 1000` 配合 `commit_ms`）\n- **评估结论**：**确认构成高危时序缺陷**。 若服务端发放 permit 时锚定 `start = 1000`（或当前固定基准），而协议允许的动态生命周期为 `commit_ms = 1000 + activate + margin`；当网络存在合法排队或激活延迟（$t \\ge \\text{activate}$）时，客户端即使在协议规定时间内完成并提交，服务端直接比对绝对时间戳与预设截止时间，会在 $t \\approx 0$（或刚进入执行态）判定 `COMMIT_DEADLINE_UNSAFE` 拒绝事务。\n- **修复**：Permit 的截止时间必须在客户端真实收到 `reserve/permit` 并返回 `activate` 时动态刷新基准时间，或者在检查超时时减去会话激活已耗用时间偏移。",
+        "completeness": "complete"
+      }
+    }
+  ],
+  "wrapup": {
+    "files": [
+      ".nvmrc",
+      ".npmrc",
+      ".gitignore"
+    ],
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n  \"request_id\": \"bpl-audit-wrapup-20261009\",\n  \"stage\": \"COMPLETED\",\n  \"result_id\": \"res_c878d721712a4b30d395\",\n  \"content\": \"### 针对六个保留结论的交叉反驳\\n\\n**结论 5 有明确证据反驳**：\\n\\n- **反驳理由**：Fastify/Node.js HTTP 解析器在底层处理请求行与 `Host` 头时，遇到非法的格式（如不闭合的 IPv6 括号 `\",\n  \"completeness\": \"complete\"\n}"
+        }
+      ],
+      "structuredContent": {
+        "request_id": "bpl-audit-wrapup-20261009",
+        "stage": "COMPLETED",
+        "result_id": "res_c878d721712a4b30d395",
+        "content": "### 针对六个保留结论的交叉反驳\n\n**结论 5 有明确证据反驳**：\n\n- **反驳理由**：Fastify/Node.js HTTP 解析器在底层处理请求行与 `Host` 头时，遇到非法的格式（如不闭合的 IPv6 括号 `",
+        "completeness": "complete"
+      },
+      "isError": false
+    }
+  },
+  "wrapup_assessment": "Reply is truncated in its content despite completeness marker, and contradicts the raw HTTP reproduction of A05; not counted as confirmation or config coverage."
+}

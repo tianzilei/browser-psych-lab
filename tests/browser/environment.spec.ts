@@ -8,7 +8,7 @@ test('authenticated diagnostics keep native DB, SurveyJS, IndexedDB and frame ch
   });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByLabel('密码',{exact:true})).toBeVisible();await expect(page.locator('#checks')).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'问卷列表'})).toBeVisible();await expect(page.locator('a[href="/admin.html"]')).toHaveCount(0);await expect(page.locator('#checks')).toHaveCount(0);
   await page.goto('/diagnostics.html');await expect(page).toHaveURL(/\/$/);
   const login=await context.request.post('/api/auth/login',{headers:{Origin:'http://127.0.0.1:3107'},data:{password:'TEST_ONLY-browser-password'}});expect(login.ok()).toBe(true);
   await page.goto('/diagnostics.html');

@@ -14,7 +14,7 @@ import { id,object } from '../shared/contract.js';
 
 const config=workerData as {path:string;root:string;job:string;kind:string;config:Record<string,unknown>};
 const phase=(phase:string,data?:unknown)=>parentPort!.postMessage({phase,data});
-async function copyChecked(source:string,target:string){const bytes=await openPrivate(source);try{await bytes.close();await copyFile(source,target,constants.COPYFILE_EXCL);const file=await openPrivate(target);try{await file.sync();}finally{await file.close();}}finally{await bytes.close().catch(()=>{});}return fileHash(target);}
+async function copyChecked(source:string,target:string){const bytes=await openPrivate(source);try{await bytes.close();await copyFile(source,target,constants.COPYFILE_EXCL);const file=await openPrivate(target);try{try{await file.sync();}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}}finally{await file.close();}}finally{await bytes.close().catch(()=>{});}return fileHash(target);}
 async function copyTree(source:string,target:string,files:{path:string;hash:string}[],prefix:string){
   await mkdir(target,{mode:0o700});
   for(const name of await readdir(source)){if(!/^[a-zA-Z0-9._-]+$/.test(name))throw new Error('INVALID_RELEASE_PATH');const from=join(source,name),to=join(target,name);const st=await lstat(from);
@@ -124,13 +124,15 @@ async function run(){
           slots:'SELECT a.* FROM lab_slots a JOIN lab_versions v USING(version_id) WHERE v.study_id=?',
         };
         queries.questionnaire_sources='SELECT * FROM lab_questionnaire_sources WHERE study_id=?';queries.packages='SELECT * FROM lab_packages WHERE study_id=?';queries.package_images='SELECT * FROM lab_package_images WHERE study_id=?';
-        for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
+        queries.reanswer_links='SELECT a.* FROM lab_reanswer_links a JOIN lab_sessions s ON s.session_id=a.new_session_id WHERE s.study_id=?';
+        for(const table of ['writers','permits','events','raw','seals','diagnostics','marks','projections','covariates','consents','group_selections'])queries[table]=`SELECT a.* FROM lab_${table} a JOIN lab_sessions s USING(session_id) WHERE s.study_id=?`;
         queries.dispositions='SELECT d.* FROM lab_dispositions d JOIN lab_raw r USING(receipt_id) JOIN lab_sessions s USING(session_id) WHERE s.study_id=?';
         for(const [table,query]of Object.entries(queries)){tables[table]=0;
           for(const row of db.prepare(query).iterate(sid) as Iterable<Record<string,unknown>>){if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');
             if(Buffer.isBuffer(row.raw)){row.raw_utf8=(row.raw as Buffer).toString('utf8');delete row.raw;}const encoded=stableJSON(row);source.update(`${table}\0${encoded}\n`);emit(`${cell(table)},${cell(encoded)}\r\n`);tables[table]++;}
         }
         // Derived trial rows are recomputed from the same read view, including interrupted histories.
+        for(const row of db.prepare("SELECT e.session_id,e.event_id,e.envelope FROM lab_events e JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND e.kind='INPUT_DIAGNOSTIC' AND e.scope LIKE 'd-ui-%' ORDER BY e.rowid").iterate(sid) as Iterable<{session_id:string;event_id:string;envelope:string}>){const batch=object(parseLabEvent(row.envelope).payload.interaction);for(const sample of batch.samples as Record<string,unknown>[]){const encoded=stableJSON({session_id:row.session_id,event_id:row.event_id,time_origin:batch.time_origin,...sample});if(++rows>200000)throw new Error('EXPORT_ROW_BUDGET_EXCEEDED');emit(`${cell('interaction_actions')},${cell(encoded)}\r\n`);source.update(`interaction_actions\0${encoded}\n`);tables.interaction_actions=(tables.interaction_actions??0)+1;}}
         for(const session of db.prepare('SELECT s.session_id,s.version_id,s.page_index,s.path,v.protocol FROM lab_sessions s JOIN lab_versions v USING(version_id) WHERE s.study_id=?').iterate(sid) as Iterable<{session_id:string;version_id:string;page_index:number;path:string;protocol:string}>){
           const protocol=JSON.parse(session.protocol) as Protocol,path=JSON.parse(session.path) as string[],answers:Record<string,Answer>={},states:Record<string,unknown>={};
           for(const [index,page]of protocol.pages.entries()){
@@ -155,8 +157,8 @@ async function run(){
         }
         for(const audit of db.prepare('SELECT * FROM lab_audit WHERE subject=? OR subject IN (SELECT version_id FROM lab_versions WHERE study_id=?) OR subject IN (SELECT session_id FROM lab_sessions WHERE study_id=?)').iterate(sid,sid,sid)){const json=stableJSON(audit);emit(`${cell('audit')},${cell(json)}\r\n`);source.update(`audit\0${json}\n`);rows++;tables.audit=(tables.audit??0)+1;}
         const refs=db.prepare('SELECT r.* FROM lab_asset_refs r JOIN lab_assets a USING(asset_id) WHERE a.study_id=?').all(sid);
-        emit(`${cell('asset_refs')},${cell(stableJSON(refs))}\r\n`);source.update(stableJSON(refs));db.exec('COMMIT');
-        fsyncSync(fd);
+        const refsJson=stableJSON(refs);emit(`${cell('asset_refs')},${cell(refsJson)}\r\n`);source.update(`asset_refs\0${refsJson}\n`);rows++;tables.asset_refs=1;db.exec('COMMIT');
+        try{fsyncSync(fd);}catch(error){if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;}
         const manifest={schema:'export-v1',snapshot_id:snapshot,study_id:sid,actual_read_at:actualReadAt,algorithm:'single-read-view-v1',source_hash:source.digest('hex'),tables,rows,bytes,csv_hash:await fileHash(output),raw_encoding:'exact UTF-8 in raw_utf8 cells',all_session_states:true,
           dictionary:{consents:'Explicit agreement to frozen consent document; SHA-256 of stableJSON(consent); accepted_at is server Unix milliseconds; join sessions/version protocol for exact text',event_schema:'lab-events-v1',runner:'canvas-v1',axis_answers:'One row per axis; integer value and configured label; null means unanswered; skipped/unconfirmed/not-reached states retained',question_states:{ANSWERED:'sealed valid answer',UNANSWERED:'sealed visible optional empty answer',SKIPPED:'verified branch hidden',UNCONFIRMED:'no sealed final snapshot for current page',NOT_REACHED:'page position not reached'},software_quality:'SOFTWARE_ONLY; physical display/input timing unverified',human_marks:'append-only annotations; never rewrite raw or system diagnosis'}};
         await writeDurable(join(target,'manifest.json'),stableJSON(manifest));await syncDirectory(target);return manifest;
