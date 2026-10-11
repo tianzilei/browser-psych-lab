@@ -1,29 +1,28 @@
 ﻿import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {compileQuestionnaire} from '../../src/shared/questionnaire-json.ts';
 import {parseProtocol} from '../../src/shared/protocol.ts';
 import {sampleTrials} from '../../src/shared/trial-sampling.ts';
 import {RunReplay} from '../../src/shared/run-replay.ts';
 import {fixture} from '../helpers/lab-fixture.mjs';
-const input=()=>JSON.parse(readFileSync('examples/project1/experiment.json','utf8'));
-const protocol=()=>compileQuestionnaire(input(),ref=>`asset-${ref.path.split('/').at(-1).split('.')[0]}`);
-test('Project1 sampling is reproducible, without replacement, and balances both factors for every participant',()=>{
+const input=()=>({schema:'questionnaire-v1',title:'评分流程测试案例',mode:'TEST_ONLY',orientation:'portrait',layout:{aspect:0.6597444089456869},budget:{max_group_ms:1800000},pages:[],groups:[{id:'rating-test',title:'评分测试',choices:['1','2','3','4','5','6','7','8','9'],repeats:0,rating:{prompt:'请评价当前项目',items:['可信度','清晰度','舒适度','熟悉度','继续使用意愿','总体评价'],labels:['完全不','非常少','较少','有一点','一般','较多','很多','几乎完全','非常'],age_prompt:'测试年龄',age_min:0,age_max:120},sampling:{allocations:[{'category-a':8,'category-b':8,'category-c':8,'category-d':8}]},trials:Array.from({length:102},(_,i)=>{const category=['category-a','category-b','category-c','category-d'][Math.floor(i/26)];return {root_id:`trial-${String(i+1).padStart(3,'0')}`,category,image:{package:'test-stimuli.zip',path:'images/test.webp'},image_ms:1,isi_ms:3000,correct:null};})}],consent:{title:'测试同意',text:'仅用于自动化测试。'}});
+const protocol=()=>{let n=0;return compileQuestionnaire(input(),()=>`asset-test-${n++}`);};
+test('rating sampling is reproducible, without replacement, and balances factors in the test case',()=>{
   const p=protocol(),g=p.groups[0];assert.deepEqual(parseProtocol(p),p);assert.equal(g.trials.length,102);
   const allocations=new Set(),selections=new Set();
   for(let i=1;i<=500;i++){
     const seed=[i,Math.imul(i,0x9e3779b9)>>>0,Math.imul(i,0x85ebca6b)>>>0,4],result=sampleTrials(g.trials,g.sampling,seed);assert.deepEqual(sampleTrials(g.trials,g.sampling,seed),result);
     assert.equal(result.roots.length,32);assert.equal(new Set(result.roots.map(t=>t.root_id)).size,32);
-    const female=result.roots.filter(t=>t.category.startsWith('female')).length,glasses=result.roots.filter(t=>!t.category.includes('no-glasses')).length;
-    assert.equal(female,16);assert.equal(glasses,16);
+    const first=result.roots.filter(t=>t.category==='category-a'||t.category==='category-b').length,second=result.roots.filter(t=>t.category==='category-a'||t.category==='category-c').length;
+    assert.equal(first,16);assert.equal(second,16);
     for(const [key,n] of Object.entries(result.sampling.counts))assert.equal(result.roots.filter(t=>t.category===key).length,n);
     allocations.add(result.sampling.allocation);selections.add(result.sampling.selected.join(','));
   }
   assert.equal(allocations.size,1);assert(selections.size>450);
 });
 test('invalid sampling, non-neutral answers, repeated ratings and wrong choices fail import',()=>{
-  for(const edit of [p=>p.groups[0].sampling.allocations[0]['female-glasses']=15,p=>p.groups[0].rating.labels.pop(),p=>p.groups[0].trials[0].correct='1',p=>p.groups[0].repeats=1,p=>p.groups[0].choices[0]='zero']){
+  for(const edit of [p=>p.groups[0].sampling.allocations[0]['category-a']=15,p=>p.groups[0].rating.labels.pop(),p=>p.groups[0].trials[0].correct='1',p=>p.groups[0].repeats=1,p=>p.groups[0].choices[0]='zero']){
     const v=input();edit(v);assert.throws(()=>compileQuestionnaire(v,ref=>ref.path.replaceAll('/','-')));
   }
 });
@@ -71,7 +70,7 @@ test('server freezes selection before download; reserve renewal and expired rese
   const reserve=()=>call('reserve',{request_id:randomUUID(),...fence});const first=reserve();assert.equal(first.selection.roots.length,32);assert.deepEqual(reserve().selection,first.selection);
   f.setNow(400000);assert.deepEqual(reserve().selection,first.selection);
   const prepared=call('preparation',fence);assert.equal(prepared.asset_ids.length,32);
-  const choices=p.groups[0].choices,readiness={frame_ms:10,commit_ms:5,protocol_hash:v.hash,layout:'portrait',assets:Object.fromEntries(first.selection.roots.map(t=>[t.asset_id,'a'.repeat(64)])),geometry:{viewport:{width:800,height:1200,dpr:1},canvas:{x:0,y:0,width:413,height:626},buttons:choices.map((choice,i)=>({choice,x:i*88,y:800,width:80,height:48}))}};
+  const choices=p.groups[0].choices,readiness={frame_ms:10,commit_ms:5,protocol_hash:v.hash,layout:'portrait',assets:Object.fromEntries(first.selection.roots.map(t=>[t.asset_id,'a'.repeat(64)])),geometry:{viewport:{width:800,height:1200,dpr:1},canvas:{x:0,y:0,width:413,height:626},buttons:choices.map((choice,i)=>({choice,x:i*80,y:800,width:78,height:48}))}};
   const permit=call('permit',{request_id:randomUUID(),...fence,reservation_id:reserve().reservation_id,readiness});assert.deepEqual(permit.plan.roots,first.selection.roots);assert.equal(permit.plan.rating.labels.length,9);assert.deepEqual(permit.plan.sampling,first.selection.sampling);
 });
 
