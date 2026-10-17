@@ -1,19 +1,25 @@
 import './style.css';
 import {el,button,request} from './dom.js';
 import {RequestError} from './request-error.js';
-import type {InteractionBatch,InteractionSample,InteractionScreen} from '../shared/interaction.js';
-const sid=new URLSearchParams(location.search).get('session')??'',status=document.querySelector('#status')!,details=document.querySelector('#details')!,canvas=document.querySelector<HTMLCanvasElement>('#replay')!,ctx=canvas.getContext('2d')!,controls=document.querySelector('#controls')!;
-canvas.style.maxWidth='100%';canvas.style.border='1px solid #888';
-type Item={time:number;sample:InteractionBatch['samples'][number]};const items:Item[]=[],images=new Map<string,HTMLImageElement>();let current=0,playing=false,last=0,clock=0,frame=0;
-const play=el('button','播放'),previous=el('button','上一个动作'),next=el('button','下一个动作'),slider=el('input');slider.type='range';slider.min='0';slider.step='1';slider.setAttribute('aria-label','动作时间轴');controls.append(previous,play,next,slider);
-const actionLabels:Record<string,string>={screen:'页面快照',pointerdown:'按下指针',pointerup:'松开指针',pointermove:'移动指针',pointercancel:'取消指针',keydown:'按下按键',keyup:'松开按键',input:'输入',change:'更改',beforeinput:'输入前',compositionstart:'开始组字',compositionend:'完成组字',focus:'获得焦点',blur:'离开焦点',scroll:'滚动',state:'浏览器状态'};
-function updateControls(){previous.disabled=!items.length||current===0;next.disabled=!items.length||current===items.length-1;play.disabled=slider.disabled=!items.length;}
-async function load(){stop();items.length=0;current=0;details.textContent='';updateControls();status.textContent='正在读取回放记录…';let after=0;for(;;){const result=await request<{batches:(InteractionBatch&{cursor:number})[];next:number;more:boolean}>(`/api/lab/sessions/${sid}/actions?after=${after}`);for(const b of result.batches)for(const s of b.samples)items.push({time:b.time_origin+s.at,sample:s});if(!result.more)break;after=result.next;}items.sort((a,b)=>a.time-b.time);slider.max=String(Math.max(0,items.length-1));if(!items.length){status.textContent='此答卷没有可回放的操作记录。';return;}draw();}
-function draw(){const item=items[current]!;let screen:InteractionScreen|undefined;for(let i=current;i>=0;i--)if(items[i]!.sample.type==='screen'){screen=items[i]!.sample as InteractionScreen;break;}if(screen){canvas.width=screen.width;canvas.height=screen.height;ctx.fillStyle=screen.background||'#e5e5e5';ctx.fillRect(0,0,canvas.width,canvas.height);for(const n of screen.nodes){const s=n.style;if(n.tag==='canvas'&&n.asset_id){let image=images.get(n.asset_id);if(!image){image=new Image();image.src=`/api/lab/assets/${n.asset_id}`;image.onload=()=>{if(!playing)draw();};images.set(n.asset_id,image);}if(image.complete&&image.naturalWidth){const scale=Math.min(n.width/image.naturalWidth,n.height/image.naturalHeight);ctx.drawImage(image,n.x+(n.width-image.naturalWidth*scale)/2,n.y+(n.height-image.naturalHeight*scale)/2,image.naturalWidth*scale,image.naturalHeight*scale);}continue;}ctx.fillStyle=s['background-color']??'transparent';ctx.fillRect(n.x,n.y,n.width,n.height);if(parseFloat(s['border-top-width']??'0')>0){ctx.strokeStyle=s['border-top-color']??'#000';ctx.strokeRect(n.x,n.y,n.width,n.height);}ctx.fillStyle=s.color??'#000';ctx.font=`${s['font-weight']??'400'} ${s['font-size']??'16px'} ${s['font-family']??'sans-serif'}`;ctx.textBaseline='top';if(n.tag==='range'){ctx.fillRect(n.x,n.y+n.height/2,n.width,2);if(s.answered==='true'){const fraction=(Number(n.value)-Number(s.min))/(Number(s.max)-Number(s.min));ctx.beginPath();ctx.arc(n.x+11+fraction*(n.width-22),n.y+n.height/2,11,0,Math.PI*2);ctx.fill();}}else if(n.text||n.value)ctx.fillText(n.text||n.value||'',n.x,n.y,Math.max(1,n.width));}
-    const path=items.slice(Math.max(0,current-200),current+1).filter(i=>i.time>=item.time-1000&&i.sample.type!=='screen'&&(i.sample as InteractionSample).x!==null);ctx.strokeStyle='#d23b24';ctx.lineWidth=2;ctx.beginPath();for(const [i,p]of path.entries()){const s=p.sample as InteractionSample;if(i===0)ctx.moveTo(s.x!,s.y!);else ctx.lineTo(s.x!,s.y!);}ctx.stroke();const action=item.sample as InteractionSample;if(action.x!==null&&action.x!==undefined){ctx.fillStyle='#d23b24';ctx.beginPath();ctx.arc(action.x,action.y!,8,0,Math.PI*2);ctx.fill();}}
-  slider.value=String(current);const elapsed=((item.time-items[0]!.time)/1000).toFixed(3);slider.setAttribute('aria-valuetext',`动作 ${current+1}/${items.length}，${elapsed} 秒`);status.textContent=`动作 ${current+1}/${items.length} · ${elapsed} 秒 · ${actionLabels[item.sample.type]??item.sample.type}`;details.textContent=JSON.stringify(item.sample,null,2);updateControls();}
-function stop(){playing=false;cancelAnimationFrame(frame);play.textContent='播放';}
-function tick(now:number){if(!playing)return;clock+=now-last;last=now;while(current<items.length-1&&items[current+1]!.time-items[0]!.time<=clock)current++;draw();if(current===items.length-1)stop();else frame=requestAnimationFrame(tick);}
-play.onclick=()=>{if(playing){stop();return;}if(!items.length)return;if(current===items.length-1)current=0;playing=true;play.textContent='暂停';clock=items[current]!.time-items[0]!.time;last=performance.now();frame=requestAnimationFrame(tick);};previous.onclick=()=>{stop();current=Math.max(0,current-1);if(items.length)draw();};next.onclick=()=>{stop();current=Math.min(items.length-1,current+1);if(items.length)draw();};slider.oninput=()=>{stop();current=Number(slider.value);draw();};
-async function reload(){try{await load();}catch(error){items.length=0;updateControls();status.textContent=error instanceof RequestError&&error.status===401?'请登录研究管理后重新加载回放。':'回放记录未能加载，请重试。';details.textContent=error instanceof Error?error.message:String(error);const retry=button('重新加载',async()=>{retry.remove();await reload();});controls.append(retry);}}
-void reload();
+import type {InteractionBatch} from '../shared/interaction.js';
+import {replayBatch} from '../shared/replay-recording.js';
+import {mountReplayPlayer,type ReplayItem} from './replay-player.js';
+const sid=new URLSearchParams(location.search).get('session')??'',status=document.querySelector<HTMLElement>('#status')!,details=document.querySelector<HTMLElement>('#details')!,canvas=document.querySelector<HTMLCanvasElement>('#replay')!,controls=document.querySelector<HTMLElement>('#controls')!;
+let dispose:(()=>void)|undefined;
+async function load(){
+  dispose?.();dispose=undefined;controls.replaceChildren();details.textContent='';canvas.hidden=true;status.textContent='正在读取回放记录…';
+  const info=await request<{title:string;replayable:boolean;samples:number}>(`/api/lab/sessions/${sid}/recording`);
+  document.querySelector('h1')!.textContent=`${info.title} · 操作回放`;
+  if(!info.replayable){status.textContent='此答卷没有可回放的界面记录。';return;}
+  const items:ReplayItem[]=[];let after=0;
+  for(;;){
+    const result=await request<{batches:(InteractionBatch&{cursor:number})[];next:number;more:boolean}>(`/api/lab/sessions/${sid}/actions?after=${after}`);
+    for(const b of result.batches)if(replayBatch(b))for(const sample of b.samples)items.push({time:b.time_origin+sample.at,sample});
+    status.textContent=`正在读取回放记录… ${items.length.toLocaleString()} / ${info.samples.toLocaleString()}`;
+    if(!result.more)break;if(result.next<=after)throw new Error('REPLAY_CURSOR_STALLED');after=result.next;
+  }
+  dispose=mountReplayPlayer({items,canvas,controls,status,details,assetURL:id=>`/api/lab/assets/${encodeURIComponent(id)}`});
+  for(const [label,path]of [['下载本份轨迹 JSON.gz','trajectory.json.gz'],['下载离线回放 HTML','replay.html']]){const link=el('a',label);link.href=`/api/lab/sessions/${sid}/${path}`;link.download='';controls.append(link);}
+}
+async function reload(){try{await load();}catch(error){dispose?.();dispose=undefined;canvas.hidden=true;controls.replaceChildren();status.textContent=error instanceof RequestError&&error.status===401?'请登录研究管理后重新加载回放。':'回放记录未能加载，请重试。';details.textContent=error instanceof Error?error.message:String(error);const retry=button('重新加载',async()=>{retry.remove();await reload();});controls.append(retry);}}
+window.addEventListener('pagehide',()=>dispose?.(),{once:true});void reload();

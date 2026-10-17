@@ -14,6 +14,10 @@ import {sampleTrials} from '../shared/trial-sampling.js';
 import {realizeTrials} from '../shared/trial-design.js';
 import {validInteractionBatch} from '../shared/interaction.js';
 import {compileQuestionnaire,parseQuestionnaireText,packageName} from '../shared/questionnaire-json.js';
+import {installEvidenceFunctions,encodeRaw,RAW_REFERENCE,EVIDENCE_STORAGE} from './evidence-storage.js';
+import {prepareReplayIndex,indexRecording} from './replay-index.js';
+import {parsePreparationReport} from '../shared/preparation-report.js';
+import {validateSnapshotBudgets} from '../shared/snapshot-budget.js';
 interface SessionRow { session_id: string; study_id: string; version_id: string; credential_hash: string; admission_id: string;
  state: LabSession['state']; writer_id: string | null; writer_epoch: number; lease_until: number; page_index: number; group_index: number;
  answers: string; path: string; allocation_id: string | null; completion: string | null }
@@ -23,8 +27,11 @@ class Rejection { constructor(readonly error: ContractError) {} }
 export class LabStore {
   readonly admission:SessionAdmission;
   constructor(readonly db: Database.Database, readonly runnerHash = digest('TEST_ONLY'), private now = Date.now,sessionConcurrency=2) {
+    installEvidenceFunctions(db);
     db.exec(LAB_SQL);
-    if (this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='schema'")?.value !== '1') throw new Error('UNSUPPORTED_LAB_SCHEMA');
+    if (!['1','2'].includes(this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='schema'")?.value??'')) throw new Error('UNSUPPORTED_LAB_SCHEMA');
+    db.transaction(()=>{this.run("UPDATE lab_meta SET value='2' WHERE key='schema'");this.run("INSERT INTO lab_meta VALUES ('evidence_storage',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",EVIDENCE_STORAGE);}).immediate();
+    prepareReplayIndex(db);
     // Upgrade role-based installations atomically; credential expiry uses milliseconds.
     if(this.all<{name:string}>('PRAGMA table_info(lab_admin_tokens)').some(column=>column.name==='role'))db.transaction(()=>{
       db.exec('CREATE TABLE lab_admin_tokens_new(token_hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires_at INTEGER NOT NULL) STRICT');
@@ -51,7 +58,7 @@ export class LabStore {
   private admin(c: Command) {
     const token = this.get<{csrf:string;expires_at:number}>('SELECT csrf,expires_at FROM lab_admin_tokens WHERE token_hash=?', c.credential_hash ?? '');
     if (!token || token.expires_at < this.now()) throw new ContractError('LOGIN_REQUIRED',401);
-    if (c.data.csrf !== token.csrf && !['admin.me','study.list','study.get','asset.list','session.list','session.detail','session.actions','job.list','job.get','environment.list'].includes(c.operation.slice(4)))
+    if (c.data.csrf !== token.csrf && !['admin.me','study.list','study.get','asset.list','session.list','session.detail','session.actions','session.recording','job.list','job.get','environment.list'].includes(c.operation.slice(4)))
       throw new ContractError('CSRF_REJECTED',403);
     return { actor: c.credential_hash!, ...token };
   }
@@ -66,14 +73,16 @@ export class LabStore {
     if (s.writer_id !== id(d.writer_id) || s.writer_epoch !== integer(d.writer_epoch,1)) throw new ContractError('WRITER_FENCED',409);
   }
   private request(subject: string, op: string, d: Record<string,unknown>, fn: ()=>unknown): unknown {
-    const rid = id(d.request_id); const logical={...d};delete logical.proof_job_id;if(op==='participant.create')delete logical.server_covariates;const h = digest(stableJSON(logical));
+    const rid = id(d.request_id); const logical={...d};delete logical.proof_job_id;if(op==='participant.reanswer')delete logical.upgrade_runner_hash;if(op==='participant.create')delete logical.server_covariates;const h = digest(stableJSON(logical));
     const old = this.get<{hash:string;response:string|null}>('SELECT * FROM lab_requests WHERE subject=? AND operation=? AND request_id=?',subject,op,rid);
     if (old) {
       if (old.hash !== h) { this.audit(subject,'IDEMPOTENCY_CONFLICT',rid,{op,existing:old.hash,incoming:h}); return new Rejection(new ContractError('IDEMPOTENCY_CONFLICT',409)); }
-      if (old.response) return JSON.parse(old.response);
+      // Reconciliation observes current custody, including after a restore or
+      // a late retransmission. Older cached reports are not durable proof.
+      if (old.response && op!=='participant.reconcile') return JSON.parse(old.response);
     } else this.run('INSERT INTO lab_requests VALUES (?,?,?,?,NULL)',subject,op,rid,h);
     const result = fn();
-    if (object(result).status !== 'WAITING') this.run('UPDATE lab_requests SET response=? WHERE subject=? AND operation=? AND request_id=?',JSON.stringify(result),subject,op,rid);
+    if (object(result).status !== 'WAITING' && op!=='participant.reconcile') this.run('UPDATE lab_requests SET response=? WHERE subject=? AND operation=? AND request_id=?',JSON.stringify(result),subject,op,rid);
     return result;
   }
   private barrier() {
@@ -111,7 +120,14 @@ export class LabStore {
       if (!page || e.scope !== page.id) return ['QUARANTINED','WRONG_PAGE_POSITION'];
       try {
         if(e.kind==='PAGE_SNAPSHOT')pageSnapshot(page,JSON.parse(s.answers) as Record<string,Answer>,object(e.payload.answers) as Record<string,Answer>);
-        else{const q=page.questions.find(q=>q.id===e.payload.question_id);if(!q)throw new Error('UNKNOWN_QUESTION');const revision={...q,required:false};delete revision.condition;pageSnapshot({...page,questions:[revision]}, {}, {[q.id]:e.payload.answer as Answer});}
+        else{
+          const q=page.questions.find(q=>q.id===e.payload.question_id);if(!q)throw new Error('UNKNOWN_QUESTION');
+          const revision={...q,required:false};delete revision.condition;
+          // Edits include incomplete input. Enforce its type and length here;
+          // the completed page snapshot must satisfy the published matcher.
+          delete revision.input_match;
+          pageSnapshot({...page,questions:[revision]}, {}, {[q.id]:e.payload.answer as Answer});
+        }
       }
       catch { return ['QUARANTINED','INVALID_PAGE_ANSWERS']; }
     } else if(e.kind==='INPUT_DIAGNOSTIC'&&e.scope.startsWith('d-ui-')){
@@ -123,7 +139,7 @@ export class LabStore {
     }
     if ((e.sequence === 0) !== (e.previous === null)) return ['QUARANTINED','INVALID_CHAIN_START'];
     if (e.previous) {
-      const old = this.get<StoredEvent>('SELECT * FROM lab_events WHERE session_id=? AND event_id=?',s.session_id,e.previous.event_id);
+      const old = this.get<StoredEvent>('SELECT * FROM lab_event_evidence WHERE session_id=? AND event_id=?',s.session_id,e.previous.event_id);
       if (!old) return ['RECEIVED_PENDING','MISSING_PREDECESSOR'];
       const previous = parseLabEvent(old.envelope);
       if (old.hash !== e.previous.hash || old.scope !== e.scope || old.sequence !== e.sequence-1 || old.writer_epoch !== e.writer_epoch
@@ -152,22 +168,30 @@ export class LabStore {
     });
     for (const {ref,raw,e,text} of items) {
       if (this.custody(s.session_id,ref)) continue;
-      const count = this.get<{n:number;b:number}>('SELECT count(*) AS n,coalesce(sum(length(raw)),0) AS b FROM lab_raw WHERE session_id=? AND scope=?',s.session_id,e.scope)!;
-      if (count.n >= 5000 || count.b + raw.length > 32*1024*1024) throw new ContractError('SCOPE_BUDGET_EXCEEDED',413);
+      const count = this.get<{n:number;b:number}>('SELECT count(*) AS n,coalesce(sum(lab_raw_bytes(raw)),0) AS b FROM lab_raw WHERE session_id=? AND scope=?',s.session_id,e.scope)!;
+      // Older clients rotate UI diagnostics after 4,000 batches, each up to
+      // 128 KiB. Their immutable outbox can already exceed the answer scope's
+      // 32 MiB limit; accept those records without rewriting their hash chain.
+      const maximumBytes=e.kind==='INPUT_DIAGNOSTIC'&&e.scope.startsWith('d-ui-')?512*1024*1024:32*1024*1024;
+      if (count.n >= 5000 || count.b + raw.length > maximumBytes) throw new ContractError('SCOPE_BUDGET_EXCEEDED',413,
+        {scope:e.scope,events:count.n,bytes:count.b,incoming_bytes:raw.length,maximum_events:5000,maximum_bytes:maximumBytes});
       const old = this.get<StoredEvent>('SELECT * FROM lab_events WHERE session_id=? AND event_id=?',s.session_id,e.event_id);
-      const receipt = randomUUID(); this.run('INSERT INTO lab_raw VALUES (?,?,?,?,?,?,?)',s.session_id,e.event_id,ref.hash,e.scope,receipt,raw,this.now());
+      const receipt = randomUUID(); this.run('INSERT INTO lab_raw VALUES (?,?,?,?,?,?,?)',s.session_id,e.event_id,ref.hash,e.scope,receipt,encodeRaw(raw),this.now());
       const [state,reason] = old ? ['QUARANTINED','EVENT_ID_HASH_CONFLICT'] as const : this.semantic(s,e);
       this.run('INSERT INTO lab_dispositions VALUES (?,?,?,?)',receipt,1,state,reason);
-      if (!old) this.run('INSERT INTO lab_events VALUES (?,?,?,?,?,?,?,?,?,?,?)',s.session_id,e.event_id,ref.hash,e.scope,e.sequence,e.writer_epoch,e.kind,text,state,1,reason);
+      if (!old) this.run('INSERT INTO lab_events VALUES (?,?,?,?,?,?,?,?,?,?,?)',s.session_id,e.event_id,ref.hash,e.scope,e.sequence,e.writer_epoch,e.kind,RAW_REFERENCE,state,1,reason);
+      if(!old&&e.kind==='INPUT_DIAGNOSTIC'&&e.scope.startsWith('d-ui-'))indexRecording(this.db,s.session_id,e.payload.interaction);
+      if(!old)this.run("UPDATE lab_meta SET value='valid-screen-v1:'||(SELECT max(rowid) FROM lab_events) WHERE key='replay_index'");
       if (old || state==='QUARANTINED') this.diagnostic(s.session_id,old?.scope??e.scope,reason,ref);
     }
     for (const scope of new Set(items.map(i=>i.e.scope))) {
-      const pending=this.all<StoredEvent>("SELECT * FROM lab_events WHERE session_id=? AND scope=? AND disposition='RECEIVED_PENDING' ORDER BY sequence LIMIT 5000",s.session_id,scope);
+      const pending=this.all<StoredEvent>("SELECT * FROM lab_event_evidence WHERE session_id=? AND scope=? AND disposition='RECEIVED_PENDING' ORDER BY sequence LIMIT 5000",s.session_id,scope);
       for (const e of pending) {
         const [state,reason]=this.semantic(s,parseLabEvent(e.envelope));
         if (state===e.disposition && reason===e.reason) continue;
         const r=this.custody(s.session_id,e)!; this.run('INSERT INTO lab_dispositions VALUES (?,?,?,?)',r.receipt_id,e.version+1,state,reason);
         this.run('UPDATE lab_events SET disposition=?,version=?,reason=? WHERE session_id=? AND event_id=?',state,e.version+1,reason,s.session_id,e.event_id);
+        if(state==='QUARANTINED')this.diagnostic(s.session_id,e.scope,reason,{event_id:e.event_id,hash:e.hash});
       }
     } return {receipts:items.map(i=>this.custody(s.session_id,i.ref))};
   }
@@ -177,7 +201,9 @@ export class LabStore {
     }).immediate(); if(result instanceof Rejection) throw result.error; return result;
   }
   expireTaskActivity(){
-    return this.db.transaction(()=>{const expired=this.all<{session_id:string}>("SELECT a.session_id FROM lab_task_activity a JOIN lab_sessions s USING(session_id) WHERE a.last_seen<=? AND s.state='ACTIVE' AND a.writer_epoch=s.writer_epoch",this.now()-TASK_ACTIVITY_POLICY.connection_timeout_ms);
+    return this.db.transaction(()=>{
+      this.run("DELETE FROM lab_task_activity WHERE NOT EXISTS(SELECT 1 FROM lab_permits p WHERE p.session_id=lab_task_activity.session_id AND p.writer_epoch=lab_task_activity.writer_epoch AND p.state='ISSUED')");
+      const expired=this.all<{session_id:string}>("SELECT a.session_id FROM lab_task_activity a JOIN lab_sessions s USING(session_id) WHERE a.last_seen<=? AND s.state='ACTIVE' AND a.writer_epoch=s.writer_epoch",this.now()-TASK_ACTIVITY_POLICY.connection_timeout_ms);
       for(const {session_id:sid} of expired){this.run("UPDATE lab_sessions SET state='TERMINATED',lease_until=0 WHERE session_id=?",sid);this.run("UPDATE lab_permits SET state='CLOSED_UNKNOWN' WHERE session_id=? AND state='ISSUED'",sid);this.admission.ended(sid);this.diagnostic(sid,null,'CONNECTION_TIMEOUT',{timeout_ms:TASK_ACTIVITY_POLICY.connection_timeout_ms});}
       this.run("DELETE FROM lab_task_activity WHERE session_id IN (SELECT session_id FROM lab_sessions WHERE state IN ('COMPLETED','TERMINATED'))");return expired.length;
     }).immediate();
@@ -216,7 +242,7 @@ export class LabStore {
     switch(op) {
       case 'admin.me': return {authenticated:true,csrf:admin.csrf};
       case 'admin.logout': this.run('DELETE FROM lab_admin_tokens WHERE token_hash=?',actor); return {status:'LOGGED_OUT'};
-      case 'study.list': return {studies:this.all('SELECT s.study_id,s.title,s.revision,s.admission,s.created_at,o.position,(SELECT version_id FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS version_id,(SELECT json_extract(protocol,\'$.title\') FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS protocol_title FROM lab_studies s JOIN lab_study_order o USING(study_id) WHERE NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) ORDER BY o.position,s.rowid DESC')};
+      case 'study.list': return {studies:this.all('SELECT s.study_id,s.title,s.revision,s.admission,s.created_at,o.position,(SELECT count(*) FROM lab_replay_index i JOIN lab_sessions r USING(session_id) WHERE r.study_id=s.study_id AND i.screens>0) AS replayable_sessions,(SELECT version_id FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS version_id,(SELECT json_extract(protocol,\'$.title\') FROM lab_versions v WHERE v.study_id=s.study_id ORDER BY rowid DESC LIMIT 1) AS protocol_title FROM lab_studies s JOIN lab_study_order o USING(study_id) WHERE NOT EXISTS(SELECT 1 FROM lab_archived_studies a WHERE a.study_id=s.study_id) ORDER BY o.position,s.rowid DESC')};
       case 'study.create': return this.request(actor,op,d,()=>{const sid=randomUUID();const p=sampleProtocol(); this.run("INSERT INTO lab_studies VALUES (?,?,?,1,'PAUSED',?)",sid,p.title,stableJSON(p),this.now());this.run('INSERT INTO lab_study_order SELECT ?,coalesce(max(position),-1)+1 FROM lab_study_order',sid);this.audit(actor,op,sid,{});return {study_id:sid,revision:1,draft:p};});
       case 'study.rename':return this.request(actor,op,d,()=>{
         const sid=id(d.study_id),revision=integer(d.revision,1);
@@ -258,7 +284,7 @@ export class LabStore {
         for(const asset of assets){this.run("INSERT INTO lab_asset_refs VALUES (?,'DRAFT',?)",asset,sid);this.run("INSERT INTO lab_asset_refs VALUES (?,'VERSION',?)",asset,vid);}
         this.audit(actor,op,sid,{version_id:vid,hash:h,revision:s.revision+1});return {revision:s.revision+1,frozen:this.frozen(vid)};
       });
-      case 'study.delete':return this.request(actor,op,d,()=>{const sid=id(d.study_id);if(!this.get('SELECT 1 FROM lab_studies WHERE study_id=?',sid))throw new ContractError('STUDY_NOT_FOUND',404);this.run('INSERT OR IGNORE INTO lab_archived_studies VALUES (?,?)',sid,this.now());this.run("UPDATE lab_studies SET admission='PAUSED' WHERE study_id=?",sid);this.audit(actor,op,sid,{data_retained:true});return {status:'DELETED',data_retained:true};});
+      case 'study.delete':throw new ContractError('QUESTIONNAIRE_DELETION_DISABLED',403);
       case 'package.begin':return this.request(actor,op,d,()=>{this.barrier();const sid=id(d.study_id),name=packageName(d.name);
         if(!this.get('SELECT 1 FROM lab_studies WHERE study_id=?',sid)||this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',sid))throw new ContractError('STUDY_NOT_FOUND',404);
         if(this.get('SELECT 1 FROM lab_packages WHERE study_id=? AND name=?',sid,name))throw new ContractError('PACKAGE_NAME_EXISTS',409);
@@ -275,7 +301,7 @@ export class LabStore {
       case 'study.publish': return this.request(actor,op,d,()=>{
         this.barrier();const s=this.get<{draft:string;revision:number}>('SELECT * FROM lab_studies WHERE study_id=?',id(d.study_id));
         if(!s || s.revision!==d.revision) throw new ContractError('DRAFT_REVISION_CONFLICT',409);
-        const p=parseProtocol(JSON.parse(s.draft));this.validateAssets(id(d.study_id),p);
+        const p=parseProtocol(JSON.parse(s.draft));this.validateAssets(id(d.study_id),p);validateSnapshotBudgets(p.pages);
         for(const page of p.pages)for(const q of page.questions)if(q.type==='text'&&q.input_purpose!=='personal')throw new ContractError('PERSONAL_INPUT_ONLY',409,{question:q.id});
         for(const page of p.pages)for(const q of page.questions)if(q.type==='scale'&&(!q.min_label?.trim()||!q.max_label?.trim()))throw new ContractError('SCALE_ENDPOINTS_REQUIRED',409,{question:q.id});
         if(p.mode==='COLLECTION' && (p.budget.environment_id==='TEST_ONLY'||!this.get('SELECT 1 FROM lab_environments WHERE environment_id=?',p.budget.environment_id))) throw new ContractError('ENVIRONMENT_NOT_VERIFIED',409);
@@ -305,7 +331,21 @@ export class LabStore {
         if(!['READY','FAILED','DELETING'].includes(a.state))throw new ContractError('ASSET_STATE_CONFLICT',409);
         this.run("UPDATE lab_assets SET state='DELETING' WHERE asset_id=?",asset);this.audit(actor,op,asset,{});return {asset_id:asset,status:'DELETING'};
       });
-      case 'session.list':this.admission.stats();return {sessions:this.all('SELECT s.session_id,s.version_id,s.state,s.writer_epoch,q.status AS admission_status,s.page_index,s.group_index,s.created_at,(SELECT count(*) FROM lab_diagnostics d WHERE d.session_id=s.session_id) AS diagnostics,(SELECT max(received_at) FROM lab_raw r WHERE r.session_id=s.session_id) AS last_received FROM lab_sessions s LEFT JOIN lab_session_queue q USING(session_id) WHERE s.study_id=? ORDER BY s.rowid DESC LIMIT ? OFFSET ?',id(d.study_id),Math.min(100,integer(Number(d.limit??50),1)),integer(Number(d.offset??0)))};
+      case 'session.list':{
+        this.admission.stats();const replayOnly=d.replayable===true||d.replayable==='true';
+        return {sessions:this.all(`SELECT s.session_id,s.version_id,s.state,s.writer_epoch,q.status AS admission_status,s.page_index,s.group_index,s.created_at,
+          coalesce(i.batches,0) AS recording_batches,coalesce(i.samples,0) AS recording_samples,coalesce(i.screens,0) AS recording_screens,
+          coalesce(i.screens,0)>0 AS replayable,(SELECT count(*) FROM lab_diagnostics d WHERE d.session_id=s.session_id) AS diagnostics,
+          (SELECT max(received_at) FROM lab_raw r WHERE r.session_id=s.session_id) AS last_received
+          FROM lab_sessions s LEFT JOIN lab_session_queue q USING(session_id) LEFT JOIN lab_replay_index i USING(session_id)
+          WHERE s.study_id=? AND (?=0 OR i.screens>0) ORDER BY s.rowid DESC LIMIT ? OFFSET ?`,id(d.study_id),Number(replayOnly),Math.min(100,integer(Number(d.limit??50),1)),integer(Number(d.offset??0)))};
+      }
+      case 'session.recording':{
+        const row=this.get<{session_id:string;study_id:string;version_id:string;title:string;batches:number;samples:number;screens:number;first_at:number|null;last_at:number|null}>(`SELECT s.session_id,s.study_id,s.version_id,t.title,
+          coalesce(i.batches,0) AS batches,coalesce(i.samples,0) AS samples,coalesce(i.screens,0) AS screens,i.first_at,i.last_at
+          FROM lab_sessions s JOIN lab_studies t USING(study_id) LEFT JOIN lab_replay_index i USING(session_id) WHERE s.session_id=?`,id(d.session_id));
+        if(!row)throw new ContractError('SESSION_NOT_FOUND',404);return {...row,replayable:row.screens>0};
+      }
       case 'session.detail': {
         const sid=id(d.session_id);if(!this.get('SELECT 1 FROM lab_sessions WHERE session_id=?',sid))throw new ContractError('SESSION_NOT_FOUND',404);
         return {...this.view(sid),marks:this.all('SELECT * FROM lab_marks WHERE session_id=? ORDER BY created_at',sid),
@@ -314,8 +354,8 @@ export class LabStore {
       }
       case 'session.actions': {
         const sid=id(d.session_id),after=integer(Number(d.after??0));if(!this.get('SELECT 1 FROM lab_sessions WHERE session_id=?',sid))throw new ContractError('SESSION_NOT_FOUND',404);
-        const rows=this.all<{cursor:number;envelope:string}>("SELECT rowid AS cursor,envelope FROM lab_events WHERE session_id=? AND kind='INPUT_DIAGNOSTIC' AND scope LIKE 'd-ui-%' AND rowid>? ORDER BY rowid LIMIT 20",sid,after);
-        return {batches:rows.map(row=>({cursor:row.cursor,...object(parseLabEvent(row.envelope).payload.interaction)})),next:rows.at(-1)?.cursor??after,more:rows.length===20};
+        const rows=this.all<{cursor:number;envelope:string}>("SELECT evidence_rowid AS cursor,envelope FROM lab_event_evidence WHERE session_id=? AND kind='INPUT_DIAGNOSTIC' AND scope LIKE 'd-ui-%' AND evidence_rowid>? ORDER BY evidence_rowid LIMIT 20",sid,after);
+        return {batches:rows.flatMap(row=>{const batch=parseLabEvent(row.envelope).payload.interaction;return validInteractionBatch(batch)?[{cursor:row.cursor,...batch}]:[];}),next:rows.at(-1)?.cursor??after,more:rows.length===20};
       }
       case 'session.mark': return this.request(actor,op,d,()=>{
         const mark=id(d.mark_id),revision=integer(d.revision,1); const prior=this.get<{n:number}>('SELECT coalesce(max(revision),0) AS n FROM lab_marks WHERE mark_id=?',mark)!.n;
@@ -397,20 +437,38 @@ export class LabStore {
   }
   private participant(op: string,c: Command,d: Record<string,unknown>): unknown {
     const s=this.session(c),sid=s.session_id;
+    if(op==='participant.reanswer.candidate'){
+      if(this.get('SELECT 1 FROM lab_reanswer_links WHERE old_session_id=?',sid))return {requires_entry_support:false};
+      const candidate=this.frozen(this.get<{version_id:string}>('SELECT version_id FROM lab_versions WHERE study_id=? ORDER BY rowid DESC LIMIT 1',s.study_id)!.version_id);
+      return {runner_hash:candidate.runner_hash,requires_entry_support:candidate.version_id!==d.entry_version&&candidate.protocol.groups.length>0
+        &&stableJSON(candidate.protocol.consent??null)===stableJSON(this.frozen(s.version_id).protocol.consent??null)};
+    }
     if(op==='participant.reanswer') return this.request(sid,op,d,()=>{
       if(s.state!=='TERMINATED')throw new ContractError('SESSION_NOT_TERMINATED',409);
       const existing=this.get<{new_session_id:string}>('SELECT new_session_id FROM lab_reanswer_links WHERE old_session_id=?',sid);if(existing){const next=this.get<{credential_hash:string}>('SELECT credential_hash FROM lab_sessions WHERE session_id=?',existing.new_session_id)!;if(next.credential_hash!==d.credential_hash)throw new ContractError('REANSWER_ALREADY_CREATED',409);return this.view(existing.new_session_id);}
-      const latest=this.get<{version_id:string}>('SELECT version_id FROM lab_versions WHERE study_id=? ORDER BY rowid DESC LIMIT 1',s.study_id)!.version_id;const oldFrozen=this.frozen(s.version_id),candidate=this.frozen(latest);const sameConsent=stableJSON(oldFrozen.protocol.consent??null)===stableJSON(candidate.protocol.consent??null);const frozen=sameConsent?candidate:oldFrozen;if(this.get<{admission:string}>('SELECT admission FROM lab_studies WHERE study_id=?',s.study_id)!.admission!=='OPEN')throw new ContractError('ADMISSION_PAUSED',409);
+      const latest=this.get<{version_id:string}>('SELECT version_id FROM lab_versions WHERE study_id=? ORDER BY rowid DESC LIMIT 1',s.study_id)!.version_id;
+      const oldFrozen=this.frozen(s.version_id),candidate=this.frozen(latest),entry=d.entry_version===undefined?oldFrozen:this.frozen(id(d.entry_version));
+      const consent=stableJSON(oldFrozen.protocol.consent??null);
+      if(entry.study_id!==s.study_id||stableJSON(entry.protocol.consent??null)!==consent)throw new ContractError('INVALID_REANSWER_ENTRY');
+      // Legacy clients and archives identify both storage and protocol by the
+      // URL version. Only an explicit client entry and verified runner capability
+      // permit an upgrade that keeps those identities separate.
+      const canUpgrade=d.entry_version!==undefined&&(candidate.version_id===entry.version_id||candidate.protocol.groups.length===0||d.upgrade_runner_hash===candidate.runner_hash);
+      const frozen=canUpgrade&&stableJSON(candidate.protocol.consent??null)===consent?candidate:entry;
+      if(this.get<{admission:string}>('SELECT admission FROM lab_studies WHERE study_id=?',s.study_id)!.admission!=='OPEN')throw new ContractError('ADMISSION_PAUSED',409);
       if(frozen.protocol.mode==='COLLECTION'&&(this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='collection_gate'")!.value!=='OPEN'||this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='collection_environment'")?.value!==frozen.protocol.budget.environment_id))throw new ContractError('COLLECTION_GATE_CLOSED',409);
       const next=randomUUID();this.run("INSERT INTO lab_sessions(session_id,study_id,version_id,admission_id,credential_hash,state,created_at) VALUES (?,?,?,?,?,'CREATED',?)",next,s.study_id,frozen.version_id,randomUUID(),hash(String(d.credential_hash)),this.now());
       this.run('INSERT INTO lab_reanswer_links VALUES (?,?,?)',sid,next,this.now());this.run('INSERT INTO lab_consents SELECT ?,document_hash,accepted_at FROM lab_consents WHERE session_id=?',next,sid);this.run('INSERT INTO lab_marks VALUES (?,1,?,?,?,?,?,?)',randomUUID(),next,'REANSWER',`重新作答，关联原答卷 ${sid}`,'OPEN','PARTICIPANT',this.now());this.audit(sid,'participant.reanswer',next,{replaces:sid,original_retained:true});return this.view(next);
     });
     if(op==='participant.covariates')return this.request(sid,op,d,()=>{
       if(typeof d.raw!=='string'||Buffer.byteLength(d.raw)>32*1024)throw new ContractError('INVALID_COVARIATES');
-      const parsed=object(JSON.parse(d.raw));if(parsed.schema!=='environment-v1')throw new ContractError('INVALID_COVARIATES');
+      const parsed=object(JSON.parse(d.raw)),preparation=parsed.schema==='preparation-v1';
+      if(preparation){const report=parsePreparationReport(parsed),p=this.frozen(s.version_id).protocol;
+        if(report.attempt_id!==d.sample_id||report.configured_commit_ms!==p.budget.commit_ms||report.group_id!==null&&!p.groups.some(g=>g.id===report.group_id))throw new ContractError('INVALID_PREPARATION_REPORT');
+      }else if(parsed.schema!=='environment-v1')throw new ContractError('INVALID_COVARIATES');
       const sample=id(d.sample_id),h=digest(d.raw),old=this.get<{hash:string}>('SELECT hash FROM lab_covariates WHERE session_id=? AND sample_id=?',sid,sample);
       if(old&&old.hash!==h)throw new ContractError('COVARIATES_CONFLICT',409);
-      if(!old){if(this.get<{n:number}>('SELECT count(*) AS n FROM lab_covariates WHERE session_id=?',sid)!.n>=50)throw new ContractError('COVARIATES_BUDGET_EXCEEDED');this.run('INSERT INTO lab_covariates VALUES (?,?,?,?,?,?)',sid,sample,h,d.raw,'client-reported',this.now());}
+      if(!old){const source=preparation?'preparation-reported':'client-reported';if(this.get<{n:number}>('SELECT count(*) AS n FROM lab_covariates WHERE session_id=? AND source=?',sid,source)!.n>=(preparation?100:50))throw new ContractError('COVARIATES_BUDGET_EXCEEDED');this.run('INSERT INTO lab_covariates VALUES (?,?,?,?,?,?)',sid,sample,h,d.raw,source,this.now());}
       return {sample_id:sample,hash:h,status:'PERSISTED'};
     });
     if(op==='participant.view')return this.view(sid);
@@ -421,10 +479,13 @@ export class LabStore {
     }
     if(op==='participant.admission'){
       const action=String(d.action),nonce=id(d.ticket_id);
-      if(action==='join')return this.admission.join(sid,nonce);
       if(action==='leave')return this.admission.leave(sid,nonce);
-      if(action!=='touch')throw new ContractError('INVALID_ADMISSION_ACTION');
-      const result=this.admission.touch(sid,nonce);
+      if(!['join','touch'].includes(action))throw new ContractError('INVALID_ADMISSION_ACTION');
+      const result=action==='join'?this.admission.join(sid,nonce):this.admission.touch(sid,nonce);
+      // The runner stops its input-idle monitor after durable group closing.
+      // Its saving admission still proves that this writer is connected.
+      if(result.status==='ACTIVE'&&s.writer_id===d.writer_id&&s.writer_epoch===d.writer_epoch)
+        this.run('UPDATE lab_task_activity SET last_seen=? WHERE session_id=? AND writer_epoch=?',this.now(),sid,s.writer_epoch);
       if(result.status==='ACTIVE'&&s.writer_id===d.writer_id&&s.writer_epoch===d.writer_epoch&&s.lease_until<this.now()+SESSION_LEASE_MS-60000)
         this.run('UPDATE lab_sessions SET lease_until=? WHERE session_id=?',this.now()+SESSION_LEASE_MS,sid);
       return result;
@@ -434,10 +495,18 @@ export class LabStore {
       if(!this.get('SELECT 1 FROM lab_task_activity WHERE session_id=? AND writer_epoch=?',sid,s.writer_epoch))throw new ContractError('TASK_ACTIVITY_UNAVAILABLE',409);
       this.run('UPDATE lab_task_activity SET last_seen=? WHERE session_id=?',this.now(),sid);this.run('UPDATE lab_sessions SET lease_until=? WHERE session_id=?',this.now()+TASK_ACTIVITY_POLICY.connection_timeout_ms,sid);this.admission.join(sid);return {status:'ACTIVE'};
     }
-    if(!['COMPLETED','TERMINATED'].includes(s.state)&&['participant.claim','participant.reserve','participant.permit','participant.seal','participant.finalize','participant.preparation','participant.asset','participant.admission.check'].includes(op)){
+    if(!['COMPLETED','TERMINATED'].includes(s.state)&&['participant.claim','participant.reserve','participant.permit','participant.seal','participant.seal.check','participant.finalize','participant.preparation','participant.asset','participant.admission.check'].includes(op)){
       const result=this.admission.join(sid);if(result.status!=='ACTIVE')return new Rejection(new ContractError('SESSION_WAITING',409,result));
     }
     if(op==='participant.admission.check')return this.admission.view(sid);
+    if(op==='participant.seal.check'){
+      const manifest=parseManifest(d.manifest,5000),old=this.get<{manifest_hash:string}>('SELECT manifest_hash FROM lab_seals WHERE session_id=? AND scope=?',sid,manifest.scope);
+      if(old){if(old.manifest_hash!==digest(manifestText(manifest)))throw new ContractError('SEAL_CONFLICT',409);return {replay_required:false};}
+      this.active(s,d);
+      if(this.frozen(s.version_id).protocol.pages[s.page_index]?.id===manifest.scope)return {replay_required:false};
+      if(!this.get("SELECT 1 FROM lab_permits WHERE session_id=? AND scope=? AND writer_epoch=? AND state='ISSUED'",sid,manifest.scope,s.writer_epoch))throw new ContractError('OUTSIDE_PERMIT',409);
+      return {replay_required:true};
+    }
     if(op==='participant.preparation'){
       this.active(s,d);const p=this.frozen(s.version_id).protocol;
       if(s.page_index<p.pages.length||this.get("SELECT 1 FROM lab_permits WHERE session_id=? AND state='ISSUED'",sid))throw new ContractError('PREPARATION_UNAVAILABLE',409);
@@ -463,7 +532,8 @@ export class LabStore {
       }
       if(op==='participant.reconcile') {
         if(s.state!=='TERMINATED')throw new ContractError('SESSION_NOT_TERMINATED');const manifest=parseManifest(d.manifest,5000);
-        return {status:'RECONCILED',reconciliation_id:randomUUID(),manifest,receipts:manifest.events.map(r=>this.custody(sid,r)),unknown:d.unknown??[],cleanup_allowed:false};
+        const receipts=manifest.events.map(r=>this.custody(sid,r));
+        return {status:receipts.some(r=>!r)?'WAITING':'RECONCILED',reconciliation_id:randomUUID(),manifest,receipts,unknown:d.unknown??[],cleanup_allowed:false};
       }
       if(op==='participant.claim') {
         if(['COMPLETED','TERMINATED'].includes(s.state))throw new ContractError('SESSION_TERMINAL',409);
@@ -495,12 +565,26 @@ export class LabStore {
           ||readiness.protocol_hash!==this.frozen(s.version_id).hash||typeof readiness.commit_ms!=='number'||!Number.isFinite(readiness.commit_ms)||readiness.commit_ms<0||readiness.commit_ms>p.budget.commit_ms
           ||!['portrait','landscape'].includes(String(readiness.layout)))throw new ContractError('ENVIRONMENT_NOT_READY',409);
         const geometry=object(readiness.geometry),viewport=object(geometry.viewport),canvas=object(geometry.canvas);
+        // DOMRect values can land just below a CSS pixel boundary in WebViews.
+        // Preserve the reported geometry; tolerate only 1/100 CSS px in comparisons.
+        const rounding=.01;
+        const geometryError=(reason:string,actual:unknown,expected:unknown)=>new ContractError('INVALID_GEOMETRY',400,{reason,actual,expected});
         const positive=(x:unknown)=>typeof x==='number'&&Number.isFinite(x)&&x>0;
-        const coordinate=(x:unknown)=>typeof x==='number'&&Number.isFinite(x)&&x>=0;
+        const coordinate=(x:unknown)=>typeof x==='number'&&Number.isFinite(x)&&x>=-rounding;
         const inside=(b:Record<string,unknown>)=>coordinate(b.x)&&coordinate(b.y)&&positive(b.width)&&positive(b.height)&&Number(b.x)+Number(b.width)<=Number(viewport.width)+1&&Number(b.y)+Number(b.height)<=Number(viewport.height)+1;
-        if(!positive(viewport.width)||!positive(viewport.height)||!positive(viewport.dpr)||!inside(canvas)||Number(canvas.width)<(readiness.layout==='portrait'?p.layout.portrait_min_width:p.layout.landscape_min_width)||Math.abs(Number(canvas.width)/Number(canvas.height)-p.layout.aspect)>.01||!Array.isArray(geometry.buttons))throw new ContractError('INVALID_GEOMETRY');
+        if(!positive(viewport.width)||!positive(viewport.height)||!positive(viewport.dpr))throw geometryError('VIEWPORT',viewport,'positive finite width, height and dpr');
+        if(!inside(canvas))throw geometryError('CANVAS_BOUNDS',canvas,viewport);
+        const minimumWidth=readiness.layout==='portrait'?p.layout.portrait_min_width:p.layout.landscape_min_width;
+        if(Number(canvas.width)+rounding<minimumWidth)throw geometryError('CANVAS_MIN_WIDTH',canvas.width,minimumWidth);
+        if(Math.abs(Number(canvas.width)/Number(canvas.height)-p.layout.aspect)>.01)throw geometryError('CANVAS_ASPECT',Number(canvas.width)/Number(canvas.height),p.layout.aspect);
+        if(!Array.isArray(geometry.buttons))throw geometryError('BUTTONS',null,'array');
         const variant=p.variants.find(v=>v.id===slot.variant_id)!;const group=p.groups.find(g=>g.id===variant.group_order[s.group_index]);if(!group)throw new ContractError('NO_NEXT_GROUP');
-        if(geometry.buttons.length!==group.choices.length||geometry.buttons.some((v,i)=>{const b=object(v);return b.choice!==group.choices[i]||!inside(b)||Number(b.height)<44;}))throw new ContractError('INVALID_GEOMETRY');
+        if(geometry.buttons.length!==group.choices.length)throw geometryError('BUTTON_COUNT',geometry.buttons.length,group.choices.length);
+        for(const [i,value]of geometry.buttons.entries()){const b=object(value);
+          if(b.choice!==group.choices[i])throw geometryError('BUTTON_CHOICE',b.choice??null,group.choices[i]);
+          if(!inside(b))throw geometryError('BUTTON_BOUNDS',b,viewport);
+          if(Number(b.height)+rounding<44)throw geometryError('BUTTON_MIN_HEIGHT',b.height,44);
+        }
         const selection=this.selection(s,group);
         const roots=selection?.roots??variant.trial_order[group.id]!.map(root=>group.trials.find(t=>t.root_id===root)!);
         const assetHashes=object(readiness.assets);for(const t of roots){if(!t.asset_id)continue;const a=this.get<{hash:string;state:string}>('SELECT hash,state FROM lab_assets WHERE asset_id=?',t.asset_id)!;if(a.state!=='READY'||assetHashes[t.asset_id]!==a.hash)throw new ContractError('RESOURCE_NOT_READY',409);}
@@ -514,7 +598,8 @@ export class LabStore {
       }
       if(op==='participant.seal')return this.seal(s,d,p);
       if(op==='participant.finalize') {
-        const view=this.view(sid);if(s.page_index<p.pages.length||s.group_index<p.groups.length||view.permit?.state==='ISSUED'||view.diagnostics.length)return {status:'WAITING',reason:'PATH_OR_INTEGRITY_NOT_CONFIRMED'};
+        const view=this.view(sid);if(s.page_index<p.pages.length||s.group_index<p.groups.length||view.permit?.state==='ISSUED'||view.diagnostics.length
+          ||this.get("SELECT 1 FROM lab_events WHERE session_id=? AND disposition<>'ACCEPTED' LIMIT 1",sid))return {status:'WAITING',reason:'PATH_OR_INTEGRITY_NOT_CONFIRMED'};
         if(!Array.isArray(d.seal_ids)||stableJSON([...d.seal_ids].sort())!==stableJSON(view.seals.map(s=>s.seal_id).sort()))throw new ContractError('COMPLETION_MANIFEST_MISMATCH');
         const completion={completion_id:randomUUID(),session_id:sid,seal_ids:d.seal_ids,path:view.path,status:'COMPLETED'};
         this.run("UPDATE lab_sessions SET state='COMPLETED',completion=? WHERE session_id=?",JSON.stringify(completion),sid);this.admission.ended(sid);return completion;
@@ -534,7 +619,7 @@ export class LabStore {
     const page=p.pages[s.page_index]; const path=JSON.parse(s.path) as string[];
     if(page?.id===manifest.scope) {
       if(!refs.length||refs.at(-1)!.kind!=='PAGE_SNAPSHOT'||refs.slice(0,-1).some(e=>e.kind!=='PAGE_REVISION')||stableJSON(manifest.path)!==stableJSON([...path,page.id]))throw new ContractError('PAGE_MANIFEST_MISMATCH');
-      const e=this.get<{envelope:string}>('SELECT envelope FROM lab_events WHERE session_id=? AND event_id=?',s.session_id,refs.at(-1)!.event_id)!;
+      const e=this.get<{envelope:string}>('SELECT envelope FROM lab_event_evidence WHERE session_id=? AND event_id=?',s.session_id,refs.at(-1)!.event_id)!;
       const supplied=object(parseLabEvent(e.envelope).payload.answers) as Record<string,Answer>;const answers=JSON.parse(s.answers) as Record<string,Answer>;
       const snap=pageSnapshot(page,answers,supplied);for(const [k,v]of Object.entries(snap))answers[k]=v.answer;
       path.push(page.id);this.run('UPDATE lab_sessions SET page_index=page_index+1,answers=?,path=? WHERE session_id=?',stableJSON(answers),stableJSON(path),s.session_id);
@@ -548,6 +633,7 @@ export class LabStore {
       if(result.session_id!==s.session_id||result.scope!==manifest.scope||result.source_hash!==source||result.valid!==true)throw new ContractError('REPLAY_PROOF_STALE_OR_INVALID',409);
       path.push(permit.group_id);if(stableJSON(manifest.path)!==stableJSON(path))throw new ContractError('GROUP_PATH_MISMATCH');
       this.run("UPDATE lab_permits SET state='CLOSED_NORMAL' WHERE permit_id=?",permit.permit_id);this.run('UPDATE lab_sessions SET group_index=group_index+1,path=? WHERE session_id=?',stableJSON(path),s.session_id);
+      this.run('DELETE FROM lab_task_activity WHERE session_id=?',s.session_id);
     }
     const seal:Seal={seal_id:randomUUID(),manifest,manifest_hash:h,algorithm:'exact-set-and-chain-v1',status:'SEALED'};
     this.run('INSERT INTO lab_seals VALUES (?,?,?,?,?)',s.session_id,manifest.scope,seal.seal_id,h,JSON.stringify(seal));return seal;

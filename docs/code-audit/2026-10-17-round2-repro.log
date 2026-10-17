@@ -1,0 +1,18 @@
+✔ L06: restored server has no acknowledged raw, but terminal UI declares all old records saved (599.825334ms)
+ℹ {"ui":"本次作答已中断，已有记录已保存。","initial_server_receipts":[null],"ingest_requests":0,"cached_receipts_after_manual_resend":[null]}
+✔ L07: unresolved diagnostic predecessor does not block normal completion (308.657708ms)
+ℹ {"disposition":"RECEIVED_PENDING","reason":"MISSING_PREDECESSOR","diagnostics":[],"completion":"COMPLETED"}
+✔ L07b: out-of-order diagnostics become quarantined without an integrity diagnostic (343.813417ms)
+ℹ {"initial":"RECEIVED_PENDING","promoted":"QUARANTINED","reason":"INVALID_PREDECESSOR_OR_CLOCK","diagnostics":[],"completion":"COMPLETED"}
+✔ L08: real archived runner asks for the old entry orientation after cross-version reanswer (3365.869ms)
+ℹ {"protocol_orientation":"landscape","runner_gate":"请将设备调整为竖屏方向正确后自动继续","metadata_versions":["31bc398d-88d0-4ce5-b5ac-a581d3296faa","8d2648b5-c7a6-463a-bb22-69912f8f3225"],"archived_runner":"01695e4d9eb5bdd5c0a64409f9763f4e68cde82aaf01253f071f928dcfb1b584"}
+✔ L09: exhausting preparation diagnostics poisons durable answer syncing (496.080709ms)
+ℹ {"loadError":"PREPARATION_REPORT_BUDGET_EXCEEDED","drainError":"PREPARATION_REPORT_BUDGET_EXCEEDED","original_records":100,"answer_events":1,"navigated":false}
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5398.143291

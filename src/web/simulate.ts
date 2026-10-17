@@ -4,6 +4,8 @@ import {lockParticipantViewport} from './viewport.js';
 import {applyParticipantBackground} from './participant-theme.js';
 import {watchOrientation} from './orientation-gate.js';
 import {mountPage} from './survey-page.js';
+import {mountAdaptivePage} from './adaptive-page.js';
+import {pageIntroduction} from './participant-ui.js';
 import {mountEnding} from './ending-page.js';
 import {mountConsent,showConsentDeclined} from './consent-page.js';
 import {parseProtocol,evaluate,type Protocol,type Answer} from '../shared/protocol.js';
@@ -17,7 +19,12 @@ let p:Protocol|undefined,index=0,imageIndex=0,consented=false,answers:Record<str
 function render(){if(!p)return;dispose?.();applyParticipantBackground(p.layout.background);title.textContent=p.title;status.textContent='模拟问卷 · 不提交数据';
   if(p.consent&&!consented){dispose=mountConsent(content,p.consent,()=>{consented=true;render();},()=>{dispose?.();status.textContent='未同意参加 · 不提交数据';showConsentDeclined(content,render);});return;}
   while(p.pages[index]&&!evaluate(p.pages[index]!.condition,answers))index++;
-  const page=p.pages[index];if(page){const mount=el('div',undefined,'survey-mount');content.replaceChildren(mount);dispose=mountPage(mount,page,answers,values[page.id]??{},(_name,_answer,data)=>{values[page.id]=data;},data=>{Object.assign(answers,data);index++;render();},{key:`simulation-${crypto.randomUUID()}`,title:p.title});return;}
+  const page=p.pages[index];if(page){const mount=el('div',undefined,'survey-mount');content.replaceChildren(mount);
+    if(p.questionnaire_layout==='adaptive')dispose=mountAdaptivePage(mount,page,answers,values[page.id]??{},async(_name,_answer,data)=>{values[page.id]=data;},async data=>{Object.assign(answers,data);index++;render();},{
+      offset:p.pages.slice(0,index).reduce((n,page)=>n+page.questions.length,0),total:p.pages.reduce((n,page)=>n+page.questions.length,0),last:index===p.pages.length-1,
+      introduction:pageIntroduction(p.title,page.title,page.instruction),cursor:async()=>{},error:()=>{status.textContent='模拟显示失败，请检查问卷。';}
+    });
+    else dispose=mountPage(mount,page,answers,values[page.id]??{},(_name,_answer,data)=>{values[page.id]=data;},data=>{Object.assign(answers,data);index++;render();},{key:`simulation-${crypto.randomUUID()}`,title:p.title});return;}
   content.replaceChildren();const images=p.groups.flatMap(group=>group.trials.map(trial=>({group,trial}))),entry=images[imageIndex];
   const reset=button('重新模拟',()=>{index=0;imageIndex=0;consented=false;answers={};values={};render();});
   if(!entry){dispose=mountEnding(content,p.ending,()=>{index=0;imageIndex=0;consented=false;answers={};values={};render();});status.textContent='模拟完成 · 不提交数据';return;}

@@ -38,7 +38,8 @@ export async function publishExclusive(temp:string,destination:string) {
   await syncDirectory(dirname(destination));await unlink(temp);await syncDirectory(dirname(temp));return h;
 }
 export async function safeDownload(root:string,job:string,file:string,bucket:string) {
-  const files=bucket==='research-exports'?['data.csv','answers.csv','trajectories.csv','manifest.json']:bucket==='research-backups'?['manifest.json','database.sqlite']:[];
+  if(bucket==='research-exports'&&file==='trajectories.csv')throw new ContractError('TRAJECTORY_DOWNLOAD_DISABLED',410);
+  const files=bucket==='research-exports'?['data.csv','answers.csv','preparations.csv','manifest.json']:bucket==='research-backups'?['manifest.json','database.sqlite']:[];
   if(!files.includes(file))throw new ContractError('INVALID_DOWNLOAD_OBJECT');
   const directory=await privateRoot(join(root,bucket,id(job)));return openPrivate(join(directory,file));
 }

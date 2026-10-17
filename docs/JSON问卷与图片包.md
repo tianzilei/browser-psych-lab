@@ -18,6 +18,7 @@
 {
   "schema": "questionnaire-v1",
   "title": "操作体验",
+  "record_interactions": false,
   "background": "#e5e5e5",
   "orientation": "portrait",
   "consent": {"title": "知情同意书（模拟测试）", "text": "这是样式与交互测试。同意后记录模拟答案和设备信息；可拒绝或关闭页面退出。"},
@@ -39,16 +40,22 @@
 }
 ```
 
-`orientation` 必须为 `portrait`（竖屏）或 `landscape`（横屏）。方向不符时显示纯色方向提示，符合后才创建会话及加载完整问卷；图片尚未下载。方向依据页面可用宽高，不依据 visualViewport 的键盘高度；输入框获得焦点且页面宽度未变化时保留已确定方向。作答中改变方向会遮住控件，恢复方向后继续原答案；图片计时运行仍按既有 resize 中断规则保存历史记录。旧冻结协议没有方向字段时保持历史行为。
+`orientation` 使用 `portrait`（竖屏）或 `landscape`（横屏）；自适应纯问卷也可使用 `auto`（方向自动适配）。方向不符时显示纯色方向提示，符合后才创建会话及加载完整问卷；图片尚未下载。方向依据页面可用宽高，不依据 visualViewport 的键盘高度；输入框获得焦点且页面宽度未变化时保留已确定方向。作答中改变方向会遮住控件，恢复方向后继续原答案；图片计时运行仍按既有 resize 中断规则保存历史记录。旧冻结协议没有方向字段时保持历史行为。
+
+长问卷建议在 JSON 顶层设置 `"record_interactions": false`，停止采集、存储和上传触摸、鼠标拖动、键盘输入、页面快照及相关状态轨迹。每份问卷独立设置；设为 `true` 或省略字段时继续记录。值必须为 JSON 布尔值，不能写成字符串 `"false"`。简化 `questionnaire-v1` 和完整 `study-v1` 均支持该顶层字段，下载模板显式设置为 `true`，可按需要改为 `false`。
+
+关闭轨迹仍保存答案修订、最终答案、封存、设备协变量以及图片任务必要的呈现、作答、评分及反应时间记录；离线保存和重试继续可用。关闭期间没有逐动作／界面快照回放数据。开关随上传的新版本冻结，已有会话继续原设置，历史记录不会删除。修改本地 JSON 后在管理页“问卷文件与模拟 → 修改 JSON”上传并生成新版本，再向新受试者分发新版本链接。
 
 量表 `labels` 按刻度从左到右排列，首尾是坐标轴两端文字，下端反馈例如“已选：方便”。默认 `min=1`，`max=min+labels.length-1`；可显式设置整数 min/max，包括零和负数，但必须逐项对应。答案始终存整数，未操作不会默认选择中间值。每个标签最多 40 个 UTF-16 单元；建议不超过 12 个汉字。文字完整显示，空间不足时阻止继续。轴线的圆角轮廓、粗细和选中刻度均为纯色，无渐变、图片或动画。
 
 | 字段 | 用途与限制 |
 | --- | --- |
 | `title` | 问卷名，最多 200 个 UTF-16 单元 |
+| `record_interactions` | 可选顶层布尔值；false 关闭操作轨迹，true／省略开启；逐问卷、逐发布版本生效 |
+| `questionnaire_layout` | 可选 single／adaptive；adaptive 按设备实际空间显示多题并后台自动分段保存，省略保持逐题作答 |
 | `background` | 十六进制纯色，建议 `#e5e5e5` 或 `#202020` |
 | `pages` | 最多 30 页，页面 `id` 必填，`title` / `instruction` 可省略 |
-| `questions` | 每页最多 30 题，id/type/title 必填，required 默认 true |
+| `questions` | 普通模式每页最多 30 题；简化 adaptive 可输入完整长段，按最多 30 题及完整答案快照 128 KiB 上限自动拆分，编译后最多 30 段；id/type/title 必填，required 默认 true |
 | `single` / `multi` | choices 2–20 项，全部同屏，单项最多 200 个 UTF-16 单元，建议 20 字以内 |
 | `scale` | labels 2–21 项，按整数 min/max 完整映射，不使用 choices |
 | `scales` | axes 2–6 项，每轴单独 id/title/labels，所有轴同屏 |
@@ -59,9 +66,13 @@
 | `condition` | 保留既有 eq/neq/includes/and/or/not 条件 AST，只能引用前序题，不执行脚本 |
 | `mode` | 默认 TEST_ONLY；COLLECTION 仍需既有真实环境验收与采集准入 |
 
-未知字段会被拒绝，不静默丢弃。专业配置可上传完整 `study-v1`，仍需提供 layout.orientation 及量表 labels。简化 JSON 还可设置 groups、variants、layout（aspect/最小宽度）及 budget；复杂计时参数仍由既有协议合同检查。
+输入过程中会保存尚未满足 `input_match` 的文字草稿，仍校验题目、类型和长度；页面最终提交必须通过完整格式校验。这样逐字输入、改错和刷新恢复不会破坏保存链。比如 11 位数字接 4 位大写英文字母，可配置 `"pattern":"[0-9]{11}[A-Z][A-Z][A-Z][A-Z]"`，并设置 `"max_length":15`；匹配自动覆盖完整输入，不接受前后空格。
+
+未知字段会被拒绝，不静默丢弃。专业配置可上传完整 `study-v1`，仍需提供量表 labels；图片/计时任务及普通逐题问卷还需提供 layout.orientation。简化 JSON 还可设置 groups、variants、layout（aspect/最小宽度）及 budget；复杂计时参数仍由既有协议合同检查。
 
 ## 知情同意页
+
+自适应纯问卷可设置 `"questionnaire_layout":"adaptive"`、`"orientation":"auto"`，在手机、平板、电脑和旋转后按实际空间呈现。此 auto 方向不适用于图片/计时任务；完整规则见 [自适应问卷与后台自动保存](自适应问卷与后台自动保存.md)。
 
 新模板及三份示例都包含 `consent: {"title":"知情同意书","text":"完整说明"}`。所有内容由研究者通过 JSON 编写，不在网页编辑，不执行 HTML/Markdown。标题与正文必填且不可空白，未知字段会被拒绝；沿用标题 200、说明 8000 的 UTF-16 字符预算。示例明确标记模拟测试，正式问卷需换成对应研究的内容。
 

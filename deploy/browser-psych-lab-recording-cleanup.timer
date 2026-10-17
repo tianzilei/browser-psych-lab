@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily derived replay cleanup at midnight Beijing time
+[Timer]
+OnCalendar=*-*-* 00:00:00 Asia/Shanghai
+Persistent=true
+Unit=browser-psych-lab-recording-cleanup.service
+[Install]
+WantedBy=timers.target

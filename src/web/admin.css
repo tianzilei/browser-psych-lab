@@ -2,6 +2,13 @@
 .simulation-overlay > button { justify-self: end; }
 .simulation-overlay iframe { width: 100%; height: 100%; min-height: 0; border: 0; }
 .wide { max-width: 1040px; }
+.storage-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; }
+.storage-heading h2 { margin: 0; font-size: 20px; }
+.storage-percent { font-size: 25px; font-variant-numeric: tabular-nums; }
+.storage-heading button { margin-left: auto; }
+.storage-card meter { display: block; width: 100%; height: 20px; margin-top: 14px; }
+.storage-card meter[hidden] { display: none; }
+.storage-detail,.storage-update { overflow-wrap: anywhere; }
 #message { min-height: 1.7em; overflow-wrap: anywhere; }
 .study-card { min-width: 0; }
 .study-heading { display: flex; gap: 16px; align-items: start; justify-content: space-between; }
@@ -23,3 +30,7 @@
 .delete-confirmation button { margin: 0 12px 8px 0; }
 .study-card a { color: #20523e; }
 @media(max-width:600px) { .study-controls { grid-template-columns: repeat(2,minmax(0,1fr)); } .study-controls button { font-size: 14px; padding: 10px 8px; } .study-heading h3 { font-size: 19px; } .study-status { padding: 5px 8px; } nav button { min-height: 44px; } }
+
+.recording-row { padding: 8px 0 14px; border-bottom: 1px solid #d8d8d8; }
+.recording-row .session-link { padding-bottom: 2px; }
+.recording-row p { margin: 4px 0 8px; }

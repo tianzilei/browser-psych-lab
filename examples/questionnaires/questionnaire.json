@@ -1,6 +1,7 @@
 {
   "schema": "questionnaire-v1",
   "title": "移动端模拟问卷",
+  "record_interactions": true,
   "background": "#e5e5e5",
   "orientation": "portrait",
   "ending": {

@@ -37,6 +37,9 @@ const errors:Record<string,string>={
   CUSTODY_RECEIPT_MISMATCH:'记录保存凭证不一致，请保留此浏览器中的记录并联系研究者。',
   ENVIRONMENT_RECEIPT_MISMATCH:'设备信息保存凭证不一致，请保留此浏览器中的记录并联系研究者。',
   SAVE_NOT_CONFIRMED:'记录保存尚未确认，请重试保存。',
+  LOCAL_QUESTIONNAIRE_PATH_CONFLICT:'本机作答路径与保存记录不一致，请保留此浏览器中的记录并联系研究者。',
+  LOCAL_QUESTIONNAIRE_EDIT_LIMIT:'本段修改量已达到保存上限，已有记录仍保留。重试保存可恢复已保存的答案；若仍无法完成，请联系研究者。',
+  SCOPE_BUDGET_EXCEEDED:'操作记录超过保存上限，保存尚未完成。请保留当前页面并联系研究者。',
   COMPLETION_NOT_CONFIRMED:'本次作答尚未完成保存，请重试保存。',
 };
 export function errorCode(error:unknown){
@@ -76,7 +79,10 @@ export function interruptionMessage(reason:unknown){
 /** Deduplicate metadata only for display; never rewrite the frozen protocol. */
 export function pageIntroduction(title:string,pageTitle:string,instruction:string){
   const key=(value:string)=>value.replace(/\s+/gu,' ').trim(),blocks:string[]=[];
-  if(key(pageTitle)&&key(pageTitle)!==key(title))blocks.push(pageTitle);
+  // Older CSV imports stored replacement characters around the page number.
+  // Repair that known title shape for display while preserving frozen records.
+  const readablePageTitle=pageTitle.replace(/\uFFFD{2}第 ([1-9][0-9]*) 页\uFFFD{2}$/u,'（第 $1 页）');
+  if(key(readablePageTitle)&&key(readablePageTitle)!==key(title))blocks.push(readablePageTitle);
   // Keep an authored instruction even when it equals the global title. It may
   // be the only instruction. Identical page title + instruction appear once.
   if(key(instruction)&&!blocks.some(block=>key(block)===key(instruction)))blocks.push(instruction);

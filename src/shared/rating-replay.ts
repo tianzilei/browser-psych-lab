@@ -48,7 +48,7 @@ export class RatingReplay {
       result.rt_ms=r.input_time-result.onset;result.submit_rt_ms=result.rt_ms;
       if(prior.length)result.first_rt_ms=Math.min(...prior.map(c=>c.at))-result.onset;
       result.rating_item_times=Array.from({length:coreCount},(_,item)=>{const changes=prior.filter(c=>c.item===item);return {item,first_rt_ms:changes[0]?changes[0].at-result.onset:null,last_rt_ms:changes.at(-1)?changes.at(-1)!.at-result.onset:null,changes:changes.filter((c,i)=>i>0&&c.value!==changes[i-1]!.value).length};});
-      result.change_count=prior.filter((c,i)=>i>0&&c.value!==prior[i-1]!.value).length;
+      result.change_count=result.rating_item_times.reduce((total,item)=>total+item.changes,0);
       result.clear=r.draw_time!;s.executions.set(id!,'WINDOW_CLOSED');return;
     }
     if(r.type==='END'){

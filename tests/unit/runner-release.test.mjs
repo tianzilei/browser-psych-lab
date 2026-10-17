@@ -46,6 +46,11 @@ test('runner capability is canonical, bounded and rejects corrupt or unsupported
     await writeFile(join(dist,'web/runner-contract.json'),bytes);await writeFile(join(dist,'release.json'),JSON.stringify({runnerHash,runnerVersion:'canvas-v1',files}));await retainRelease(root,dist);return runnerHash;}
   const hash=await archive({schema:'runner-assets-v1',preparation_queue:true});assert.equal(await new RunnerAssetPolicy(root).get(hash),'ticket');
   assert.equal(await new RunnerAssetPolicy(root).requiresActivity(hash),false);
+  assert.equal(await new RunnerAssetPolicy(root).supportsLedgerEntry(hash),false);
+  const entry=await archive({schema:'runner-assets-v1',preparation_queue:true,ledger_entry:'ledger-entry-v1'});
+  assert.equal(await new RunnerAssetPolicy(root).supportsLedgerEntry(entry),true);
+  const future=await archive({schema:'runner-assets-v1',preparation_queue:true,ledger_entry:'future-entry'});
+  assert.equal(await new RunnerAssetPolicy(root).supportsLedgerEntry(future),false);
   const active=await archive({schema:'runner-assets-v1',preparation_queue:true,task_activity:'idle120-offline300-v1'});
   assert.equal(await new RunnerAssetPolicy(root).requiresActivity(active),true);
   for(const task_activity of ['future-policy',null,false]){

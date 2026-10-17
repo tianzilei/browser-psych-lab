@@ -12,7 +12,7 @@ import {stableJSON} from '../../src/shared/protocol.js';
 import sharp from 'sharp';
 import {gunzipSync} from 'node:zlib';
 
-async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<typeof compileQuestionnaire>)=>void){
+async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<typeof compileQuestionnaire>)=>void,viewport={width:390,height:844}){
   const root=mkdtempSync(join(tmpdir(),'bpl-runner-')),db=openDatabase(join(root,'db.sqlite')),store=new LabStore(db,digest('runner'));
   const token=digest('admin'),csrf=randomUUID();store.execute({operation:'lab/admin.issue',data:{token_hash:token,csrf}});
   const admin=(operation:string,data:Record<string,unknown>={})=>store.execute({operation:`lab/${operation}`,credential_hash:token,data:{csrf,...data}}) as any;
@@ -44,12 +44,12 @@ async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<t
       }else{
         const op=path.split('/')[5];
         if(op==='assets'){assetCalls++;await route.fulfill({body:png,contentType:'image/png'});return;}
-        if(op==='covariates')result={hash:digest(body.raw),status:'PERSISTED'};
+        if(op==='covariates')result=call('covariates',body);
         else if(op==='preparation')result=body.action==='release'?{}:{status:'READY',ticket_id:body.ticket_id};
         else if(op==='seal'){
           const permit=call('view').permit,replay=new RunReplay(permit.plan);
           const refs=db.prepare('SELECT event_id,hash,disposition,writer_epoch,kind FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,permit.scope);
-          for(const row of db.prepare('SELECT envelope FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,permit.scope) as any[]){const e=JSON.parse(row.envelope);if(e.kind==='GROUP_RECORD')replay.apply(e.payload.record);}
+          for(const row of db.prepare('SELECT envelope FROM lab_event_evidence WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,permit.scope) as any[]){const e=JSON.parse(row.envelope);if(e.kind==='GROUP_RECORD')replay.apply(e.payload.record);}
           const results=replay.finish(),job=randomUUID();store.beginJob(job,'REPLAY',null,{});
           store.execute({operation:'lab/internal.job.finish',data:{job_id:job,state:'READY',result:{session_id:sid,scope:permit.scope,source_hash:digest(stableJSON(refs)),valid:true,results}}});
           result=call('seal',{...body,proof_job_id:job});
@@ -59,11 +59,11 @@ async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<t
     }catch(error){await route.fulfill({status:400,json:{code:String(error)}});}
   });
   await page.route('**/participate.html?**',route=>route.fulfill({contentType:'text/html',body:'<p id="done">Group saved</p>'}));
-  await page.setViewportSize({width:390,height:844});
+  await page.setViewportSize(viewport);
   await page.goto(`/run.html?version=${version.version_id}`);
   await expect(page.getByRole('button',{name:'开始本组'})).toBeVisible();
-  return {view:()=>call('view'),records:()=>db.prepare("SELECT envelope FROM lab_events WHERE session_id=? AND kind='GROUP_RECORD' ORDER BY sequence").all(sid).map((e:any)=>JSON.parse(e.envelope).payload.record),
-    requests:()=>groupCalls,downloads:()=>assetCalls,scopeEvents:(scope:string)=>db.prepare('SELECT envelope FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,scope).map((row:any)=>JSON.parse(row.envelope)),close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+  return {view:()=>call('view'),records:()=>db.prepare("SELECT envelope FROM lab_event_evidence WHERE session_id=? AND kind='GROUP_RECORD' ORDER BY sequence").all(sid).map((e:any)=>JSON.parse(e.envelope).payload.record),
+    requests:()=>groupCalls,downloads:()=>assetCalls,scopeEvents:(scope:string)=>db.prepare('SELECT envelope FROM lab_event_evidence WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,scope).map((row:any)=>JSON.parse(row.envelope)),close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
 }
 
 test('image click visibly confirms first answer; right click, repeated key, and changed second answer are excluded',async({page})=>{
@@ -205,4 +205,17 @@ test('a failed group seal removes task input before the retry interface is used'
     expect(f.scopeEvents(scope)).toHaveLength(before);expect(f.view().permit.state).toBe('CLOSED_NORMAL');
     expect(attempts).toBe(2);
   }finally{f.close();}
+});
+
+test('fractional Android WebView slider rectangles pass admission without changing recorded geometry',async({browser})=>{
+ const context=await browser.newContext({viewport:{width:400,height:779},deviceScaleFactor:2.7,isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Chrome/150.0.0.0 Mobile Safari/537.36 MicroMessenger/8.0.79'}),page=await context.newPage();
+ await context.addInitScript(()=>{const original=Element.prototype.getBoundingClientRect;Element.prototype.getBoundingClientRect=function(){const r=original.call(this);return this.matches('.axis-input')?new DOMRect(r.x,r.y,r.width,r.height-0.000003814697265625):r;};});
+ const f=await start(page,true,true,p=>{p.budget.commit_ms=1000;},{width:400,height:779});
+ try{
+  await page.getByRole('button',{name:'开始本组',exact:true}).tap();await expect(page.getByRole('slider',{name:'测试项目'})).toBeVisible();
+  expect(f.view().permit.plan.geometry.buttons[0].height).toBe(43.999996185302734);
+  await page.getByRole('slider',{name:'测试项目'}).press('End');await page.getByRole('button',{name:'下一题',exact:true}).tap();
+  const age=page.getByRole('textbox',{name:'你的年龄是？'});await age.press('1');await age.press('8');await page.getByRole('button',{name:'提交评分',exact:true}).tap();
+  await expect(page.locator('#done')).toBeVisible({timeout:10000});expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);expect(f.records().find((r:any)=>r.type==='RATING').values).toEqual([9,18]);
+ }finally{await context.close();f.close();}
 });

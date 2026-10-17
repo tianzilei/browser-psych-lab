@@ -33,7 +33,7 @@ test('full list ordering is persistent, atomic, shared with public list and reje
   new LabStore(f.db);assert.deepEqual(order(),reversed);
   f.admin('study.admission',{request_id:randomUUID(),study_id:other.study_id,paused:true});assert.equal(f.store.execute({operation:'lab/questionnaires.public',data:{}}).questionnaires.length,1);
   f.admin('study.admission',{request_id:randomUUID(),study_id:other.study_id,paused:false});assert.deepEqual(order(),reversed);
-  f.admin('study.delete',{request_id:randomUUID(),study_id:other.study_id});assert.throws(()=>f.admin('study.reorder',{request_id:randomUUID(),expected_order:reversed,order:expected}),/STUDY_ORDER_CONFLICT/);
+  assert.throws(()=>f.admin('study.delete',{request_id:randomUUID(),study_id:other.study_id}),/QUESTIONNAIRE_DELETION_DISABLED/);f.db.prepare('INSERT INTO lab_archived_studies VALUES (?,?)').run(other.study_id,1000);assert.throws(()=>f.admin('study.reorder',{request_id:randomUUID(),expected_order:reversed,order:expected}),/STUDY_ORDER_CONFLICT/);
   assert.throws(()=>f.admin('study.rename',{request_id:randomUUID(),study_id:other.study_id,revision:1,title:'deleted'}),/STUDY_NOT_FOUND/);
 });
 

@@ -5,8 +5,8 @@ import type {Ledger} from './ledger.js';
 import {mountConsent,showConsentDeclined} from './consent-page.js';
 export interface ConsentReceipt {accepted:true;document_hash:string}
 
-export async function requireConsent(ledger:Ledger):Promise<ConsentReceipt|undefined>{
-  const consent=await request<{document:NonNullable<Protocol['consent']>;document_hash:string}|null>(`/api/participate/versions/${ledger.version}/consent`);
+export async function requireConsent(ledger:Ledger,version=ledger.version):Promise<ConsentReceipt|undefined>{
+  const consent=await request<{document:NonNullable<Protocol['consent']>;document_hash:string}|null>(`/api/participate/versions/${version}/consent`);
   if(!consent)return;
   if(await sha256(stableJSON(consent.document))!==consent.document_hash)throw new Error('知情同意书版本校验失败。');
   const old=(await ledger.state()).consent;

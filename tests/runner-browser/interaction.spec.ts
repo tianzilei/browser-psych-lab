@@ -1,5 +1,25 @@
 import {test,expect} from '@playwright/test';
 
+test('disabled capture installs no listeners and never reads context or emits snapshots and input',async({page})=>{
+  await page.goto('/participate.html');
+  const result=await page.evaluate(async()=>{
+    const source='/interaction-recorder.ts';const {recordInteractions}=await import(source);
+    const root=document.querySelector<HTMLElement>('#content')!,input=document.createElement('input');root.replaceChildren(input);
+    let listeners=0,contexts=0,saves=0,failures=0;
+    const original=EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener=function(...args:Parameters<typeof original>){listeners++;return original.apply(this,args);};
+    let recorder:ReturnType<typeof recordInteractions>;
+    try{recorder=recordInteractions(root,()=>{contexts++;throw new Error('Disabled capture read context');},async()=>{saves++;},()=>{failures++;},false);}
+    finally{EventTarget.prototype.addEventListener=original;}
+    input.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:12,clientY:34}));
+    input.dispatchEvent(new InputEvent('input',{bubbles:true,data:'unrecorded'}));
+    window.dispatchEvent(new Event('resize'));document.dispatchEvent(new Event('visibilitychange'));
+    recorder.screen();await recorder.flush();await recorder.stop();recorder.screen();await recorder.stop();
+    return {listeners,contexts,saves,failures};
+  });
+  expect(result).toEqual({listeners:0,contexts:0,saves:0,failures:0});
+});
+
 test('optional formatted personal information can be cleared and skipped after validation',async({page})=>{
   await page.goto('/participate.html');
   await page.evaluate(async()=>{

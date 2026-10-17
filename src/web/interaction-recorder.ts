@@ -2,7 +2,9 @@ import type {InteractionBatch,InteractionContext,InteractionSample,ScreenNode} f
 import {browserState,networkState,type NetworkNavigator} from './browser-state.js';
 
 // Diagnostics keep all delivered/coalesced samples separate from answer seals.
-export function recordInteractions(root:HTMLElement,context:()=>InteractionContext,save:(batch:InteractionBatch)=>Promise<unknown>,fail:(error:unknown)=>void) {
+export function recordInteractions(root:HTMLElement,context:()=>InteractionContext,save:(batch:InteractionBatch)=>Promise<unknown>,fail:(error:unknown)=>void,enabled=true) {
+  // Disable capture at the source: no listeners, layout reads, encoding or batches.
+  if (!enabled) return {screen:()=>{},flush:()=>Promise.resolve(),stop:()=>Promise.resolve()};
   const encoder = new TextEncoder(), listeners:[EventTarget,string,EventListener][] = [];
   let samples:InteractionBatch['samples'] = [], bytes = 0, closed = false, pending = Promise.resolve();
   let timer:ReturnType<typeof setTimeout>|undefined, frame:number|undefined, microtask = false;

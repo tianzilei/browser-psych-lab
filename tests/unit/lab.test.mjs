@@ -50,6 +50,37 @@ test('revision history, out-of-order custody, exact page seal, finalization and 
   const data={request_id:'done',...f.fence,seal_ids:[seal.seal_id]};assert.equal(f.call('finalize',data).status,'COMPLETED');assert.equal(f.call('finalize',data).status,'COMPLETED');assert.throws(()=>f.call('terminate',{request_id:'late',reason:'UNKNOWN_RUN'}),/TERMINAL/);
   assert.throws(()=>f.db.prepare('DELETE FROM lab_raw').run(),/immutable/);assert.equal(f.db.prepare('SELECT raw FROM lab_raw WHERE event_id=?').get(one.event_id).raw.toString(),one.raw);
 });
+function identifierProtocol(){
+  const p=sampleProtocol();p.groups=[];p.variants[0].group_order=[];p.variants[0].trial_order={};
+  p.pages[0].questions=[{id:'identifier',title:'问卷编号',type:'text',input_purpose:'personal',required:true,max_length:15,
+    input_match:{kind:'regex',pattern:'[0-9]{11}[A-Z][A-Z][A-Z][A-Z]'}}];return p;
+}
+test('incomplete identifier edits retain custody and a corrected final snapshot can seal',t=>{
+  const f=fixture(t,identifierProtocol()),valid='20991231001TEST';
+  const edits=['','2','20991231001','20991231001Test',valid].map(answer=>f.wire('welcome','PAGE_REVISION',{question_id:'identifier',answer}));
+  const final=f.wire('welcome','PAGE_SNAPSHOT',{answers:{identifier:valid}});
+  assert.ok(f.ingest([final]).receipts.every(r=>r.disposition==='RECEIVED_PENDING'));
+  assert.ok(f.ingest(edits).receipts.every(r=>r.disposition==='ACCEPTED'));
+  assert.ok(f.call('receipts',{events:[...edits,final]}).receipts.every(r=>r.disposition==='ACCEPTED'));
+  assert.equal(f.seal('welcome',[...edits,final],['welcome']).status,'SEALED');
+  assert.equal(f.call('view').answers.identifier,valid);
+  assert.equal(f.call('finalize',{request_id:randomUUID(),...f.fence,seal_ids:f.call('view').seals.map(s=>s.seal_id)}).status,'COMPLETED');
+  assert.deepEqual(f.db.prepare('SELECT code FROM lab_diagnostics').all(),[]);
+});
+test('draft matcher relaxation retains type and length checks and cannot bypass final identifier validation',t=>{
+  for(const [kind,payload] of [
+    ['PAGE_REVISION',{question_id:'identifier',answer:123}],
+    ['PAGE_REVISION',{question_id:'identifier',answer:'x'.repeat(16)}],
+    ['PAGE_SNAPSHOT',{answers:{identifier:'20991231001Test'}}],
+    ['PAGE_SNAPSHOT',{answers:{identifier:'2'}}],
+    ['PAGE_SNAPSHOT',{answers:{identifier:''}}],
+  ]){
+    const f=fixture(t,identifierProtocol()),event=f.wire('welcome',kind,payload);
+    assert.equal(f.ingest([event]).receipts[0].disposition,'QUARANTINED');
+    assert.equal(f.seal('welcome',[event],['welcome']).status,'WAITING');
+    assert.equal(f.call('view').page_index,0);assert.deepEqual(f.call('view').answers,{});
+  }
+});
 test('conditional skip ignores hidden values and actual path excludes skipped pages',t=>{
   const p=sampleProtocol();p.pages.push({id:'branch',title:'Branch',instruction:'',condition:{op:'eq',question:'ready',value:'否'},questions:[{id:'hidden',title:'Hidden',type:'text',input_purpose:'personal',required:true,max_length:100}]});
   const f=fixture(t,p),event=f.wire('welcome','PAGE_SNAPSHOT',{answers:{ready:'是'}});f.ingest([event]);f.seal('welcome',[event],['welcome']);assert.equal(f.call('view').page_index,2);assert.deepEqual(f.call('view').path,['welcome']);assert.equal(f.call('view').answers.hidden,null);
@@ -73,7 +104,15 @@ test('readiness cannot omit storage or geometry, allocation is once, unclosed pe
   f.setNow(250000);const renewed=call('reserve',{request_id:'renew',...fence});assert.equal(renewed.reservation_id,reservation.reservation_id);assert.ok(renewed.reserved_until>reservation.reserved_until);f.setNow(350000);
   const preparation=call('preparation',fence);assert.deepEqual(preparation.asset_ids,[asset.asset_id]);assert.throws(()=>call('preparation',{...fence,writer_epoch:99}),/FENCED/);
   const missing={...readiness};delete missing.commit_ms;assert.throws(()=>call('permit',{request_id:'missing',...fence,reservation_id:reservation.reservation_id,readiness:missing}),/ENVIRONMENT_NOT_READY/);assert.equal(call('view').allocation,null);
-  const data={request_id:'permit',...fence,reservation_id:reservation.reservation_id,readiness},permit=call('permit',data);assert.deepEqual(call('permit',data),permit);assert.throws(()=>call('preparation',fence),/UNAVAILABLE/);assert.throws(()=>call('reserve',{request_id:'during-run',...fence}),/RUN_LOCKED/);assert.equal(f.db.prepare('SELECT count(*) AS n FROM lab_slots WHERE session_id=? AND allocation_id IS NOT NULL').get(s.session_id).n,1);
+  for(const height of [43,43.9]){const invalid=structuredClone(readiness);invalid.geometry.buttons[0].height=height;assert.throws(()=>call('permit',{request_id:`short-${String(height).replace(".","-")}`,...fence,reservation_id:reservation.reservation_id,readiness:invalid}),error=>error.code==='INVALID_GEOMETRY'&&error.details.reason==='BUTTON_MIN_HEIGHT');assert.equal(call('view').allocation,null);}
+  for(const [label,change,reason]of [
+    ['outside',g=>{g.buttons[0].y=900;},'BUTTON_BOUNDS'],
+    ['canvas-small',g=>{g.canvas.width=1;},'CANVAS_MIN_WIDTH'],
+    ['canvas-shape',g=>{g.canvas.height=100;},'CANVAS_ASPECT'],
+    ['choice',g=>{g.buttons[0].choice='unknown';},'BUTTON_CHOICE'],
+  ]){const invalid=structuredClone(readiness);change(invalid.geometry);assert.throws(()=>call('permit',{request_id:label,...fence,reservation_id:reservation.reservation_id,readiness:invalid}),error=>error.code==='INVALID_GEOMETRY'&&error.details.reason===reason);assert.equal(call('view').allocation,null);}
+  const rounded=structuredClone(readiness);for(const b of rounded.geometry.buttons)b.height=43.999996185302734;
+  const data={request_id:'permit',...fence,reservation_id:reservation.reservation_id,readiness:rounded},permit=call('permit',data);assert.equal(permit.plan.geometry.buttons[0].height,43.999996185302734);assert.deepEqual(call('permit',data),permit);assert.throws(()=>call('preparation',fence),/UNAVAILABLE/);assert.throws(()=>call('reserve',{request_id:'during-run',...fence}),/RUN_LOCKED/);assert.equal(f.db.prepare('SELECT count(*) AS n FROM lab_slots WHERE session_id=? AND allocation_id IS NOT NULL').get(s.session_id).n,1);
   f.setNow(1000000);assert.throws(()=>call('claim',{request_id:'takeover',writer_id:'other'}),/RUN_LOCKED/);assert.throws(()=>f.admin('asset.delete',{request_id:'delete',asset_id:asset.asset_id}),/ASSET_REFERENCED/);
   assert.equal(call('terminate',{request_id:'stop',reason:'UNKNOWN_RUN'}).permit.state,'CLOSED_UNKNOWN');assert.throws(()=>call('permit',{...data,request_id:'again'}),/TERMINAL/);
 });

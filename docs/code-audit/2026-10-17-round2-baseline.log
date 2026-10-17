@@ -1,0 +1,38 @@
+✔ result and trajectory CSVs preserve answer states, source clocks, safe text and snapshot hashes (2482.224833ms)
+✔ multi-page exports distinguish skipped, current unconfirmed and future not-reached questions (1671.836583ms)
+✔ wide answers preserve cross-version columns, quoted headers and absent questions (1237.115083ms)
+✔ CSV dates use Beijing time across midnight and preserve milliseconds (0.191417ms)
+✔ failed exports preserve partial files without blocking the next maintenance job (1229.723083ms)
+✔ evidence exports over 100 MiB retain all raw rows and verified CSV hashes (3042.973708ms)
+✔ more than 64 pure questionnaires admit immediately without taking timed task slots (2913.119625ms)
+✔ reanswer keeps original evidence, creates one linked marked session and retries with the same credential (1019.326333ms)
+✔ screen and action batches retain coordinates and RT separately from page seals (884.435083ms)
+✔ g- questionnaire scopes seal over HTTP without creating a replay job, including a lost-response retry (1244.07975ms)
+✔ normal seal stops task expiry with final saving (1295.992875ms)
+✔ normal seal stops task expiry with another group remaining (1282.892708ms)
+✔ saving admission renews a pending group without accepting another writer as liveness (979.631625ms)
+✔ snapshot bound includes maximum identities, escaped answers and long decimal clock tokens (0.302875ms)
+✔ automatic segments seal worst long answers containing "中" (677.397375ms)
+✔ automatic segments seal worst long answers containing "\u0000" (766.540583ms)
+✔ automatic segments seal worst long answers containing "\"" (580.582959ms)
+✔ automatic segments seal worst long answers containing "\\" (624.687959ms)
+✔ oversized explicit pages fail new publication, while historical protocols remain parseable and unchanged (588.909792ms)
+✔ byte-based segmentation validates suffix lengths and retains cross-segment branch references (1.194042ms)
+✔ first selections 1,2,3 do not count as changes (0.972625ms)
+✔ first selections 2,2,2 do not count as changes (0.182125ms)
+✔ failed preparation is immutable, idempotent, linked to the frozen budget, and separate from environment quota (1708.926208ms)
+✔ analysis records retain rejected samples, observed delays, source identities and missing historical values (999.22175ms)
+✔ reports bound malformed samples and timings before persistence (0.568958ms)
+✔ the same measured device result is evaluated against each frozen questionnaire budget (1140.510833ms)
+✔ hundreds of seeded fixed/dynamic traces independently replay cap, gap, intent and draw evidence (187.449542ms)
+✔ forged random evidence, timing, watermark, answer and omission cannot close normally (1.36175ms)
+✔ held touch and release cannot answer next image; epoch timestamps normalize, later correct does not replace first (0.190375ms)
+✔ late earlier legal correction cancels only an unstarted proposal; staged correction terminates (0.589375ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9772.485625

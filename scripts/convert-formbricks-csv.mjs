@@ -117,11 +117,12 @@ function canonicalQuestions(row) {
 }
 
 function makeSurvey(row, questions) {
+  const adaptive = questions.length > PAGE_SIZE;
   const pages = [];
   for (let start = 0, pageNo = 1; start < questions.length; start += PAGE_SIZE, pageNo += 1) {
     pages.push({
       id: `page_${String(pageNo).padStart(2, '0')}`,
-      title: `${text(row.name)}��\u7b2c ${pageNo} \u9875��`,
+      title: `${text(row.name)}（第 ${pageNo} 页）`,
       instruction: '请根据你的实际情况作答。每页提交后继续。',
       questions: questions.slice(start, start + PAGE_SIZE),
     });
@@ -130,13 +131,14 @@ function makeSurvey(row, questions) {
     schema: 'questionnaire-v1',
     title: text(row.name),
     background: '#e5e5e5',
-    orientation: 'portrait',
+    orientation: adaptive ? 'auto' : 'portrait',
+    ...(adaptive ? { questionnaire_layout: 'adaptive' } : {}),
     consent: {
       title: '\u77e5\u60c5\u540c\u610f',
       text: '这份问卷由旧 Formbricks 问卷转换而来。请阅读题目并根据你的实际情况作答。你可以随时停止参与；提交后答案会保存到本项目的数据记录中。',
     },
     ending: { title: '感谢参与', text: '你的答案已保存。现在可以关闭页面。' },
-    pages,
+    pages: adaptive ? [{id:'survey',title:'',instruction:'请根据你的实际情况作答。完成本页后点击“下一页”，系统会自动保存。',questions}] : pages,
   };
 }
 

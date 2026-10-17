@@ -1,0 +1,42 @@
+✔ terminal reconciliation waits for missing custody and refreshes even an old cached success (458.317708ms)
+✔ out-of-order diagnostic can complete after its predecessor arrives (361.949375ms)
+✔ out-of-order diagnostic quarantine blocks completion regardless of arrival order (318.083875ms)
+✔ cross-version task reanswer requires a compatible entry: legacy-client (346.774583ms)
+✔ cross-version task reanswer requires a compatible entry: legacy-runner (358.187875ms)
+✔ cross-version task reanswer requires a compatible entry: verified (370.1515ms)
+✔ cross-version task reanswer requires a compatible entry: stale (342.857458ms)
+✔ a reanswer entry cannot refer to another study (340.304417ms)
+✔ runner content negotiation honors q, wildcard, identity and refusal (0.77875ms)
+✔ archived representations match canonical code and restart skips existing disk writes (125.426666ms)
+✔ runner capability is canonical, bounded and rejects corrupt or unsupported declarations (270.576959ms)
+✔ concurrent policy reads share validated I/O and failed reads can retry (8.585791ms)
+✔ distinct runner policy loads have a finite budget without blocking shared reads (32.124833ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2976.613041
+✔ backup rollback recovers acknowledged original bytes before declaring saved, including retry after a failed resend (818.587042ms)
+✔ reconciliation rejects mismatched manifests, missing proof and malformed custody receipts (526.71225ms)
+✔ real legacy runner keeps the entry protocol on reanswer and completes without conflicting with another local version (7007.105667ms)
+✔ preparation limit preserves the first 100 reports and permits answer sync, terminal reconciliation and runner navigation (1122.853791ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9923.646875
+✔ docs/code-audit/2026-10-17-round2-repro.mjs (12997.334875ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13000.823375

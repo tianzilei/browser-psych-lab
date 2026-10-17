@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS lab_sessions(session_id TEXT PRIMARY KEY,study_id TEX
  lease_until INTEGER NOT NULL DEFAULT 0,page_index INTEGER NOT NULL DEFAULT 0,group_index INTEGER NOT NULL DEFAULT 0,
  answers TEXT NOT NULL DEFAULT '{}',path TEXT NOT NULL DEFAULT '[]',allocation_id TEXT,completion TEXT,created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS lab_reanswer_links(old_session_id TEXT PRIMARY KEY REFERENCES lab_sessions,new_session_id TEXT UNIQUE NOT NULL REFERENCES lab_sessions,created_at INTEGER NOT NULL) STRICT;
+CREATE TABLE IF NOT EXISTS lab_replay_index(session_id TEXT PRIMARY KEY REFERENCES lab_sessions,batches INTEGER NOT NULL,samples INTEGER NOT NULL,screens INTEGER NOT NULL,first_at REAL NOT NULL,last_at REAL NOT NULL) STRICT;
 CREATE TRIGGER IF NOT EXISTS lab_reanswer_links_update BEFORE UPDATE ON lab_reanswer_links BEGIN SELECT RAISE(ABORT,'immutable reanswer link'); END;
 CREATE TRIGGER IF NOT EXISTS lab_reanswer_links_delete BEFORE DELETE ON lab_reanswer_links BEGIN SELECT RAISE(ABORT,'immutable reanswer link'); END;
 CREATE TABLE IF NOT EXISTS lab_writers(session_id TEXT NOT NULL REFERENCES lab_sessions,epoch INTEGER NOT NULL,writer_id TEXT NOT NULL,
@@ -57,6 +58,10 @@ CREATE TABLE IF NOT EXISTS lab_events(session_id TEXT NOT NULL,event_id TEXT NOT
  writer_epoch INTEGER NOT NULL,kind TEXT NOT NULL,envelope TEXT NOT NULL,disposition TEXT NOT NULL,version INTEGER NOT NULL,reason TEXT NOT NULL,
  PRIMARY KEY(session_id,event_id),FOREIGN KEY(session_id,event_id,hash) REFERENCES lab_raw(session_id,event_id,hash)) STRICT;
 CREATE INDEX IF NOT EXISTS lab_events_scope ON lab_events(session_id,scope,sequence);
+CREATE VIEW IF NOT EXISTS lab_event_evidence AS
+ SELECT e.rowid AS evidence_rowid,e.session_id,e.event_id,e.hash,e.scope,e.sequence,e.writer_epoch,e.kind,
+ CASE WHEN e.envelope='@raw-v1' THEN lab_raw_text(r.raw,e.hash) ELSE e.envelope END AS envelope,
+ e.disposition,e.version,e.reason FROM lab_events e JOIN lab_raw r USING(session_id,event_id,hash);
 CREATE TABLE IF NOT EXISTS lab_dispositions(receipt_id TEXT NOT NULL REFERENCES lab_raw(receipt_id),version INTEGER NOT NULL,
  disposition TEXT NOT NULL,reason TEXT NOT NULL,PRIMARY KEY(receipt_id,version)) STRICT;
 CREATE TABLE IF NOT EXISTS lab_seals(session_id TEXT NOT NULL REFERENCES lab_sessions,scope TEXT NOT NULL,seal_id TEXT UNIQUE NOT NULL,

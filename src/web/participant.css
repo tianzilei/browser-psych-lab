@@ -127,3 +127,23 @@ body.typing .reading-text { visibility: hidden; }
   .recovery-actions button,.ending-nav button { max-width: none; }
 }
 [hidden] { display: none !important; }
+.adaptive-survey { display: grid; grid-template-rows: minmax(0,1fr); min-height: 0; }
+.adaptive-survey.adaptive-has-message { grid-template-rows: auto minmax(0,1fr); gap: 8px; }
+.adaptive-save { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; font-size: 13px; }
+.adaptive-save button { min-height: 44px; padding: 4px 8px; font-size: 13px; }
+.adaptive-questionnaire { width: 100%; height: max(180px,calc(var(--viewport-height,100dvh) - var(--survey-top,120px) - 16px - var(--safe-bottom))); display: grid; grid-template-rows: auto minmax(0,1fr) auto; gap: 12px; }
+.adaptive-screen { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.adaptive-grid { display: grid; grid-template-columns: 1fr; align-content: start; align-items: start; gap: 12px; }
+.adaptive-card { min-width: 0; display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; scroll-margin: 8px; }
+.adaptive-title { font-size: var(--font-size-question); line-height: 1.45; white-space: pre-wrap; }
+.adaptive-card .axis-control { max-width: none; padding: 8px; gap: 4px; border-radius: 8px; }
+.adaptive-card .axis-bottom { min-height: 21px; }
+.adaptive-card .choice-label { max-height: none; overflow: visible; }
+.adaptive-choices { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 8px; }
+.adaptive-invalid { border: 2px solid #9d2424; }
+.adaptive-introduction { grid-column: 1 / -1; white-space: pre-wrap; line-height: 1.7; padding: 8px 0; }
+.adaptive-waiting { margin: 24px 0; }
+@media (min-width: 1000px) {
+  .adaptive-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .adaptive-card:has(input[type=text]) { grid-column: 1 / -1; }
+}

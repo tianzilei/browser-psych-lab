@@ -30,7 +30,12 @@ export class Maintenance {
       await this.call('job.finish',{job_id:job,state:kind==='RECOVER'?'FAILED':'READY',result,release_verified:kind==='RECOVER'});completed=true;return {job_id:job,result};
     }catch(error){
       const rejected=kind==='PACKAGE'&&(error as {validation_rejected?:boolean}).validation_rejected===true;
-      await this.call('job.finish',{job_id:job,state:rejected?'FAILED':'RECOVERY_REQUIRED',release_verified:rejected,error:error instanceof Error?error.message:'FAILED'}).catch(()=>{});
+      // Exports only create private derived files and hold no pins or barrier.
+      // Observe their worker's exit before failing the job and allowing a retry.
+      const failedExport=kind==='EXPORT';
+      if(failedExport)await worker.terminate();
+      await this.call('job.finish',{job_id:job,state:rejected||failedExport?'FAILED':'RECOVERY_REQUIRED',release_verified:rejected||failedExport,error:error instanceof Error?error.message:'FAILED'}).catch(()=>{});
+      if(failedExport&&error instanceof Error&&['EXPORT_BUDGET_EXCEEDED','EXPORT_ROW_BUDGET_EXCEEDED'].includes(error.message))throw new ContractError(error.message,413);
       if(rejected)throw new ContractError('INVALID_IMAGE_PACKAGE',400,{reason:error instanceof Error?error.message:'INVALID_ZIP'});throw error;
     }finally{
       // A replacement cannot start before actual worker exit, even after a timeout.

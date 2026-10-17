@@ -6,6 +6,7 @@ import {constants} from 'node:fs';
 import {privateRoot,fileHash,syncDirectory,writeDurable,openPrivate} from './private-files.js';
 import {digest} from './collection-store.js';
 import {stableJSON} from '../shared/protocol.js';
+import {verifyEvidence} from './evidence-storage.js';
 export async function restoreBackup(bundle:string,destination:string){
   bundle=await privateRoot(resolve(bundle));destination=resolve(destination);
   try{await lstat(destination);throw new Error('RESTORE_DESTINATION_MUST_NOT_EXIST');}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
@@ -14,6 +15,7 @@ export async function restoreBackup(bundle:string,destination:string){
   const paths=new Set<string>();for(const f of manifest.files){if(!/^[a-zA-Z0-9._/-]+$/.test(f.path)||f.path.split('/').some(p=>!p||p==='..')||paths.has(f.path)||!/^[a-f0-9]{64}$/.test(f.hash))throw new Error('INVALID_BACKUP_PATH');paths.add(f.path);if(await fileHash(join(bundle,f.path))!==f.hash)throw new Error('BACKUP_HASH_MISMATCH');}
   const backupDB=new Database(join(bundle,'database.sqlite'),{readonly:true,fileMustExist:true});
   try{if(backupDB.pragma('integrity_check',{simple:true})!=='ok'||(backupDB.pragma('foreign_key_check') as unknown[]).length)throw new Error('INVALID_BACKUP_DATABASE');
+    verifyEvidence(backupDB);
     const assets=backupDB.prepare("SELECT asset_id,hash FROM lab_assets WHERE state='READY' ORDER BY asset_id").all();const declared=[...manifest.assets].sort((a,b)=>a.asset_id.localeCompare(b.asset_id));if(stableJSON(assets)!==stableJSON(declared.map(a=>({asset_id:a.asset_id,hash:a.hash}))))throw new Error('BACKUP_REFERENCE_MISMATCH');
     for(const a of declared)if(!manifest.files.some(f=>f.path===`assets/${a.asset_id}.bin`&&f.hash===a.hash))throw new Error('BACKUP_REFERENCE_MISSING');
     for(const v of backupDB.prepare('SELECT DISTINCT runner_hash FROM lab_versions').all() as {runner_hash:string}[])if(!paths.has(`runners/${v.runner_hash}/release.json`)||!paths.has(`runners/${v.runner_hash}/run.html`))throw new Error('BACKUP_RUNNER_MISSING');

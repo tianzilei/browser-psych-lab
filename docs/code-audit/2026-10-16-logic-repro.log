@@ -1,0 +1,18 @@
+✔ confirmed: a valid g- questionnaire page invokes task replay and blocks global maintenance (486.426208ms)
+ℹ {"http":500,"jobs":[{"kind":"REPLAY","state":"RECOVERY_REQUIRED","error":"PERMIT_NOT_FOUND"}]}
+✔ confirmed: after normal group seal, active admission touches do not prevent a false connection timeout (443.621125ms)
+ℹ {"state":"TERMINATED","permit":"CLOSED_NORMAL","diagnostics":[{"code":"CONNECTION_TIMEOUT","scope":null}]}
+✔ confirmed: a protocol-valid completed questionnaire page exceeds the immutable event limit (349.155917ms)
+ℹ {"valid_questions":12,"valid_characters_per_answer":4000,"event_bytes":144544,"maximum_event_bytes":131072}
+✔ confirmed: task migration on reanswer opens a third unrelated session through the new version URL (795.225292ms)
+ℹ {"linked_session":"675c152c-0d16-405b-abe5-7e268b4167a0","new_unlinked_session":"f1e56e5c-0b95-45f9-96ec-0d4fa57f90c9","url":"http://127.0.0.1:5189/run.html?version=92fc3f52-9b07-4421-8777-b2271c40f585"}
+✔ confirmed: moving between rating items is counted as changing an answer (0.479666ms)
+ℹ {"item_changes":[0,0,0],"total_change_count":2}
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2396.071875

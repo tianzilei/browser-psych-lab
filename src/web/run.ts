@@ -11,6 +11,7 @@ import {el,button,uid,request} from './dom.js';
 import {ParticipantAPI} from './participant-api.js';
 import {prepareImages,refreshProbe,storageProbe} from './prepare.js';
 import {awaitPreparation} from './preparation-gate.js';
+import {preparationAttempt} from './preparation-report.js';
 import {bindRunnerInput,preventTaskGestures,showResponse} from './runner-input.js';
 import {drawTextStimulus} from './stimulus.js';
 import {cancelAdmission} from './session-gate.js';
@@ -23,21 +24,23 @@ const version=new URLSearchParams(location.search).get('version')??'',writer=ses
 sessionStorage.setItem(`lab-writer-${version}`,writer);
 const content=document.querySelector<HTMLDivElement>('#content')!,status=document.querySelector<HTMLParagraphElement>('#status')!,title=document.querySelector<HTMLHeadingElement>('#title')!;
 let api:ParticipantAPI|null=null,active=false,owned=false,releaseImages:(()=>void)|null=null,frameId=0;
+let preparationReport:ReturnType<typeof preparationAttempt>|undefined;
 const returnToPage=()=>{location.href=`/participate.html?version=${version}`;};
 function failure(error:unknown){document.body.classList.remove('runner-layout','rating-layout','running');status.textContent=participantError(error,'prepare');const actions=el('div',undefined,'recovery-actions');actions.append(button(ui.returnSurvey,returnToPage,'primary'),errorDetails(error));content.replaceChildren(actions);}
 function geometry(canvas:HTMLCanvasElement,buttons:HTMLButtonElement[]):NonNullable<GroupPlan['geometry']>{const rect=(e:HTMLElement)=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};};return {viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},canvas:rect(canvas),buttons:buttons.map(b=>({choice:b.textContent!,...rect(b)}))};}
 async function prepare(){
-  api=await ParticipantAPI.open(version,writer);await api.refresh();applyParticipantBackground(api.session.frozen.protocol.layout.background);if(api.session.state==='COMPLETED'||api.session.state==='TERMINATED'||api.session.permit?.state==='ISSUED'){returnToPage();return;}
+  const started=performance.now();status.textContent='正在恢复作答并连接服务器…';
+  api=await ParticipantAPI.open(version,writer);await api.refresh();preparationReport=preparationAttempt(api,'group-readiness',null,started);preparationReport.stage('session');applyParticipantBackground(api.session.frozen.protocol.layout.background);if(api.session.state==='COMPLETED'||api.session.state==='TERMINATED'||api.session.permit?.state==='ISSUED'){returnToPage();return;}
   const preparing=new AbortController(),pageHidden=()=>preparing.abort(new Error('准备页面已关闭。'));
   window.addEventListener('pagehide',pageHidden,{once:true});
   status.textContent='正在准备任务…';content.replaceChildren(button(ui.cancel,()=>{cancelAdmission(preparing);returnToPage();}));
   await api.enter(preparing.signal,text=>status.textContent=text,error=>{preparing.abort(error);releaseImages?.();releaseImages=null;failure(error);});
-  preparing.signal.throwIfAborted();await api.claim();preparing.signal.throwIfAborted();if(api.session.page_index<api.session.frozen.protocol.pages.length){returnToPage();return;}
+  preparationReport.stage('admission');status.textContent='正在确认试验方案…';preparing.signal.throwIfAborted();await api.claim();preparing.signal.throwIfAborted();if(api.session.page_index<api.session.frozen.protocol.pages.length){returnToPage();return;}
   const reserve=(signal?:AbortSignal)=>request<GroupReservation>(api!.path('reserve'),{request_id:uid(),...api!.fence()},undefined,signal);
   let reservation=await reserve(preparing.signal);
   preparing.signal.throwIfAborted();
   const p=api.session.frozen.protocol,variant=p.variants.find(v=>v.id===reservation.variant_id)!,group=p.groups.find(g=>g.id===variant.group_order[api!.session.group_index]);
-  if(!group){returnToPage();return;}title.textContent=group.title;status.textContent='正在准备任务…';
+  if(!group){returnToPage();return;}preparationReport.group(group.id);preparationReport.stage('reservation');title.textContent=group.title;status.textContent='正在取得图片下载许可…';
   const preparedGroup=reservation.selection?{...group,trials:reservation.selection.roots}:group;
   content.replaceChildren(button(ui.cancel,()=>{cancelAdmission(preparing);returnToPage();}));
   let renewal:Promise<void>=Promise.resolve(),renewTimer:ReturnType<typeof setTimeout>|undefined,renewing=true;
@@ -51,9 +54,10 @@ async function prepare(){
     finally{await gate.release();}
   }
   finally{renewing=false;clearTimeout(renewTimer);await renewal;}
+  preparationReport.stage('download');
   preparing.signal.throwIfAborted();
-  const measured=await refreshProbe(p);preparing.signal.throwIfAborted();
-  const storage=await storageProbe(preparedGroup,p);preparing.signal.throwIfAborted();if(storage.commit_ms>p.budget.commit_ms)throw new Error('此设备的保存速度未满足任务要求，请更换设备或联系研究者。');
+  status.textContent='图片已下载，正在检查屏幕刷新…';const measured=await refreshProbe(p);preparationReport.stage('refresh');preparing.signal.throwIfAborted();
+  status.textContent='正在检查本机保存速度…';const storage=await storageProbe(preparedGroup,p);preparationReport.stage('storage');preparing.signal.throwIfAborted();if(storage.commit_ms>p.budget.commit_ms){await preparationReport.finish('STORAGE_REJECTED',{storage,refresh:{frame_ms:measured.frame_ms}});throw new Error('此设备的保存速度未满足任务要求，请更换设备或联系研究者。');}
   const canvas=el('canvas'),buttons=group.choices.map(c=>el('button',c));canvas.id='stimulus';const controls=el('div',undefined,'response-buttons');controls.append(...buttons);
   document.body.classList.add('runner-layout');window.scrollTo(0,0);
   const stage=el('div',undefined,'runner-stage'),slot=el('div',undefined,'canvas-slot'),footer=el('div',undefined,'runner-start');slot.append(canvas);stage.append(slot,controls,footer);content.replaceChildren(stage);preventTaskGestures(stage);showResponse(buttons,null);controls.style.setProperty('--response-columns',String(Math.min(buttons.length,Math.max(2,Math.floor(controls.clientWidth/80)))));for(const b of buttons)b.disabled=true;
@@ -64,11 +68,12 @@ async function prepare(){
   const width=Math.floor(Math.min(slot.clientWidth,720,slot.clientHeight*p.layout.aspect));if(width<min)throw new Error('屏幕可用区域不足，请在开始前调整方向。');
   canvas.style.width=`${width}px`;canvas.style.height=`${width/p.layout.aspect}px`;canvas.width=Math.round(width*devicePixelRatio);canvas.height=Math.round(width/p.layout.aspect*devicePixelRatio);
   const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)throw new Error('此浏览器无法显示任务，请更换浏览器后重试。');ctx.fillStyle=p.layout.background;ctx.fillRect(0,0,canvas.width,canvas.height);
+  await preparationReport.finish('READY',{storage,refresh:{frame_ms:measured.frame_ms}});
   status.textContent=`${p.mode==='TEST_ONLY'?'测试模式 · ':''}准备就绪。开始后请保持页面可见，并连续完成本组。`;
   let ready:NonNullable<GroupPlan['geometry']>;
   const checkReady=()=>{preparing.signal.throwIfAborted();if(document.visibilityState!=='visible')throw new Error('页面当前不可见。');if(JSON.stringify(measuredGeometry())!==JSON.stringify(ready))throw new Error('准备后布局已变化，请重新准备。');};
   const start=button(ui.startGroup,async()=>{let permitIssued=false;try{
-    api!.admission?.check();await api!.stopAdmission();start.style.visibility='hidden';checkReady();
+    api!.admission?.check();status.textContent='正在确认开始，请稍候…';await api!.syncPreparations().catch(()=>{});await api!.stopAdmission();start.style.visibility='hidden';checkReady();
     const next=await reserve(preparing.signal);checkReady();if(next.variant_id!==reservation.variant_id)throw new Error('预留方案已变化，请重新准备。');reservation=next;
     const permit=await request<NonNullable<LabSession['permit']>>(api!.path('permit'),{request_id:uid(),...api!.fence(),reservation_id:reservation.reservation_id,readiness:{activity_policy:TASK_ACTIVITY_POLICY.id,...measured,...storage,download:images.download,layout,geometry:ready,assets:images.hashes,decoded_bytes:images.decoded_bytes,protocol_hash:api!.session.frozen.hash}},undefined,preparing.signal);
     permitIssued=true;checkReady();await api!.refresh();checkReady();
@@ -100,7 +105,7 @@ async function run(plan:GroupPlan,canvas:HTMLCanvasElement,buttons:HTMLButtonEle
       void record({type:'CORRECTION',at:t,root_id:result.root_id,op_id:opid,evidence:'verified-earlier-first-input',...(op?{operation:op}:{})}).then(async()=>{if(op&&!stopped){emit({type:'COMMIT',at:now(),op_id:op.op_id});pending=false;await stage();}}).catch(stop);
     }
   }catch(error){void stop(error);}}
-  const recorder=recordInteractions(document.querySelector('main')!,()=>{const result=[...replay.results.values()].find(v=>v.clear===null);const root=plan.roots.find(t=>t.root_id===result?.root_id);return {instance_id:result?.instance_id,asset_id:root?.asset_id,stimulus_text:root?.text,phase:closing?'closing':'running'};},batch=>a.ledger.interaction(batch),error=>{void stop(error);});
+  const recorder=recordInteractions(document.querySelector('main')!,()=>{const result=[...replay.results.values()].find(v=>v.clear===null);const root=plan.roots.find(t=>t.root_id===result?.root_id);return {instance_id:result?.instance_id,asset_id:root?.asset_id,stimulus_text:root?.text,phase:closing?'closing':'running'};},batch=>a.ledger.interaction(batch),error=>{void stop(error);},a.session.frozen.protocol.record_interactions!==false);
   const change=()=>{if(document.visibilityState!=='visible'||JSON.stringify(geometry(canvas,buttons))!==JSON.stringify(plan.geometry))void stop('VISIBILITY_OR_GEOMETRY_CHANGED');};
   const stopLiveness=taskLiveness(a,reason=>{void stop(reason);});
   const unbindInput=bindRunnerInput(plan,origin,input);
@@ -129,4 +134,4 @@ async function run(plan:GroupPlan,canvas:HTMLCanvasElement,buttons:HTMLButtonEle
   await stage();if(!stopped){status.textContent='本组即将开始。';frameId=requestAnimationFrame(tick);}
 }
 if(!version||!navigator.locks||!crypto.subtle)failure(new Error(!navigator.locks?'当前浏览器无法保证单页面作答，请使用支持 Web Locks 的浏览器和 HTTPS 链接。':'浏览器能力或参与链接不完整。'));
-else void navigator.locks.request(`lab-version-${version}`,{ifAvailable:true},async lock=>{owned=!!lock;if(!owned){showDuplicateTab(status,content);return;}try{await prepare();}catch(error){await api?.stopAdmission();releaseImages?.();failure(error);}await new Promise<void>(resolve=>window.addEventListener('pagehide',()=>resolve(),{once:true}));});
+else void navigator.locks.request(`lab-version-${version}`,{ifAvailable:true},async lock=>{owned=!!lock;if(!owned){showDuplicateTab(status,content);return;}try{await prepare();}catch(error){releaseImages?.();failure(error);await preparationReport?.finish('FAILED',{error:String(error).slice(0,500)}).catch(()=>{});await api?.stopAdmission();}await new Promise<void>(resolve=>window.addEventListener('pagehide',()=>resolve(),{once:true}));});

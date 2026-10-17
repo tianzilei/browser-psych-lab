@@ -1,6 +1,7 @@
 import { ContractError, id, object } from './contract.js';
 import {parseTiming,parseTimingDefaults,parseOrdering,orderTrials} from './trial-design.js';
 import {parseSampling,type Sampling} from './trial-sampling.js';
+import {validateSnapshotBudgets} from './snapshot-budget.js';
 export const LAB_SCHEMA = 'lab-events-v1';
 export const RUNNER_VERSION = 'canvas-v1';
 // UTF-16 character budgets. Keep these unchanged for existing frozen protocols.
@@ -30,6 +31,8 @@ export interface Group { id: string; title: string; choices: string[]; repeats: 
 export interface Variant { id: string; weight: number; group_order: string[]; trial_order: Record<string, string[]> }
 export interface Protocol {
   schema: 'study-v1'; title: string; mode: 'TEST_ONLY' | 'COLLECTION'; pages: Page[]; groups: Group[];
+  record_interactions?: boolean;
+  questionnaire_layout?: 'single' | 'adaptive';
   consent?: {title:string;text:string}; timing_defaults?: TimingDefaults;
   ending?: {title:string;text:string};
   variants: Variant[]; layout: { aspect: number; portrait_min_width: number; landscape_min_width: number; background: string; orientation?: 'portrait' | 'landscape' };
@@ -138,8 +141,10 @@ export function evaluate(c: Condition | undefined, answers: Record<string, Answe
 }
 export function parseProtocol(value: unknown): Protocol {
   const p = object(value);
-  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending', 'timing_defaults']);
+  fields(p, ['schema', 'title', 'mode', 'pages', 'groups', 'variants', 'layout', 'budget', 'consent', 'ending', 'timing_defaults', 'record_interactions', 'questionnaire_layout']);
   if (p.schema !== 'study-v1' || !['TEST_ONLY', 'COLLECTION'].includes(String(p.mode))) throw new ContractError('INVALID_PROTOCOL_SCHEMA');
+  if (p.record_interactions !== undefined && typeof p.record_interactions !== 'boolean') throw new ContractError('INVALID_RECORD_INTERACTIONS');
+  if (p.questionnaire_layout !== undefined && (typeof p.questionnaire_layout!=='string'||!['single','adaptive'].includes(p.questionnaire_layout))) throw new ContractError('INVALID_QUESTIONNAIRE_LAYOUT');
   const prior = new Map<string,Question>(); const ids = new Set<string>();
   const unique = (v: unknown) => { const s = id(v); if (ids.has(s)) throw new ContractError('DUPLICATE_PROTOCOL_ID'); ids.add(s); return s; };
   const pages: Page[] = list(p.pages, 30).map(value => {
@@ -261,12 +266,16 @@ export function parseProtocol(value: unknown): Protocol {
   let ending:Protocol['ending'];if(p.ending!==undefined){const e=object(p.ending);fields(e,['title','text']);ending={title:text(e.title,TEXT_LIMITS.title),text:text(e.text,TEXT_LIMITS.instruction)};if(!ending.title.trim()||!ending.text.trim())throw new ContractError('INVALID_ENDING');}
   let consent:Protocol['consent'];if(p.consent!==undefined){const c=object(p.consent);fields(c,['title','text']);consent={title:text(c.title,TEXT_LIMITS.title),text:text(c.text,TEXT_LIMITS.instruction)};if(!consent.title.trim()||!consent.text.trim())throw new ContractError('INVALID_CONSENT');}
   return { schema: 'study-v1', title: text(p.title, TEXT_LIMITS.title), mode: p.mode as Protocol['mode'], pages, groups, variants,...(consent?{consent}:{}),...(ending?{ending}:{}),...(general?{timing_defaults:general}:{}),
+    // Omitted flags stay omitted so historical frozen protocol hashes remain unchanged.
+    ...(p.record_interactions !== undefined ? {record_interactions: p.record_interactions as boolean} : {}),
+    ...(p.questionnaire_layout !== undefined ? {questionnaire_layout: p.questionnaire_layout as 'single'|'adaptive'} : {}),
     layout: { aspect: number(l.aspect, .25, 4), portrait_min_width: number(l.portrait_min_width, groups.length>0&&groups.every(g=>g.rating)?120:200, 2000, true),
       landscape_min_width: number(l.landscape_min_width, groups.length>0&&groups.every(g=>g.rating)?120:200, 2000, true), background: l.background,
       ...(l.orientation!==undefined?{orientation:l.orientation as 'portrait'|'landscape'}:{}) }, budget };
 }
 export function validateQuestionnaire(p:Protocol, strict=false) {
-  if(strict&&!p.layout.orientation)throw new ContractError('ORIENTATION_REQUIRED');
+  validateSnapshotBudgets(p.pages);
+  if(strict&&!p.layout.orientation&&!(p.questionnaire_layout==='adaptive'&&p.groups.length===0))throw new ContractError('ORIENTATION_REQUIRED');
   for(const page of p.pages)for(const q of page.questions){
     if(q.type==='text'&&q.input_purpose!=='personal')throw new ContractError('PERSONAL_INPUT_ONLY',409,{question:q.id});
     if(q.type==='scale'&&(!q.min_label?.trim()||!q.max_label?.trim()))throw new ContractError('SCALE_ENDPOINTS_REQUIRED',409,{question:q.id});

@@ -1,0 +1,31 @@
+✔ g- questionnaire scopes seal over HTTP without creating a replay job, including a lost-response retry (419.288583ms)
+✔ normal seal stops task expiry with final saving (452.714542ms)
+✔ normal seal stops task expiry with another group remaining (409.485334ms)
+✔ saving admission renews a pending group without accepting another writer as liveness (365.180708ms)
+✔ snapshot bound includes maximum identities, escaped answers and long decimal clock tokens (0.575084ms)
+✔ automatic segments seal worst long answers containing "中" (377.794917ms)
+✔ automatic segments seal worst long answers containing "\u0000" (390.850625ms)
+✔ automatic segments seal worst long answers containing "\"" (376.639334ms)
+✔ automatic segments seal worst long answers containing "\\" (378.265ms)
+✔ oversized explicit pages fail new publication, while historical protocols remain parseable and unchanged (331.765917ms)
+✔ byte-based segmentation validates suffix lengths and retains cross-segment branch references (1.573083ms)
+✔ first selections 1,2,3 do not count as changes (1.14275ms)
+✔ first selections 2,2,2 do not count as changes (0.197542ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3632.250459
+[WebServer] (node:25885) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:25886) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/browser/lab.spec.ts:520:1 › cross-version reanswer keeps one linked ledger through questionnaire, frozen runner and completion (4.7s)
+
+  1 passed (8.0s)
