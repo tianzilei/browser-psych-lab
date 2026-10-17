@@ -18,6 +18,7 @@ import {installEvidenceFunctions,encodeRaw,RAW_REFERENCE,EVIDENCE_STORAGE} from 
 import {prepareReplayIndex,indexRecording} from './replay-index.js';
 import {parsePreparationReport} from '../shared/preparation-report.js';
 import {validateSnapshotBudgets} from '../shared/snapshot-budget.js';
+import {prepareScopeUsage} from './scope-usage.js';
 interface SessionRow { session_id: string; study_id: string; version_id: string; credential_hash: string; admission_id: string;
  state: LabSession['state']; writer_id: string | null; writer_epoch: number; lease_until: number; page_index: number; group_index: number;
  answers: string; path: string; allocation_id: string | null; completion: string | null }
@@ -30,6 +31,7 @@ export class LabStore {
     installEvidenceFunctions(db);
     db.exec(LAB_SQL);
     if (!['1','2'].includes(this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='schema'")?.value??'')) throw new Error('UNSUPPORTED_LAB_SCHEMA');
+    prepareScopeUsage(db);
     db.transaction(()=>{this.run("UPDATE lab_meta SET value='2' WHERE key='schema'");this.run("INSERT INTO lab_meta VALUES ('evidence_storage',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",EVIDENCE_STORAGE);}).immediate();
     prepareReplayIndex(db);
     // Upgrade role-based installations atomically; credential expiry uses milliseconds.
@@ -111,10 +113,9 @@ export class LabStore {
     const d = this.get<{disposition:Receipt['disposition'];version:number;reason:string}>('SELECT * FROM lab_dispositions WHERE receipt_id=? ORDER BY version DESC LIMIT 1',raw.receipt_id)!;
     return {...ref,...raw,custody:'PERSISTED',disposition:d.disposition,disposition_version:d.version,reason:d.reason};
   }
-  private semantic(s: SessionRow, e: LabEvent): [Receipt['disposition'],string] {
+  private semantic(s: SessionRow, e: LabEvent, p: Protocol): [Receipt['disposition'],string] {
     if (s.state === 'TERMINATED' || e.writer_epoch !== s.writer_epoch || e.writer_id !== s.writer_id) return ['RECEIVED_PENDING','HISTORICAL_RECONCILIATION_REQUIRED'];
     if (e.kind!=='INPUT_DIAGNOSTIC'&&(s.state === 'COMPLETED' || this.get('SELECT 1 FROM lab_seals WHERE session_id=? AND scope=?',s.session_id,e.scope))) return ['QUARANTINED','LATE_AFTER_SEAL'];
-    const p = this.frozen(s.version_id).protocol;
     if (e.kind === 'PAGE_SNAPSHOT' || e.kind === 'PAGE_REVISION') {
       const page = p.pages[s.page_index];
       if (!page || e.scope !== page.id) return ['QUARANTINED','WRONG_PAGE_POSITION'];
@@ -152,13 +153,14 @@ export class LabStore {
   }
   private ingest(s: SessionRow,d: Record<string,unknown>) {
     if (!Array.isArray(d.events) || !d.events.length || d.events.length > 32) throw new ContractError('INVALID_BATCH');
+    const version = this.frozen(s.version_id);
     let bytes = 0;
     const items = d.events.map(v=>{
       const w = object(v); const ref = eventRef(w); if (typeof w.raw !== 'string') throw new ContractError('INVALID_RAW');
       const raw = Buffer.from(w.raw,'utf8'); bytes += raw.byteLength;
       if(raw.toString('utf8')!==w.raw)throw new ContractError('INVALID_RAW_UTF8');
       if (raw.byteLength > 128*1024 || bytes > 512*1024 || digest(raw)!==ref.hash) throw new ContractError('HASH_OR_SIZE_MISMATCH');
-      const e = parseLabEvent(w.raw); const version = this.frozen(s.version_id);
+      const e = parseLabEvent(w.raw);
       if (e.session_id!==s.session_id || e.event_id!==ref.event_id || e.version_id!==s.version_id || e.protocol_hash!==version.hash)
         throw new ContractError('UNAUTHORIZED_EVENT',403);
       const writer=this.get<{writer_id:string}>('SELECT writer_id FROM lab_writers WHERE session_id=? AND epoch=?',s.session_id,e.writer_epoch);
@@ -168,7 +170,7 @@ export class LabStore {
     });
     for (const {ref,raw,e,text} of items) {
       if (this.custody(s.session_id,ref)) continue;
-      const count = this.get<{n:number;b:number}>('SELECT count(*) AS n,coalesce(sum(lab_raw_bytes(raw)),0) AS b FROM lab_raw WHERE session_id=? AND scope=?',s.session_id,e.scope)!;
+      const count = this.get<{n:number;b:number}>('SELECT events AS n,bytes AS b FROM lab_scope_usage WHERE session_id=? AND scope=?',s.session_id,e.scope)??{n:0,b:0};
       // Older clients rotate UI diagnostics after 4,000 batches, each up to
       // 128 KiB. Their immutable outbox can already exceed the answer scope's
       // 32 MiB limit; accept those records without rewriting their hash chain.
@@ -177,7 +179,7 @@ export class LabStore {
         {scope:e.scope,events:count.n,bytes:count.b,incoming_bytes:raw.length,maximum_events:5000,maximum_bytes:maximumBytes});
       const old = this.get<StoredEvent>('SELECT * FROM lab_events WHERE session_id=? AND event_id=?',s.session_id,e.event_id);
       const receipt = randomUUID(); this.run('INSERT INTO lab_raw VALUES (?,?,?,?,?,?,?)',s.session_id,e.event_id,ref.hash,e.scope,receipt,encodeRaw(raw),this.now());
-      const [state,reason] = old ? ['QUARANTINED','EVENT_ID_HASH_CONFLICT'] as const : this.semantic(s,e);
+      const [state,reason] = old ? ['QUARANTINED','EVENT_ID_HASH_CONFLICT'] as const : this.semantic(s,e,version.protocol);
       this.run('INSERT INTO lab_dispositions VALUES (?,?,?,?)',receipt,1,state,reason);
       if (!old) this.run('INSERT INTO lab_events VALUES (?,?,?,?,?,?,?,?,?,?,?)',s.session_id,e.event_id,ref.hash,e.scope,e.sequence,e.writer_epoch,e.kind,RAW_REFERENCE,state,1,reason);
       if(!old&&e.kind==='INPUT_DIAGNOSTIC'&&e.scope.startsWith('d-ui-'))indexRecording(this.db,s.session_id,e.payload.interaction);
@@ -187,7 +189,7 @@ export class LabStore {
     for (const scope of new Set(items.map(i=>i.e.scope))) {
       const pending=this.all<StoredEvent>("SELECT * FROM lab_event_evidence WHERE session_id=? AND scope=? AND disposition='RECEIVED_PENDING' ORDER BY sequence LIMIT 5000",s.session_id,scope);
       for (const e of pending) {
-        const [state,reason]=this.semantic(s,parseLabEvent(e.envelope));
+        const [state,reason]=this.semantic(s,parseLabEvent(e.envelope),version.protocol);
         if (state===e.disposition && reason===e.reason) continue;
         const r=this.custody(s.session_id,e)!; this.run('INSERT INTO lab_dispositions VALUES (?,?,?,?)',r.receipt_id,e.version+1,state,reason);
         this.run('UPDATE lab_events SET disposition=?,version=?,reason=? WHERE session_id=? AND event_id=?',state,e.version+1,reason,s.session_id,e.event_id);

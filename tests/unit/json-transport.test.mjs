@@ -18,6 +18,11 @@ function appFor(t) {
   app.post('/api/participate/sessions/:session/ingest',req=>({raw:req.body.raw,hash:createHash('sha256').update(req.body.raw).digest('hex')}));
   app.post('/api/participate/sessions/:session/covariates',req=>req.body);
   app.post('/api/participate/sessions/:session/seal',req=>req.body);
+  app.post('/api/participate/sessions/:session/reconcile',req=>req.body);
+  app.post('/api/participate/sessions/:session/receipts',req=>req.body);
+  app.post('/api/participate/sessions/:session/activity',req=>req.body);
+  app.post('/api/lab/studies/:study/import',req=>req.body);
+  app.post('/api/lab/studies/:study/save',req=>req.body);
   t.after(()=>app.close());return app;
 }
 test('native gzip reduces large JSON, keeps exact Unicode raw/hash and small/control requests plain',async t=>{
@@ -26,7 +31,7 @@ test('native gzip reduces large JSON, keeps exact Unicode raw/hash and small/con
   assert.equal(gunzipSync(Buffer.from(wire.body)).toString(),large);
   const response=await app.inject({method:'POST',url:path,headers:wire.headers,payload:Buffer.from(wire.body)});
   assert.equal(response.statusCode,200);assert.deepEqual(response.json(),{raw:JSON.parse(large).raw,hash:createHash('sha256').update(JSON.parse(large).raw).digest('hex')});
-  for (const [url,body] of [[path,'{"raw":"tiny"}'],['/api/participate/sessions/test/seal',large]]) {
+  for (const [url,body] of [[path,'{"raw":"tiny"}'],['/api/participate/sessions/test/activity',large]]) {
     const plain=await prepareJsonPost(url,body);assert.equal(plain.body,body);assert.equal(plain.headers['Content-Encoding'],undefined);
   }
 });
@@ -65,8 +70,19 @@ test('malformed, truncated, CRC-corrupt, wrong-length and expanding gzip never r
     const response=await app.inject({method:'POST',url:path,headers:requestHeaders,payload});
     assert.equal(response.statusCode,status,response.body);assert.equal(response.json().ingestion,'NOT_INGESTED');
   }
-  const blocked=await app.inject({method:'POST',url:path.replace('ingest','seal'),headers:headers(large),payload:zipped});assert.equal(blocked.statusCode,415);
+  const blocked=await app.inject({method:'POST',url:path.replace('ingest','activity'),headers:headers(large),payload:zipped});assert.equal(blocked.statusCode,415);
   const valid=await app.inject({method:'POST',url:path,headers:headers(large),payload:zipped});assert.equal(valid.statusCode,200,valid.body);
+});
+
+test('large seal/reconciliation/receipt manifests and study imports share the bounded lossless gzip transport',async t=>{
+  const app=appFor(t);
+  for(const url of [path.replace('ingest','seal'),path.replace('ingest','reconcile'),path.replace('ingest','receipts'),'/api/lab/studies/test/import','/api/lab/studies/test/save']){
+    const wire=await prepareJsonPost(url,large);assert.equal(wire.headers['Content-Encoding'],'gzip');
+    const response=await app.inject({method:'POST',url,headers:wire.headers,payload:Buffer.from(wire.body)});
+    assert.equal(response.statusCode,200,response.body);assert.deepEqual(response.json(),JSON.parse(large));
+    const wrong=await app.inject({method:'POST',url,headers:{...wire.headers,'x-uncompressed-length':'1'},payload:Buffer.from(wire.body)});
+    assert.equal(wrong.statusCode,413);
+  }
 });
 test('receive charge uses declared decoded bytes; chunked wire still reserves the whole allowance',()=>{
   const request={headers:{'content-encoding':'gzip','x-uncompressed-length':'800000'}};

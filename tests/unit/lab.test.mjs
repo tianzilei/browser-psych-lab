@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {fixture} from '../helpers/lab-fixture.mjs';
 import {sampleProtocol,parseProtocol,pageSnapshot} from '../../src/shared/protocol.ts';
 import {digest} from '../../src/server/collection-store.ts';
+import {decodeRaw} from '../../src/server/evidence-storage.ts';
 test('new publication requires personal input purpose and legacy protocol parsing stays exact',t=>{
   const f=fixture(t),p=sampleProtocol();p.pages[0].questions.push({id:'identity',type:'text',title:'姓名',required:true,max_length:100});
   assert.deepEqual(parseProtocol(p),p);
@@ -48,7 +49,7 @@ test('revision history, out-of-order custody, exact page seal, finalization and 
   assert.equal(f.ingest([two]).receipts[0].disposition,'RECEIVED_PENDING');f.ingest([one]);const receipts=f.call('receipts',{events:[one,two]}).receipts;assert.ok(receipts.every(r=>r.disposition==='ACCEPTED'));assert.equal(receipts[1].disposition_version,2);
   assert.equal(f.seal('welcome',[one],['welcome']).status,'WAITING');const seal=f.seal('welcome',[one,two],['welcome']);assert.equal(seal.status,'SEALED');assert.equal(f.call('view').answers.ready,'是');
   const data={request_id:'done',...f.fence,seal_ids:[seal.seal_id]};assert.equal(f.call('finalize',data).status,'COMPLETED');assert.equal(f.call('finalize',data).status,'COMPLETED');assert.throws(()=>f.call('terminate',{request_id:'late',reason:'UNKNOWN_RUN'}),/TERMINAL/);
-  assert.throws(()=>f.db.prepare('DELETE FROM lab_raw').run(),/immutable/);assert.equal(f.db.prepare('SELECT raw FROM lab_raw WHERE event_id=?').get(one.event_id).raw.toString(),one.raw);
+  assert.throws(()=>f.db.prepare('DELETE FROM lab_raw').run(),/immutable/);assert.equal(decodeRaw(f.db.prepare('SELECT raw FROM lab_raw WHERE event_id=?').get(one.event_id).raw,one.hash).toString(),one.raw);
 });
 function identifierProtocol(){
   const p=sampleProtocol();p.groups=[];p.variants[0].group_order=[];p.variants[0].trial_order={};

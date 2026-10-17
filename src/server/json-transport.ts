@@ -2,7 +2,7 @@ import type {FastifyInstance,FastifyRequest} from 'fastify';
 import {Transform,pipeline} from 'node:stream';
 import {createGunzip} from 'node:zlib';
 import {ContractError} from '../shared/contract.js';
-import {JSON_TRANSPORT} from '../shared/transport.js';
+import {JSON_TRANSPORT,compressibleJsonPost} from '../shared/transport.js';
 
 function decodedLength(request:FastifyRequest) {
   const value = request.headers['x-uncompressed-length'];
@@ -27,7 +27,7 @@ export function installJsonTransport(app:FastifyInstance) {
     const encoding = request.headers['content-encoding'];
     if (encoding === undefined || encoding === 'identity') return;
     if (encoding !== 'gzip' || request.method !== 'POST'
-        || !/^\/api\/participate\/sessions\/:session\/(ingest|covariates)$/.test(request.routeOptions.url ?? ''))
+        || !compressibleJsonPost(request.routeOptions.url ?? ''))
       throw new ContractError('UNSUPPORTED_CONTENT_ENCODING',415);
     decodedLength(request);
     if (active.size >= JSON_TRANSPORT.decompression_concurrency) throw new ContractError('RECEIVE_QUEUE_FULL',503);

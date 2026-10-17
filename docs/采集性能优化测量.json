@@ -1,0 +1,209 @@
+{
+  "schema": "ingestion-comparison-v1",
+  "baseline_commit": "0561ecaaaf6808e6f5b05ff74516128865352854",
+  "execution": "Sequential baseline and optimized runs on the same host, without concurrent test jobs.",
+  "comparison": [
+    {
+      "kind": "PAGE_REVISION",
+      "retained_at_start": 0,
+      "before_p50_ms": 9.355,
+      "after_p50_ms": 8.473,
+      "speedup": 1.1,
+      "saved_percent": 9.43
+    },
+    {
+      "kind": "PAGE_REVISION",
+      "retained_at_start": 1024,
+      "before_p50_ms": 16.852,
+      "after_p50_ms": 6.702,
+      "speedup": 2.51,
+      "saved_percent": 60.23
+    },
+    {
+      "kind": "PAGE_REVISION",
+      "retained_at_start": 4096,
+      "before_p50_ms": 58.75,
+      "after_p50_ms": 6.802,
+      "speedup": 8.64,
+      "saved_percent": 88.42
+    },
+    {
+      "kind": "INPUT_DIAGNOSTIC",
+      "retained_at_start": 0,
+      "before_p50_ms": 9.299,
+      "after_p50_ms": 7.836,
+      "speedup": 1.19,
+      "saved_percent": 15.73
+    },
+    {
+      "kind": "INPUT_DIAGNOSTIC",
+      "retained_at_start": 1024,
+      "before_p50_ms": 18.257,
+      "after_p50_ms": 7.775,
+      "speedup": 2.35,
+      "saved_percent": 57.41
+    },
+    {
+      "kind": "INPUT_DIAGNOSTIC",
+      "retained_at_start": 4096,
+      "before_p50_ms": 54.209,
+      "after_p50_ms": 8.542,
+      "speedup": 6.35,
+      "saved_percent": 84.24
+    }
+  ],
+  "before": {
+    "schema": "ingestion-profile-v1",
+    "mode": "TEST_ONLY",
+    "sampled_at": "2026-10-17T01:32:58.173Z",
+    "runtime": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "scope": "Local synchronous LabStore ingestion with WAL/FULL and macOS fullfsync when applicable; 10 batches per depth plus exact retries. Excludes HTTP, worker RPC, real mobile devices and ECS capacity.",
+    "results": [
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 0,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 9.355,
+        "p95_ms": 16.661,
+        "retry_p50_ms": 1.641,
+        "raw_byte_function_calls": 12720,
+        "frozen_loads": 480
+      },
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 1024,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 16.852,
+        "p95_ms": 21.885,
+        "retry_p50_ms": 1.162,
+        "raw_byte_function_calls": 176560,
+        "frozen_loads": 480
+      },
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 4096,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 58.75,
+        "p95_ms": 69.607,
+        "retry_p50_ms": 1.342,
+        "raw_byte_function_calls": 668080,
+        "frozen_loads": 480
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 0,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 9.299,
+        "p95_ms": 18.445,
+        "retry_p50_ms": 1.269,
+        "raw_byte_function_calls": 12720,
+        "frozen_loads": 480
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 1024,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 18.257,
+        "p95_ms": 26.591,
+        "retry_p50_ms": 1.263,
+        "raw_byte_function_calls": 176560,
+        "frozen_loads": 480
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 4096,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 54.209,
+        "p95_ms": 72.327,
+        "retry_p50_ms": 1.546,
+        "raw_byte_function_calls": 668080,
+        "frozen_loads": 480
+      }
+    ]
+  },
+  "after": {
+    "schema": "ingestion-profile-v1",
+    "mode": "TEST_ONLY",
+    "sampled_at": "2026-10-17T01:33:10.308Z",
+    "runtime": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "scope": "Local synchronous LabStore ingestion with WAL/FULL and macOS fullfsync when applicable; 10 batches per depth plus exact retries. Excludes HTTP, worker RPC, real mobile devices and ECS capacity.",
+    "results": [
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 0,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 8.473,
+        "p95_ms": 13.578,
+        "retry_p50_ms": 1.404,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 1024,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 6.702,
+        "p95_ms": 10.841,
+        "retry_p50_ms": 1.117,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 4096,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 6.802,
+        "p95_ms": 13.825,
+        "retry_p50_ms": 1.159,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 0,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 7.836,
+        "p95_ms": 23.723,
+        "retry_p50_ms": 1.026,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 1024,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 7.775,
+        "p95_ms": 12.585,
+        "retry_p50_ms": 1.055,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 4096,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 8.542,
+        "p95_ms": 16.65,
+        "retry_p50_ms": 1.202,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      }
+    ]
+  }
+}

@@ -7,3 +7,10 @@ export const JSON_TRANSPORT = Object.freeze({
   stream_reserve_bytes: 128 * 1024,
   receive_timeout_ms: 15_000,
 });
+
+// Match URL paths in the browser and Fastify's route templates on the server.
+// Binary image/ZIP uploads and authentication remain separate transports.
+export function compressibleJsonPost(path:string) {
+  return /^\/api\/participate\/sessions\/[^/]+\/(ingest|covariates|seal|reconcile|receipts)$/.test(path)
+    || /^\/api\/lab\/studies\/[^/]+\/(save|import)$/.test(path);
+}

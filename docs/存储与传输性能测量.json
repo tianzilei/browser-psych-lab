@@ -1,0 +1,271 @@
+{
+  "schema": "transfer-storage-comparison-v1",
+  "baseline": "Working tree after the first ingestion optimization, before the 2026-10-17 storage/transfer pass. Sources copied before edits; same synthetic fixtures and sequential measurement scripts.",
+  "comparisons": {
+    "storage": [
+      {
+        "label": "PAGE_REVISION",
+        "before_bytes": 661564,
+        "after_bytes": 458921,
+        "saved_percent": 30.63,
+        "before_sqlite_bytes": 692224,
+        "after_sqlite_bytes": 520192,
+        "sqlite_saved_percent": 24.85
+      },
+      {
+        "label": "INPUT_DIAGNOSTIC",
+        "before_bytes": 588920,
+        "after_bytes": 588920,
+        "saved_percent": 0,
+        "before_sqlite_bytes": 692224,
+        "after_sqlite_bytes": 692224,
+        "sqlite_saved_percent": 0
+      }
+    ],
+    "uploads": [
+      {
+        "label": "seal",
+        "before_bytes": 630235,
+        "after_bytes": 244759,
+        "saved_percent": 61.16
+      },
+      {
+        "label": "reconcile",
+        "before_bytes": 630235,
+        "after_bytes": 244759,
+        "saved_percent": 61.16
+      },
+      {
+        "label": "questionnaire-import",
+        "before_bytes": 38253,
+        "after_bytes": 1570,
+        "saved_percent": 95.9
+      }
+    ],
+    "downloads": [
+      {
+        "label": "questionnaire-json",
+        "before_bytes": 33283,
+        "after_bytes": 1510,
+        "saved_percent": 95.46
+      },
+      {
+        "label": "answers-csv",
+        "before_bytes": 664534,
+        "after_bytes": 257235,
+        "saved_percent": 61.29
+      }
+    ]
+  },
+  "before": {
+    "schema": "transfer-storage-profile-v1",
+    "mode": "TEST_ONLY",
+    "sampled_at": "2026-10-17T01:44:58.447Z",
+    "runtime": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "response_compression_installed": false,
+    "scope": "Deterministic synthetic records. Storage: 1,000 encoded raw payloads in an isolated one-column SQLite table, WAL checkpointed; not total application DB size. Upload: native CompressionStream plus real bounded server parser round-trip. Download: Fastify inject encoded JSON and streamed CSV, exact decoded bytes verified. Excludes sockets, TLS, HTTP headers, mobile/ECS CPU and real network latency.",
+    "storage": [
+      {
+        "kind": "PAGE_REVISION",
+        "records": 1000,
+        "logical_bytes": 661564,
+        "stored_payload_bytes": 661564,
+        "sqlite_file_bytes": 692224,
+        "median_encode_ms": 0.0001
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "records": 1000,
+        "logical_bytes": 7976454,
+        "stored_payload_bytes": 588920,
+        "sqlite_file_bytes": 692224,
+        "median_encode_ms": 0.0226
+      }
+    ],
+    "uploads": [
+      {
+        "label": "seal",
+        "logical_bytes": 630235,
+        "wire_body_bytes": 630235,
+        "encoding": "identity",
+        "median_prepare_ms": 0.0006
+      },
+      {
+        "label": "reconcile",
+        "logical_bytes": 630235,
+        "wire_body_bytes": 630235,
+        "encoding": "identity",
+        "median_prepare_ms": 0.0006
+      },
+      {
+        "label": "questionnaire-import",
+        "logical_bytes": 38253,
+        "wire_body_bytes": 38253,
+        "encoding": "identity",
+        "median_prepare_ms": 0.0005
+      }
+    ],
+    "downloads": [
+      {
+        "label": "questionnaire-json",
+        "logical_bytes": 33283,
+        "wire_body_bytes": 33283,
+        "encoding": "identity",
+        "median_handler_and_encoding_ms": 0.2061
+      },
+      {
+        "label": "answers-csv",
+        "logical_bytes": 664534,
+        "wire_body_bytes": 664534,
+        "encoding": "identity",
+        "median_handler_and_encoding_ms": 2.2004
+      }
+    ]
+  },
+  "after": {
+    "schema": "transfer-storage-profile-v1",
+    "mode": "TEST_ONLY",
+    "sampled_at": "2026-10-17T01:45:02.378Z",
+    "runtime": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "response_compression_installed": true,
+    "scope": "Deterministic synthetic records. Storage: 1,000 encoded raw payloads in an isolated one-column SQLite table, WAL checkpointed; not total application DB size. Upload: native CompressionStream plus real bounded server parser round-trip. Download: Fastify inject encoded JSON and streamed CSV, exact decoded bytes verified. Excludes sockets, TLS, HTTP headers, mobile/ECS CPU and real network latency.",
+    "storage": [
+      {
+        "kind": "PAGE_REVISION",
+        "records": 1000,
+        "logical_bytes": 661564,
+        "stored_payload_bytes": 458921,
+        "sqlite_file_bytes": 520192,
+        "median_encode_ms": 0.0135
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "records": 1000,
+        "logical_bytes": 7976454,
+        "stored_payload_bytes": 588920,
+        "sqlite_file_bytes": 692224,
+        "median_encode_ms": 0.022
+      }
+    ],
+    "uploads": [
+      {
+        "label": "seal",
+        "logical_bytes": 630235,
+        "wire_body_bytes": 244759,
+        "encoding": "gzip",
+        "median_prepare_ms": 7.6746
+      },
+      {
+        "label": "reconcile",
+        "logical_bytes": 630235,
+        "wire_body_bytes": 244759,
+        "encoding": "gzip",
+        "median_prepare_ms": 7.6786
+      },
+      {
+        "label": "questionnaire-import",
+        "logical_bytes": 38253,
+        "wire_body_bytes": 1570,
+        "encoding": "gzip",
+        "median_prepare_ms": 0.1986
+      }
+    ],
+    "downloads": [
+      {
+        "label": "questionnaire-json",
+        "logical_bytes": 33283,
+        "wire_body_bytes": 1510,
+        "encoding": "gzip",
+        "median_handler_and_encoding_ms": 0.294
+      },
+      {
+        "label": "answers-csv",
+        "logical_bytes": 664534,
+        "wire_body_bytes": 257235,
+        "encoding": "gzip",
+        "median_handler_and_encoding_ms": 8.7125
+      }
+    ]
+  },
+  "ingestion_after_storage_change": {
+    "schema": "ingestion-profile-v1",
+    "mode": "TEST_ONLY",
+    "sampled_at": "2026-10-17T01:45:35.001Z",
+    "runtime": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "scope": "Local synchronous LabStore ingestion with WAL/FULL and macOS fullfsync when applicable; 10 batches per depth plus exact retries. Excludes HTTP, worker RPC, real mobile devices and ECS capacity.",
+    "results": [
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 0,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 8.576,
+        "p95_ms": 18.596,
+        "retry_p50_ms": 1.329,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 1024,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 7.025,
+        "p95_ms": 12.067,
+        "retry_p50_ms": 0.926,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "PAGE_REVISION",
+        "retained_at_start": 4096,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 7.722,
+        "p95_ms": 12.708,
+        "retry_p50_ms": 1.135,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 0,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 8.402,
+        "p95_ms": 13.806,
+        "retry_p50_ms": 1.066,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 1024,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 7.781,
+        "p95_ms": 12.712,
+        "retry_p50_ms": 1.076,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      },
+      {
+        "kind": "INPUT_DIAGNOSTIC",
+        "retained_at_start": 4096,
+        "batch_events": 16,
+        "measured_batches": 10,
+        "p50_ms": 7.852,
+        "p95_ms": 15.38,
+        "retry_p50_ms": 1.146,
+        "raw_byte_function_calls": 160,
+        "frozen_loads": 20
+      }
+    ]
+  }
+}

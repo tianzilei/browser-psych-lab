@@ -21,7 +21,9 @@ export function decodeRaw(value:Uint8Array,expectedHash?:string):Buffer {
   return decoded;
 }
 export function encodeRaw(value:Uint8Array):Buffer {
-  const bytes=buffer(value);if(bytes.length<1024)return bytes;
+  // Small questionnaire envelopes also contain compressible schema/chain keys.
+  // Keep the existing 10% savings gate for entropy-heavy or tiny records.
+  const bytes=buffer(value);if(bytes.length<512)return bytes;
   if(bytes.length>maxRawBytes)throw new Error('EVIDENCE_SIZE_EXCEEDED');
   const compressed=gzipSync(bytes,{level:6});
   if(compressed.length+headerBytes>=bytes.length*0.9)return bytes;

@@ -32,7 +32,9 @@
     "restore": "node dist/server/restore.js",
     "profile:mixed": "node --import tsx scripts/profile-mixed.mjs",
     "profile:bandwidth": "node --import tsx scripts/profile-bandwidth.mjs",
-    "profile:transport": "node --import tsx scripts/profile-transport.mjs"
+    "profile:transport": "node --import tsx scripts/profile-transport.mjs",
+    "profile:ingestion": "node --import tsx scripts/profile-ingestion.mjs",
+    "profile:transfer-storage": "node --import tsx scripts/profile-transfer-storage.mjs"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",

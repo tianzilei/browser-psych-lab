@@ -3,8 +3,6 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {resolve,join} from 'node:path';
 import {readFile,lstat,readdir,unlink,statfs} from 'node:fs/promises';
 import type {Readable} from 'node:stream';
-import {gzip} from 'node:zlib';
-import {promisify} from 'node:util';
 import {DatabaseWriter} from './writer.js';
 import {Maintenance} from './maintenance.js';
 import {runnerEncodings} from './runner-encoding.js';
@@ -18,12 +16,11 @@ import {TASK_ACTIVITY_POLICY} from '../shared/task-policy.js';
 import {jsonReceiveCharge} from './json-transport.js';
 import {downloadName,downloadDisposition} from '../shared/download-name.js';
 import {RecordingDownloads} from './recording-downloads.js';
-const gzipJSON=promisify(gzip);
 export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,maintenance:Maintenance,root:string){
   const preparation=new PreparationQueue(Number(process.env.PREPARATION_CONCURRENCY??1)),assetPolicy=new RunnerAssetPolicy(root);
   const recordings=new RecordingDownloads(maintenance.path,root);app.addHook('onClose',async()=>recordings.close());
   app.addHook('onClose',async()=>preparation.close());
-  const limits=new RateLimits();let loginBusy=0,replayCompressing=0;let receiving=0,receivingBytes=0;const charged=new Map<string,number>();
+  const limits=new RateLimits();let loginBusy=0;let receiving=0,receivingBytes=0;const charged=new Map<string,number>();
   const secure=(request:FastifyRequest)=>request.protocol==='https'||(process.env.PUBLIC_ORIGIN??'').startsWith('https:');
   const cookie=(request:FastifyRequest,name:string)=>request.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1)??'';
   const release=(r:FastifyRequest)=>{const b=charged.get(r.id);if(b!==undefined){receiving--;receivingBytes-=b;charged.delete(r.id);}};
@@ -101,14 +98,8 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   app.get('/api/lab/studies/:study/sessions',async request=>admin(request,'session.list',{study_id:id((request.params as {study:string}).study),...object(request.query)}));
   app.get('/api/lab/sessions/:session',async request=>admin(request,'session.detail',{session_id:id((request.params as {session:string}).session)}));
   app.get('/api/lab/sessions/:session/actions',async(request,reply)=>{
-    const result=await admin(request,'session.actions',{session_id:id((request.params as {session:string}).session),...object(request.query)});
-    const encodings=runnerEncodings(request.headers['accept-encoding']).filter(encoding=>encoding!=='br');
-    if(!encodings.length)throw new ContractError('ENCODING_NOT_ACCEPTABLE',406);
     reply.header('Vary','Accept-Encoding').header('Cache-Control','private, no-store, no-transform');
-    if(encodings[0]!=='gzip')return result;
-    if(replayCompressing>=2)throw new ContractError('REPLAY_COMPRESSION_BUSY',503);
-    replayCompressing++;try{return reply.type('application/json; charset=utf-8').header('Content-Encoding','gzip').send(await gzipJSON(JSON.stringify(result),{level:6}));}
-    finally{replayCompressing--;}
+    return admin(request,'session.actions',{session_id:id((request.params as {session:string}).session),...object(request.query)});
   });
   app.get('/api/lab/sessions/:session/recording',async request=>admin(request,'session.recording',{session_id:id((request.params as {session:string}).session)}));
   for(const format of ['json','html'] as const)app.get(`/api/lab/sessions/:session/${format==='html'?'replay.html':'trajectory.json.gz'}`,async(request,reply)=>{
@@ -153,6 +144,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     const study=job.kind==='EXPORT'?await admin(request,'study.get',{study_id:id(job.study_id)}) as {title:string}:null;
     const file=await safeDownload(root,params.job,params.file,job.kind==='EXPORT'?'research-exports':'research-backups');
     const name=study?downloadName(params.file==='preparations.csv'?`${study.title}_设备与准备记录`:study.title,params.file.endsWith('.csv')?'csv':'json'):params.file;
+    reply.type(params.file.endsWith('.csv')?'text/csv; charset=utf-8':params.file.endsWith('.json')?'application/json; charset=utf-8':'application/octet-stream');
     reply.header('Content-Disposition',downloadDisposition(name)).header('Cache-Control','private, no-store, no-transform');return reply.send(file.createReadStream());
   });
   app.get('/api/lab/environments',async request=>admin(request,'environment.list'));

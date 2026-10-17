@@ -18,6 +18,14 @@ test('gzip evidence round-trips original JSON bytes, numeric spellings and Unico
   const short=Buffer.from(packed);short.writeUInt32BE(1,8);assert.throws(()=>decodeRaw(short));
   assert.throws(()=>encodeRaw(Buffer.alloc(128*1024+1)),/SIZE_EXCEEDED/);
 });
+test('small questionnaire envelopes save storage without changing their exact bytes or compressing entropy-heavy input',()=>{
+  const raw=Buffer.from(JSON.stringify({event_schema_version:'lab-events-v1',event_id:'test-event',session_id:'test-session',version_id:'test-version',
+    protocol_hash:'a'.repeat(64),writer_id:'writer',writer_epoch:1,scope:'welcome',sequence:1,previous:{event_id:'previous',hash:'b'.repeat(64)},
+    clock_epoch:'clock',time_ms:123.456789,kind:'PAGE_REVISION',payload:{question_id:'ready',answer:'中文😀'.repeat(10)}}));
+  assert.ok(raw.length>=512&&raw.length<1024);const packed=encodeRaw(raw);
+  assert.ok(packed.length<raw.length*.9);assert.equal(storedRawBytes(packed),raw.length);assert.deepEqual(decodeRaw(packed,digest(raw)),raw);
+  const random=randomBytes(700);assert.deepEqual(encodeRaw(random),random);
+});
 function recording(f){const batch={schema:'interaction-v1',time_origin:1700000000000.125,samples:[{type:'input',at:12.3456789012345,raw_timestamp:12.3456789012345,x:1.23456789012345,y:-0.125,context:{page_id:'welcome'},value:'真实记录😀'.repeat(3000)}]};
   const event=f.wire('d-ui-lossless','INPUT_DIAGNOSTIC',{interaction:batch},{sequence:0,previous:null});assert.equal(f.ingest([event]).receipts[0].disposition,'ACCEPTED');return {batch,event};}
 test('single-copy compressed ingestion preserves custody, retry identity, replay samples and immutable evidence',t=>{

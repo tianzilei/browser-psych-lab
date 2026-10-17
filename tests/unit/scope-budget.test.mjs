@@ -32,11 +32,13 @@ test('answer scope keeps its 32 MiB limit and rejected batches do not partially 
   const f=fixture(t);
   f.db.prepare('INSERT INTO lab_raw VALUES (?,?,?,?,?,zeroblob(?),?)').run(
     f.created.session_id,randomUUID(),'a'.repeat(64),'welcome',randomUUID(),32*1024*1024-1000,1000);
+  const usage=f.db.prepare('SELECT * FROM lab_scope_usage').all();
   const events=[f.wire('welcome','PAGE_REVISION',{question_id:'ready',answer:'是'}),
     f.wire('welcome','PAGE_SNAPSHOT',{answers:{ready:'是'}})];
   assert.throws(()=>f.ingest(events),error=>error.code==='SCOPE_BUDGET_EXCEEDED'&&error.status===413
     &&error.details.maximum_bytes===32*1024*1024&&error.details.scope==='welcome');
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM lab_raw WHERE scope=?').get('welcome').n,1);
+  assert.deepEqual(f.db.prepare('SELECT * FROM lab_scope_usage').all(),usage);
 });
 test('a full 5000-event answer chain seals successfully with one reserved final snapshot',t=>{
   const p=sampleProtocol();p.groups=[];p.variants[0].group_order=[];p.variants[0].trial_order={};p.questionnaire_layout='adaptive';

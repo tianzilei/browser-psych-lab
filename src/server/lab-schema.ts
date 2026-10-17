@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS lab_permits(permit_id TEXT PRIMARY KEY,session_id TEX
 CREATE UNIQUE INDEX IF NOT EXISTS lab_one_permit ON lab_permits(session_id) WHERE state='ISSUED';
 CREATE TABLE IF NOT EXISTS lab_raw(session_id TEXT NOT NULL REFERENCES lab_sessions,event_id TEXT NOT NULL,hash TEXT NOT NULL,scope TEXT NOT NULL,
  receipt_id TEXT UNIQUE NOT NULL,raw BLOB NOT NULL,received_at INTEGER NOT NULL,PRIMARY KEY(session_id,event_id,hash)) STRICT;
+CREATE TABLE IF NOT EXISTS lab_scope_usage(session_id TEXT NOT NULL REFERENCES lab_sessions,scope TEXT NOT NULL,
+ events INTEGER NOT NULL,bytes INTEGER NOT NULL,PRIMARY KEY(session_id,scope)) STRICT;
+CREATE TRIGGER IF NOT EXISTS lab_raw_scope_usage AFTER INSERT ON lab_raw BEGIN
+ INSERT INTO lab_scope_usage VALUES (NEW.session_id,NEW.scope,1,lab_raw_bytes(NEW.raw))
+ ON CONFLICT(session_id,scope) DO UPDATE SET events=events+1,bytes=bytes+excluded.bytes;
+END;
 CREATE TABLE IF NOT EXISTS lab_events(session_id TEXT NOT NULL,event_id TEXT NOT NULL,hash TEXT NOT NULL,scope TEXT NOT NULL,sequence INTEGER NOT NULL,
  writer_epoch INTEGER NOT NULL,kind TEXT NOT NULL,envelope TEXT NOT NULL,disposition TEXT NOT NULL,version INTEGER NOT NULL,reason TEXT NOT NULL,
  PRIMARY KEY(session_id,event_id),FOREIGN KEY(session_id,event_id,hash) REFERENCES lab_raw(session_id,event_id,hash)) STRICT;
