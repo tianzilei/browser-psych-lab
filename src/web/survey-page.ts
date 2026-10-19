@@ -93,7 +93,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     node.addEventListener('input', update); node.addEventListener('change', update);
     node.addEventListener('compositionstart', () => { composing = true; });
     node.addEventListener('compositionend', () => { composing = false; update(); visibility(); });
-    node.addEventListener('focus', () => { editing=true;document.body.classList.add('typing');form.style.setProperty('--survey-top',`${element.getBoundingClientRect().top+scrollY}px`); next.textContent = '完成输入'; });
+    if(!usesNumericKeypad(q))node.addEventListener('focus', () => { editing=true;document.body.classList.add('typing');form.style.setProperty('--survey-top',`${element.getBoundingClientRect().top+scrollY}px`); next.textContent = '完成输入'; });
     // Keep the input layout until the explicit Done action. Changing geometry
     // on blur can move the button between pointerdown and click.
     node.addEventListener('blur', requestResize);

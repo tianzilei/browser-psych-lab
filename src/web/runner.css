@@ -43,7 +43,7 @@ body.rating-layout #status { height: 2.4em; }
 .rating-age-entry { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; }
 .rating-age-entry input { height: 44px; min-height: 44px; }
 .rating-age-hint { max-width: 100px; font-size: 12px; text-align: right; }
-.rating-age-keypad button:last-child { font-size: 12px; }
+.rating-age-keypad button:nth-last-child(-n+2) { font-size: 14px; }
 .simulation-image-nav > p { grid-column: 1 / -1; }
 @media (max-height: 600px) {
   body.rating-layout main { padding: 4px var(--page-inline) calc(4px + var(--safe-bottom)); gap: 4px; }

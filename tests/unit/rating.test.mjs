@@ -44,6 +44,11 @@ test('legacy before-photo familiarity remains readable without rewriting frozen 
   r.apply({type:'RATING',at:2000,draw_time:2000,raf_time:2000,input_time:1990,instance_id:id,values:[1,2,3,4,5,6,45]});assert.equal(r.results.get(id).familiarity,2);assert.equal(r.results.get(id).familiarity_rt_ms,200);
 });
 function onset(replay,at=1000){const id=replay.plan.roots[0].root_id+':1';replay.apply({type:'RATING_INTENT',at:0,instance_id:id});replay.apply({type:'ONSET',at,draw_time:at,raf_time:at,instance_id:id});return id;}
+test('frozen age bounds accept 18 and 50 and reject values outside the configured interval',()=>{
+  for(const age of [17,18,50,51]){const p=makePlan();p.rating.age_min=18;p.rating.age_max=50;const r=new RunReplay(p),id=onset(r),record={type:'RATING',at:2000,draw_time:2000,raf_time:2000,input_time:1990,instance_id:id,values:[5,5,5,5,5,5,age]};
+    if(age<18||age>50)assert.throws(()=>r.apply(record),/INVALID_RATING_ANSWER/);else{r.apply(record);assert.equal(r.results.get(id).ratings.at(-1),age);}
+  }
+});
 test('response-contingent replay waits indefinitely for a score then enforces full ISI from image clearing',()=>{
   const p=makePlan(),r=new RunReplay(p),id=onset(r);
   assert.throws(()=>r.apply({type:'RATING',at:2000,draw_time:2000,raf_time:2000,input_time:1990,instance_id:id,values:[0,0,0,0,0,0,40]}),/ANSWER/);

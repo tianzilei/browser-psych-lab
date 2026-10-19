@@ -1,7 +1,8 @@
-import {el,button} from './dom.js';
+import {el} from './dom.js';
 import {ui} from './participant-ui.js';
 import type {Rating} from '../shared/protocol.js';
 import type {RunRecord} from '../shared/lab-contract.js';
+import {numericKeys} from './numeric-keypad.js';
 
 function axis(prompt:string,labels:string[],index:string){
   const axis=el('div',undefined,`${index==='familiarity'?'familiarity-axis':'rating-axis'} axis-control`),ends=el('div',undefined,'axis-ends');
@@ -18,8 +19,8 @@ export function ratingControls(rating:Rating,footer:HTMLElement){
   if(age&&ageRow){ageRow.style.visibility='hidden';age.type='text';age.readOnly=true;age.inputMode='none';age.pattern='[0-9]{1,3}';age.placeholder='使用下方数字键盘';age.setAttribute('aria-label',rating.age_prompt!);
     const hint=el('span',`${rating.age_min??0}–${rating.age_max??120} 岁`,'rating-age-hint'),entry=el('div',undefined,'rating-age-entry');hint.id='rating-age-hint';age.setAttribute('aria-describedby',hint.id);entry.append(age,hint);
     const keypad=el('div',undefined,'rating-age-keypad');keypad.setAttribute('role','group');keypad.setAttribute('aria-label','年龄数字键盘');
-    const enter=(key:string)=>{if(keypad.inert)return;const value=key==='Backspace'?age.value.slice(0,-1):age.value.length<3?age.value+key:age.value;if(value===age.value)return;age.value=value;age.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:key==='Backspace'?'deleteContentBackward':'insertText',data:key==='Backspace'?null:key}));};
-    for(const digit of ['1','2','3','4','5','6','7','8','9','0'])keypad.append(button(digit,()=>enter(digit)));keypad.append(button('删除一位',()=>enter('Backspace')));
+    const enter=(key:string)=>{if(keypad.inert)return;const deleting=key==='Backspace'||key==='Clear',value=key==='Clear'?'':key==='Backspace'?age.value.slice(0,-1):age.value.length<3?age.value+key:age.value;if(value===age.value)return;age.value=value;age.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:deleting?'deleteContentBackward':'insertText',data:deleting?null:key}));};
+    numericKeys(keypad,enter);
     age.onkeydown=event=>{if(/^[0-9]$/.test(event.key)||event.key==='Backspace'){event.preventDefault();enter(event.key);}};ageRow.append(entry,keypad);controls.append(ageRow);
   }
   const submit=el('button',undefined,'primary');submit.type='button';submit.style.visibility='hidden';submit.disabled=true;footer.append(submit);
