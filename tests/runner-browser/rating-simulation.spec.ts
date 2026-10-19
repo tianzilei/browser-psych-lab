@@ -1,5 +1,14 @@
 import {test,expect} from '@playwright/test';
 import {compileQuestionnaire} from '../../src/shared/questionnaire-json.js';
+for(const layout of ['single','adaptive'] as const)test(`${layout} simulation waits three seconds after phone entry and cancels an obsolete wait`,async({page})=>{
+  await page.setViewportSize({width:390,height:660});await page.goto('/simulate.html');
+  const protocol=compileQuestionnaire({schema:'questionnaire-v1',title:'手机号后等待',orientation:'portrait',questionnaire_layout:layout,pages:[{id:'phone-page',title:'',instruction:'',questions:[{id:'phone',type:'text',title:'补偿手机号',required:true,input_purpose:'personal',max_length:11,input_match:{kind:'regex',pattern:'1[0-9]{10}',message:'请输入手机号。'}}]}],groups:[{id:'ratings',title:'评分',choices:['1','2','3'],repeats:0,rating:{prompt:'可信度',labels:['低','中','高']},trials:[{root_id:'first',asset_id:'preview-image-first',correct:null,image_ms:1,isi_ms:3000}]}]});
+  const reset=()=>page.evaluate(protocol=>window.postMessage({type:'lab-simulation',protocol},location.origin),protocol);
+  const input=page.getByRole('textbox',{name:'补偿手机号',exact:true}),submit=page.getByRole('button',{name:layout==='single'?'提交本页':'完成问卷',exact:true}),range=page.getByRole('slider',{name:'可信度',exact:true});
+  await reset();await expect(input).toBeVisible();await input.pressSequentially('13800000000');await page.clock.install();await page.clock.pauseAt(new Date());await submit.click();await expect(page.locator('#status')).toHaveText('即将开始第一题，请等待 3 秒…');
+  await page.clock.runFor(1500);await reset();await expect(input).toBeVisible();await page.clock.runFor(1500);await expect(input).toBeVisible();await expect(range).toHaveCount(0);
+  await input.pressSequentially('13800000000');await submit.click();await expect(page.locator('#status')).toHaveText('即将开始第一题，请等待 3 秒…');await page.clock.runFor(2999);await expect(range).toBeHidden();await page.clock.runFor(1);await expect(range).toBeVisible();await expect(page.locator('#status')).toHaveText('模拟图片 1/1 · 不提交数据');
+});
 for(const viewport of [{width:704,height:755},{width:390,height:660},{width:320,height:480}])test(`simulation runs every rating and supplement with the photo visible at ${viewport.width}x${viewport.height}`,async({page})=>{
   await page.setViewportSize(viewport);const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET')writes.push(r.url());});await page.goto('/simulate.html');
   await page.route('**/api/lab/assets/doctor',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="413" height="626"><rect width="413" height="626" fill="#587a91"/></svg>'}));

@@ -19,6 +19,7 @@ import {cancelAdmission} from './session-gate.js';
 import {ui,participantError,errorDetails,interruptionMessage,showDuplicateTab} from './participant-ui.js';
 import {RunReplay} from '../shared/run-replay.js';
 import {ratingControls,runRating} from './rating-run.js';
+import {waitForFirstRating} from './first-rating-wait.js';
 import type {GroupPlan,InputRecord,RunRecord,LabSession,GroupReservation} from '../shared/lab-contract.js';
 import type {ScheduleAudit} from '../shared/scheduler.js';
 const version=new URLSearchParams(location.search).get('version')??'',writer=sessionStorage.getItem(`lab-writer-${version}`)??uid();
@@ -74,6 +75,8 @@ async function prepare(){
   let ready:NonNullable<GroupPlan['geometry']>;
   const checkReady=()=>{preparing.signal.throwIfAborted();if(document.visibilityState!=='visible')throw new Error('页面当前不可见。');if(JSON.stringify(measuredGeometry())!==JSON.stringify(ready))throw new Error('准备后布局已变化，请重新准备。');};
   const start=button(ui.startGroup,async()=>{let permitIssued=false;try{
+    start.disabled=true;start.style.visibility='hidden';
+    if(rating)await waitForFirstRating(p,api!.session.answers,api!.session.group_index,status,preparing.signal);
     api!.admission?.check();status.textContent='正在确认开始，请稍候…';await api!.syncPreparations().catch(()=>{});await api!.stopAdmission();start.style.visibility='hidden';checkReady();
     const next=await reserve(preparing.signal);checkReady();if(next.variant_id!==reservation.variant_id)throw new Error('预留方案已变化，请重新准备。');reservation=next;
     const permit=await request<NonNullable<LabSession['permit']>>(api!.path('permit'),{request_id:uid(),...api!.fence(),reservation_id:reservation.reservation_id,readiness:{activity_policy:TASK_ACTIVITY_POLICY.id,...measured,...storage,download:images.download,layout,geometry:ready,assets:images.hashes,decoded_bytes:images.decoded_bytes,protocol_hash:api!.session.frozen.hash}},undefined,preparing.signal);

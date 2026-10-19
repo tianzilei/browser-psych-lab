@@ -38,6 +38,19 @@ for(const layout of ['single','adaptive'] as const)for(const viewport of [{width
   const sizes=await keypad.getByRole('button').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return{width:r.width,height:r.height};}));for(const size of sizes){expect(size.width).toBeCloseTo(sizes[0]!.width,0);expect(size.height).toBeCloseTo(sizes[0]!.height,0);}await footer.click();await expect(page.locator('#status')).toContainText('研究已完成');
   const sessions=(await (await context.request.get(`/api/lab/studies/${study.study_id}/sessions`)).json()).sessions,detail=await (await context.request.get(`/api/lab/sessions/${sessions[0].session_id}`)).json();expect(detail.state).toBe('COMPLETED');
 });
+for(const layout of ['single','adaptive'] as const)test(`${layout} phone entry waits three seconds before the first rating permit`,async({page,context})=>{
+  await page.setViewportSize({width:390,height:660});
+  const {version}=await setup(context,true,0,p=>{
+    p.questionnaire_layout=layout;p.pages=[{id:'phone-page',title:'',instruction:'',questions:[{id:'phone',type:'text',title:'补偿手机号',required:true,input_purpose:'personal',max_length:11,input_match:{kind:'regex',pattern:'1[0-9]{10}',message:'请输入手机号。'}}]}];
+    const group=p.groups[0]!;group.choices=['1','2','3'];group.rating={prompt:'可信度',labels:['低','中','高']};group.trials[0]!.correct=null;group.trials[0]!.image_ms=1;
+  });
+  await page.goto(`/participate.html?version=${version.version_id}`);const input=page.getByRole('textbox',{name:'补偿手机号',exact:true});await input.pressSequentially('13800000000');await page.getByRole('button',{name:layout==='single'?'提交本页':'完成问卷',exact:true}).click();
+  await page.getByRole('button',{name:'准备任务',exact:true}).click();const start=page.getByRole('button',{name:'开始本组',exact:true});await expect(start).toBeVisible();
+  await page.clock.install();await page.clock.pauseAt(new Date());let permits=0;page.on('request',request=>{if(new URL(request.url()).pathname.endsWith('/permit'))permits++;});
+  await start.click();await expect(page.locator('#status')).toHaveText('即将开始第一题，请等待 3 秒…');await expect(page.getByRole('button',{name:'开始本组',exact:true,includeHidden:true})).toBeDisabled();
+  await page.clock.runFor(2999);expect(permits).toBe(0);await expect(page.getByRole('slider',{name:'可信度',exact:true})).toBeHidden();
+  await page.clock.runFor(1);await expect.poll(()=>permits).toBe(1);await page.clock.resume();await expect(page.getByRole('slider',{name:'可信度',exact:true})).toBeVisible();
+});
 test('all web entries suppress menus, selection, copy and dragging while ordinary fields remain editable',async({page,context})=>{
   const {study}=await setup(context);
   for(const path of ['/','/admin.html','/participate.html','/run.html','/simulate.html','/replay.html','/diagnostics.html','/p0.html']){
