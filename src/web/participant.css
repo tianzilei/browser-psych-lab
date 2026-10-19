@@ -147,9 +147,11 @@ body.typing .reading-text { visibility: hidden; }
   .adaptive-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .adaptive-card:has(input[type=text]) { grid-column: 1 / -1; }
 }
-.survey-text-control { display:grid;align-content:start;gap:8px;min-width:0; }
-.numeric-keypad { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px; }
+.survey-text-control { display:grid;grid-template-rows:44px minmax(188px,1fr);gap:8px;min-width:0;min-height:240px; }
+.numeric-keypad { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(4,minmax(44px,1fr));gap:4px; }
 .numeric-keypad button { min-height:44px;padding:4px;font-size:18px; }
 .numeric-keypad-clear { color:#b42318;color:color-mix(in srgb,var(--foreground) 35%,#cf2d22); }
 .questionnaire:has(.numeric-keypad) { height:max(380px,calc(var(--viewport-height,100dvh) - var(--survey-top,100px) - 16px));gap:8px; }
 .questionnaire:has(.numeric-keypad) .question-screen { grid-template-rows:minmax(0,auto) minmax(240px,1fr);gap:8px; }
+.adaptive-questionnaire:has(.numeric-keypad) .adaptive-grid { min-height:100%;grid-template-rows:minmax(0,1fr); }
+.adaptive-questionnaire:has(.numeric-keypad) .adaptive-card { grid-template-rows:auto minmax(240px,1fr);align-self:stretch; }

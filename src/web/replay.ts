@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import './style.css';
 import {el,button,request} from './dom.js';
 import {RequestError} from './request-error.js';

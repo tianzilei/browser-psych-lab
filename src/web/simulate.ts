@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import './participant.css';
 import './runner.css';
 import {lockParticipantViewport} from './viewport.js';

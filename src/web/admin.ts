@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import './style.css';
 import './admin.css';
 import {el,button,field,uid,request} from './dom.js';

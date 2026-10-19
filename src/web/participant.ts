@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import './participant.css';
 import './compat.js';
 import {applyParticipantBackground} from './participant-theme.js';

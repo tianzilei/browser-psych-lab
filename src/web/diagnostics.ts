@@ -1,3 +1,4 @@
+import './page-gestures.js';
 try {
   const response=await fetch('/api/auth/me');
   if(response.ok)await import('./main.js');

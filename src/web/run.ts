@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import {taskLiveness} from './task-liveness.js';
 import {TASK_ACTIVITY_POLICY} from '../shared/task-policy.js';
 import {recordInteractions} from './interaction-recorder.js';

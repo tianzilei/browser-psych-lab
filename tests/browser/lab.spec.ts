@@ -25,8 +25,8 @@ async function setup(context:BrowserContext,images=false,cap=0,configure?:(p:Pro
   await post(`/api/lab/studies/${study.study_id}/save`,{request_id:crypto.randomUUID(),revision:1,protocol:p});const version=await post(`/api/lab/studies/${study.study_id}/publish`,{request_id:crypto.randomUUID(),revision:2});await post(`/api/lab/studies/${study.study_id}/admission`,{request_id:crypto.randomUUID(),paused:false});return {study,version,p,post};
 }
 async function begin(page:Page){await page.locator('.questionnaire').waitFor();const start=page.getByRole('button',{name:'开始作答',exact:true});if(await start.count())await start.click();}
-for(const layout of ['single','adaptive'] as const)test(`${layout} phone keypad stays inline, clears and deletes, and submits without a Done step`,async({page,context})=>{
-  await page.setViewportSize({width:320,height:480});const title='输入与支付宝/微信绑定的手机号以便后续发放受试者补偿费';
+for(const layout of ['single','adaptive'] as const)for(const viewport of [{width:320,height:480},{width:390,height:660},{width:704,height:755}])test(`${layout} phone keypad fills the screen, stays inline and submits directly at ${viewport.width}x${viewport.height}`,async({page,context})=>{
+  await page.setViewportSize(viewport);const title='输入与支付宝/微信绑定的手机号以便后续发放受试者补偿费';
   const {version,study}=await setup(context,false,0,p=>{p.questionnaire_layout=layout;p.pages[0]!.title='';p.pages[0]!.instruction='';p.pages[0]!.questions=[{id:'phone',type:'text',title,input_purpose:'personal',max_length:11,required:true,input_match:{kind:'regex',pattern:'1[0-9]{10}',message:'请输入以 1 开头的 11 位手机号。'}}];});
   await page.goto(`/participate.html?version=${version.version_id}`);const input=page.getByRole('textbox',{name:title,exact:true}),keypad=page.getByRole('group',{name:'手机号数字键盘',exact:true});await expect(keypad).toBeVisible();await expect(keypad.getByRole('button')).toHaveCount(12);
   expect(await keypad.evaluate(node=>({columns:getComputedStyle(node).gridTemplateColumns.split(' ').length,rows:getComputedStyle(node).gridTemplateRows.split(' ').length}))).toEqual({columns:3,rows:4});
@@ -34,8 +34,25 @@ for(const layout of ['single','adaptive'] as const)test(`${layout} phone keypad 
   for(const digit of '13800000000')await keypad.getByRole('button',{name:digit,exact:true}).click();await keypad.getByRole('button',{name:'9',exact:true}).click();await expect(input).toHaveValue('13800000000');
   await keypad.getByRole('button',{name:'删除',exact:true}).click();await expect(input).toHaveValue('1380000000');const clear=keypad.getByRole('button',{name:'清空',exact:true});expect(await clear.evaluate(node=>getComputedStyle(node).color)).not.toBe(await keypad.getByRole('button',{name:'1',exact:true}).evaluate(node=>getComputedStyle(node).color));await clear.click();await expect(input).toHaveValue('');
   for(const digit of '13800000000')await keypad.getByRole('button',{name:digit,exact:true}).click();const footer=page.getByRole('button',{name:layout==='single'?'提交本页':'完成问卷',exact:true});
-  const bounds=await keypad.boundingBox(),nav=await footer.boundingBox();expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(nav!.y);await footer.click();await expect(page.locator('#status')).toContainText('研究已完成');
+  const bounds=await keypad.boundingBox(),nav=await footer.boundingBox();expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(nav!.y);expect(nav!.y-bounds!.y-bounds!.height).toBeLessThanOrEqual(28);
+  const sizes=await keypad.getByRole('button').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return{width:r.width,height:r.height};}));for(const size of sizes){expect(size.width).toBeCloseTo(sizes[0]!.width,0);expect(size.height).toBeCloseTo(sizes[0]!.height,0);}await footer.click();await expect(page.locator('#status')).toContainText('研究已完成');
   const sessions=(await (await context.request.get(`/api/lab/studies/${study.study_id}/sessions`)).json()).sessions,detail=await (await context.request.get(`/api/lab/sessions/${sessions[0].session_id}`)).json();expect(detail.state).toBe('COMPLETED');
+});
+test('all web entries suppress menus, selection, copy and dragging while ordinary fields remain editable',async({page,context})=>{
+  const {study}=await setup(context);
+  for(const path of ['/','/admin.html','/participate.html','/run.html','/simulate.html','/replay.html','/diagnostics.html','/p0.html']){
+    await page.goto(path);await expect(page.locator('#page-gesture-style')).toHaveCount(1);
+    const result=await page.evaluate(()=>{
+      const node=document.createElement('p');node.textContent='不可选中的网页正文';document.body.append(node);
+      const blocked=Object.fromEntries(['contextmenu','selectstart','dragstart','copy','cut'].map(type=>{const event=new Event(type,{bubbles:true,cancelable:true});node.dispatchEvent(event);return[type,event.defaultPrevented];}));
+      const keys=[{key:'ContextMenu'},{key:'F10',shiftKey:true},{key:'a',ctrlKey:true},{key:'a',metaKey:true}].map(init=>{const event=new KeyboardEvent('keydown',{...init,bubbles:true,cancelable:true});node.dispatchEvent(event);return event.defaultPrevented;});
+      const userSelect=getComputedStyle(node).userSelect;node.remove();return{blocked,keys,userSelect};
+    });
+    expect(result).toEqual({blocked:{contextmenu:true,selectstart:true,dragstart:true,copy:true,cut:true},keys:[true,true,true,true],userSelect:'none'});
+  }
+  await page.goto('/admin.html');const heading=await page.locator('h1').boundingBox();await page.mouse.move(heading!.x+2,heading!.y+heading!.height/2);await page.mouse.down();await page.mouse.move(heading!.x+heading!.width-2,heading!.y+heading!.height/2,{steps:10});await page.mouse.up();expect(await page.evaluate(()=>getSelection()?.toString())).toBe('');
+  await page.keyboard.press('ControlOrMeta+a');expect(await page.evaluate(()=>getSelection()?.toString())).toBe('');
+  const card=page.locator(`[data-study-id="${study.study_id}"]`);await card.getByRole('button',{name:'修改名称',exact:true}).click();const field=card.getByLabel('问卷名称',{exact:true});await field.fill('仍可输入文本');await expect(field).toHaveValue('仍可输入文本');await field.press('Backspace');await expect(field).toHaveValue('仍可输入文');
 });
 test('admin storage updates independently, retains stale readings and stops after logout',async({page,context})=>{
   expect((await context.request.get('/api/lab/operations')).status()).toBe(401);

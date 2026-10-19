@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import './style.css';
 import { LocalStore } from './local-store.js';
 import type { Receipt, Seal, SessionView } from '../shared/contract.js';

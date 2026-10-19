@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import './participant.css';
 import './questionnaire-list.css';
 import {el,button,request} from './dom.js';

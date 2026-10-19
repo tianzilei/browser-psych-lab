@@ -1,3 +1,4 @@
+import './page-gestures.js';
 import {mountReplayPlayer,type ReplayItem} from './replay-player.js';
 import type {PhotoIdentity} from '../shared/photo-identity.js';
 import {replayBatch} from '../shared/replay-recording.js';
