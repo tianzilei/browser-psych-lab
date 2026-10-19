@@ -31,3 +31,8 @@ admin-password.txt
 *.ico
 *.zip
 *.svg
+
+# Original site icons are small, versioned application assets.
+!src/web/public/favicon.svg
+!src/web/public/favicon.ico
+!src/web/public/apple-touch-icon.png
