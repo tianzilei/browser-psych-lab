@@ -151,11 +151,11 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     if (layoutProblem) { message.textContent = ''; layoutProblem = false; }
     progress.textContent = !q ? `作答说明${pager.more || pager.back ? ` · 第 ${pager.number} 段` : ''}`
       : `第 ${visible.indexOf(current) + 1}/${visible.length} 题 · ${q.required?'必答':'可选'}${q.type==='multi'?' · 可多选':''}${pager.more || pager.back ? ` · 题干第 ${pager.number} 段` : ''}`;
-    const reuse=controlQuestion===q&&fits&&!pager.more&&(q?.type==='scale'||q?.type==='scales')&&!!answerArea.querySelector('.axis-control');
+    const reuse=controlQuestion===q&&fits&&!pager.more&&((q?.type==='scale'||q?.type==='scales')&&!!answerArea.querySelector('.axis-control')||q?.type==='text'&&usesNumericKeypad(q)&&!!answerArea.querySelector('.numeric-keypad'));
     if(!reuse)answerArea.replaceChildren();answerArea.className = 'answer-area';
     answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
     if (fits && q && !pager.more) {
-      if (q.type === 'text') {const node=input(q);answerArea.append(usesNumericKeypad(q)?numericKeypad(node,q.max_length!,'手机号数字键盘'):node);}
+      if (q.type === 'text') {const node=input(q);if(!reuse)answerArea.append(usesNumericKeypad(q)?numericKeypad(node,q.max_length!,'手机号数字键盘'):node);}
       else if (q.type === 'scale') {
         const axis = reuse?answerArea.firstElementChild as HTMLElement:scaleInput(q, answers[q.id], value => save(q, value));if(!reuse)answerArea.append(axis);
         fits = controlsFit([axis, ...axis.querySelectorAll<HTMLElement>('.axis-ends span,input,output,button')]);

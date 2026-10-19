@@ -1,4 +1,7 @@
-body.questionnaire-list main { width: min(100%,920px); display: block; padding-top: max(32px,env(safe-area-inset-top)); }
+/* One bounded scroll surface avoids stale root scroll extents in iOS web views. */
+html:has(body.questionnaire-list) { height:100%;min-height:0;overflow:hidden;overscroll-behavior-y:none; }
+body.questionnaire-list { position:fixed;inset:0;min-height:0;height:100dvh;height:min(100dvh,var(--viewport-height,100dvh));overflow:hidden;overscroll-behavior-y:none; }
+body.questionnaire-list main { width: min(100%,920px);height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:none;display: block; padding-top: max(32px,env(safe-area-inset-top)); }
 body.questionnaire-list header { margin-bottom: 24px; gap: 8px; }
 body.questionnaire-list h1 { font-size: 22px; font-weight: 600; }
 #questionnaires { display: grid; gap: 12px; }
