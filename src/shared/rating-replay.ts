@@ -4,8 +4,10 @@ import type {TrialResult} from './run-replay.js';
 export class RatingReplay {
   readonly scheduler:Scheduler;readonly results=new Map<string,TrialResult>();
   private last=-Infinity;private origin:number|undefined;private closed=false;private intent:string|null=null;
+  private intentAt=0;private familiarityValue:number|null=null;private familiarityInputTime:number|null=null;
   private earliest:number;
   readonly changes:{instance_id:string;item:number;value:number;at:number}[]=[];
+  readonly familiarityChanges:{instance_id:string;value:number;at:number}[]=[];
   constructor(readonly plan:GroupPlan){
     if(!plan.rating||plan.repeats!==0||plan.choices.length!==plan.rating.labels.length)throw new Error('INVALID_RATING_PLAN');
     this.scheduler=new Scheduler(plan.roots,0,plan.start,plan.seed,plan.budget);this.earliest=plan.start;
@@ -23,24 +25,39 @@ export class RatingReplay {
     }
     if(!e||r.instance_id!==id)throw new Error('RATING_TRIAL_ORDER_MISMATCH');
     if(r.type==='RATING_INTENT'){
-      if(this.intent||result)throw new Error('DUPLICATE_RATING_INTENT');this.intent=id!;s.executions.set(id!,'STAGED');return;
+      if(this.intent||result)throw new Error('DUPLICATE_RATING_INTENT');this.intent=id!;this.intentAt=r.at;this.familiarityValue=null;this.familiarityInputTime=null;s.executions.set(id!,'STAGED');return;
     }
     if(r.type==='ONSET'||r.type==='RATING'){
       if(typeof r.draw_time!=='number'||!Number.isFinite(r.draw_time)||r.draw_time<r.at||r.draw_time-r.at>this.plan.budget.activate_ms)throw new Error('INVALID_DRAW_OBSERVATION');
       if(typeof r.raf_time!=='number'||!Number.isFinite(r.raf_time)||r.raf_time>r.at+1||r.at-r.raf_time>this.plan.budget.long_frame_ms)throw new Error('INVALID_FRAME_OBSERVATION');
     }
     if(r.type==='ONSET'){
-      if(this.intent!==id||result||r.at<this.earliest)throw new Error('INVALID_RATING_ONSET');
+      if(this.intent!==id||result||r.at<this.earliest||(this.plan.rating!.familiarity&&this.plan.rating!.familiarity.position!=='before-age'&&this.familiarityValue===null))throw new Error('INVALID_RATING_ONSET');
       this.intent=null;s.observed.push(root!.root_id);s.executions.set(id!,'ONSET_OBSERVED');
-      this.results.set(id!,{instance_id:id!,root_id:root!.root_id,number:1,onset:r.draw_time!,clear:null,end:null,answer:null,input_time:null,correct:null,rt_ms:null,software_quality:'SOFTWARE_ONLY',actual_gap:null,...(root!.asset_id?{asset_id:root!.asset_id}:{}),...(root!.category?{category:root!.category}:{})});return;
+      this.results.set(id!,{instance_id:id!,root_id:root!.root_id,number:1,onset:r.draw_time!,clear:null,end:null,answer:null,input_time:null,correct:null,rt_ms:null,software_quality:'SOFTWARE_ONLY',actual_gap:null,...(this.familiarityValue!==null?{familiarity:this.familiarityValue,familiarity_label:this.plan.rating!.familiarity!.labels[this.familiarityValue-1]!,familiarity_input_time:this.familiarityInputTime!,familiarity_rt_ms:this.familiarityInputTime!-this.intentAt}:{}),...(root!.asset_id?{asset_id:root!.asset_id}:{}),...(root!.category?{category:root!.category}:{})});return;
+    }
+    if(r.type==='RATING_FAMILIARITY_CHANGE'||r.type==='RATING_FAMILIARITY'){
+      const f=this.plan.rating!.familiarity,after=f?.position==='before-age',start=after?result?.onset:this.intentAt;
+      const prior=this.changes.filter(c=>c.instance_id===id),count=this.plan.rating!.items?.length??1;
+      const validPhase=after?!!result&&result.clear===null&&result.familiarity===undefined&&Array.from({length:count},(_,i)=>prior.some(c=>c.item===i)).every(Boolean):this.intent===id&&!result;
+      if(!f||!validPhase||start===undefined||!Number.isInteger(r.value)||r.value!<1||r.value!>f.labels.length||r.at<start)throw new Error('INVALID_RATING_FAMILIARITY');
+      if(r.type==='RATING_FAMILIARITY_CHANGE'){this.familiarityChanges.push({instance_id:id!,value:r.value!,at:r.at});return;}
+      const inputTime=r.input_time,changes=this.familiarityChanges.filter(c=>c.instance_id===id);
+      if(typeof inputTime!=='number'||!Number.isFinite(inputTime)||inputTime<start||inputTime>r.at)throw new Error('INVALID_RATING_FAMILIARITY');
+      if(changes.length&&(!changes.some(c=>c.value===r.value&&c.at<=inputTime)||changes.at(-1)!.at>inputTime))throw new Error('FAMILIARITY_SELECTION_MISMATCH');
+      if(after&&!changes.length)throw new Error('FAMILIARITY_SELECTION_MISMATCH');
+      this.familiarityValue=r.value!;this.familiarityInputTime=inputTime;
+      if(after)Object.assign(result!,{familiarity:r.value!,familiarity_label:f.labels[r.value!-1]!,familiarity_input_time:inputTime,familiarity_rt_ms:inputTime-result!.onset});
+      return;
     }
     if(r.type==='RATING_CHANGE'){
       const item=r.item??0,count=this.plan.rating!.items?.length??1;
-      if(!result||result.clear!==null||!Number.isInteger(item)||item<0||item>=count||!Number.isInteger(r.value)||r.value!<1||r.value!>this.plan.choices.length||r.at<result.onset)throw new Error('INVALID_RATING_CHANGE');
+      if(!result||result.clear!==null||(this.plan.rating!.familiarity?.position==='before-age'&&result.familiarity!==undefined)||!Number.isInteger(item)||item<0||item>=count||!Number.isInteger(r.value)||r.value!<1||r.value!>this.plan.choices.length||r.at<result.onset)throw new Error('INVALID_RATING_CHANGE');
       this.changes.push({instance_id:id!,item,value:r.value!,at:r.at});return;
     }
     if(r.type==='RATING'){
       const coreCount=this.plan.rating!.items?.length??1,count=coreCount+(this.plan.rating!.age_prompt?1:0),values=r.values??(r.value===undefined?undefined:[r.value]);
+      if(this.plan.rating!.familiarity&&result?.familiarity===undefined)throw new Error('MISSING_RATING_FAMILIARITY');
       if(!result||result.clear!==null||!values||values.length!==count||values.slice(0,coreCount).some(v=>!Number.isInteger(v)||v<1||v>this.plan.choices.length)||(this.plan.rating!.age_prompt!==undefined&&(values.at(-1)!<this.plan.rating!.age_min!||values.at(-1)!>this.plan.rating!.age_max!||!Number.isInteger(values.at(-1))))||typeof r.input_time!=='number'||!Number.isFinite(r.input_time)||r.input_time<result.onset||r.input_time>r.at)throw new Error('INVALID_RATING_ANSWER');
       const prior=this.changes.filter(c=>c.instance_id===id);
       if(prior.length)for(let i=0;i<coreCount;i++){const last=prior.filter(c=>c.item===i).at(-1);if(!last||last.value!==values[i]||last.at>r.input_time)throw new Error('RATING_SELECTION_MISMATCH');}

@@ -1,9 +1,10 @@
 import {el} from './dom.js';
 import type {InteractionBatch,InteractionSample} from '../shared/interaction.js';
+import {resolvePhoto,type PhotoIdentity} from '../shared/photo-identity.js';
 import {isReplayScreen} from '../shared/replay-recording.js';
 export type ReplayItem={time:number;sample:InteractionBatch['samples'][number]};
 const actionLabels:Record<string,string>={screen:'页面快照',pointerdown:'按下指针',pointerup:'松开指针',pointermove:'移动指针',pointercancel:'取消指针',keydown:'按下按键',keyup:'松开按键',input:'输入',change:'更改',beforeinput:'输入前',compositionstart:'开始组字',compositionend:'完成组字',focus:'获得焦点',blur:'离开焦点',scroll:'滚动',state:'浏览器状态'};
-export function mountReplayPlayer(options:{items:ReplayItem[];canvas:HTMLCanvasElement;controls:HTMLElement;status:HTMLElement;details:HTMLElement;assetURL:(id:string)=>string}){
+export function mountReplayPlayer(options:{photos?:PhotoIdentity[]|undefined;items:ReplayItem[];canvas:HTMLCanvasElement;controls:HTMLElement;status:HTMLElement;details:HTMLElement;assetURL:(id:string)=>string}){
   const {items,canvas,controls,status,details,assetURL}=options,ctx=canvas.getContext('2d')!,images=new Map<string,HTMLImageElement>(),screenAt:number[]=[];
   let current=0,playing=false,last=0,clock=0,frame=0,disposed=false,screen=-1;
   items.sort((a,b)=>a.time-b.time);for(const [i,item]of items.entries()){if(isReplayScreen(item.sample))screen=i;screenAt.push(screen);}
@@ -36,7 +37,7 @@ export function mountReplayPlayer(options:{items:ReplayItem[];canvas:HTMLCanvasE
       const action=item.sample as InteractionSample;if(Number.isFinite(action.x)&&Number.isFinite(action.y)){ctx.fillStyle='#d23b24';ctx.beginPath();ctx.arc(action.x!,action.y!,8,0,Math.PI*2);ctx.fill();}
     }
     slider.value=String(current);const elapsed=((item.time-items[0]!.time)/1000).toFixed(3);slider.setAttribute('aria-valuetext',`动作 ${current+1}/${items.length}，${elapsed} 秒`);
-    status.textContent=`动作 ${current+1}/${items.length} · ${elapsed} 秒 · ${actionLabels[item.sample.type]??item.sample.type}`;details.textContent=JSON.stringify(item.sample,null,2);update();
+    const photo=resolvePhoto(options.photos??[],item.sample.context as Record<string,unknown>);status.textContent=`动作 ${current+1}/${items.length} · ${elapsed} 秒 · ${actionLabels[item.sample.type]??item.sample.type}${photo?` · 照片 ${photo.photo_filename??photo.photo_id}（第 ${photo.photo_order} 张）`:''}`;details.textContent=JSON.stringify({...item.sample,...(photo?{photo}: {})},null,2);update();
   }
   function tick(now:number){if(!playing||disposed)return;clock+=now-last;last=now;const before=current;while(current<items.length-1&&items[current+1]!.time-items[0]!.time<=clock)current++;if(before!==current)draw();if(current===items.length-1)stop();else frame=requestAnimationFrame(tick);}
   play.onclick=()=>{if(playing){stop();return;}if(!items.length||screen<0)return;if(current===items.length-1)current=0;playing=true;play.textContent='暂停';clock=items[current]!.time-items[0]!.time;last=performance.now();draw();frame=requestAnimationFrame(tick);};

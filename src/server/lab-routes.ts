@@ -143,7 +143,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     if(job.kind==='EXPORT'&&params.file!=='manifest.json'){const manifest=JSON.parse(job.result??'{}') as {csv_hash?:string;files?:Record<string,unknown>};if(!(params.file==='data.csv'?manifest.csv_hash:manifest.files?.[params.file]))throw new ContractError('EXPORT_FILE_NOT_FOUND',404);}
     const study=job.kind==='EXPORT'?await admin(request,'study.get',{study_id:id(job.study_id)}) as {title:string}:null;
     const file=await safeDownload(root,params.job,params.file,job.kind==='EXPORT'?'research-exports':'research-backups');
-    const name=study?downloadName(params.file==='preparations.csv'?`${study.title}_设备与准备记录`:study.title,params.file.endsWith('.csv')?'csv':'json'):params.file;
+    const name=study?downloadName(params.file==='preparations.csv'?`${study.title}_设备与准备记录`:params.file==='ratings.csv'?`${study.title}_照片评分`:study.title,params.file.endsWith('.csv')?'csv':'json'):params.file;
     reply.type(params.file.endsWith('.csv')?'text/csv; charset=utf-8':params.file.endsWith('.json')?'application/json; charset=utf-8':'application/octet-stream');
     reply.header('Content-Disposition',downloadDisposition(name)).header('Cache-Control','private, no-store, no-transform');return reply.send(file.createReadStream());
   });

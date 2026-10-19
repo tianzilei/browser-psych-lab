@@ -1,0 +1,11 @@
+import {test,expect} from '@playwright/test';
+import {compileQuestionnaire} from '../../src/shared/questionnaire-json.js';
+for(const viewport of [{width:704,height:755},{width:390,height:660},{width:320,height:480}])test(`simulation runs every rating and supplement with the photo visible at ${viewport.width}x${viewport.height}`,async({page})=>{
+  await page.setViewportSize(viewport);const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET')writes.push(r.url());});await page.goto('/simulate.html');
+  await page.route('**/api/lab/assets/doctor',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="413" height="626"><rect width="413" height="626" fill="#587a91"/></svg>'}));
+  const items=['可信度','专业能力','亲切友善','外貌吸引力','就诊意愿'],fam='补充熟悉度',age='估计医生年龄';
+  const protocol=compileQuestionnaire({schema:'questionnaire-v1',title:'模拟评分',orientation:'portrait',pages:[],groups:[{id:'ratings',title:'模拟评分',choices:['1','2','3','4','5','6','7','8','9'],repeats:0,rating:{prompt:'评分',items,labels:['完全不','非常少','较少','有一点','一般','较多','很多','几乎完全','非常'],familiarity:{prompt:fam,labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age'},age_prompt:age,age_min:0,age_max:120},trials:[{root_id:'D1',asset_id:'doctor',correct:null,image_ms:1,isi_ms:3000}]}]});
+  await page.evaluate(protocol=>window.postMessage({type:'lab-simulation',protocol},location.origin),protocol);
+  for(const prompt of [...items,fam]){const range=page.getByRole('slider',{name:prompt,exact:true}),next=page.getByRole('button',{name:'下一题',exact:true});await expect(range).toBeVisible();await expect(next).toBeDisabled();await expect(page.locator('img')).toBeVisible();await range.press('End');await next.click();}
+  const ageInput=page.getByRole('textbox',{name:age,exact:true}),submit=page.getByRole('button',{name:'提交评分',exact:true});await expect(ageInput).toBeVisible();await expect(submit).toBeDisabled();await ageInput.press('4');await ageInput.press('0');await expect(page.locator('img')).toBeVisible();await submit.click();await expect(page.locator('img')).toBeHidden();await expect(page.locator('#status')).toContainText('模拟完成',{timeout:5000});expect(writes).toEqual([]);
+});

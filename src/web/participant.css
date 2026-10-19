@@ -147,3 +147,7 @@ body.typing .reading-text { visibility: hidden; }
   .adaptive-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .adaptive-card:has(input[type=text]) { grid-column: 1 / -1; }
 }
+.survey-text-control { display:grid;align-content:center;gap:8px;min-width:0; }
+.numeric-keypad { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px; }
+.numeric-keypad button { min-height:44px;padding:4px;font-size:18px; }
+.numeric-keypad button:last-child { font-size:12px; }

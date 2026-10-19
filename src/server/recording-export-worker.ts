@@ -11,6 +11,7 @@ import {decodeRaw} from './evidence-storage.js';
 import {fileHash,assetPath,writeDurable} from './private-files.js';
 import {isReplayScreen} from '../shared/replay-recording.js';
 import {offlineReplayDocument} from './offline-replay-document.js';
+import {recordingPhotos} from './recording-photos.js';
 
 const config=workerData as {database:string;session:string;path:string;format:'json'|'html';root:string;playerPath:string};
 async function run(){
@@ -24,7 +25,7 @@ async function run(){
     let bytes=0,records=0;const source=createHash('sha256'),assets=new Set<string>();
     async function emit(text:string){bytes+=Buffer.byteLength(text);if(bytes>(config.format==='html'?128:1024)*1024*1024)throw new Error('TRAJECTORY_EXPORT_TOO_LARGE');if(!gzip.write(text))await once(gzip,'drain');}
     try{
-      await emit(JSON.stringify({schema:'session-trajectory-v1',...session,exported_at:new Date().toISOString(),raw_encoding:'exact original UTF-8 in raw_utf8; SHA-256 applies to decoded raw_utf8 bytes',evidence_policy:'All retained d-ui scopes for this session, including noncanonical or rejected evidence; no credentials or other sessions'}).slice(0,-1)+',"events":[');
+      await emit(JSON.stringify({schema:'session-trajectory-v1',...session,photos:recordingPhotos(db,config.session),photo_identity_policy:'Photos are mapped from this session permit plans and immutable asset metadata; join each sample context.instance_id/asset_id to photos; original raw_utf8 bytes are unchanged.',exported_at:new Date().toISOString(),raw_encoding:'exact original UTF-8 in raw_utf8; SHA-256 applies to decoded raw_utf8 bytes',evidence_policy:'All retained d-ui scopes for this session, including noncanonical or rejected evidence; no credentials or other sessions'}).slice(0,-1)+',"events":[');
       const rows=db.prepare(`SELECT r.event_id,r.hash,r.scope,r.receipt_id,r.received_at,r.raw,d.disposition,d.version AS disposition_version,d.reason,CASE WHEN e.hash=r.hash THEN 1 ELSE 0 END AS canonical
         FROM lab_raw r JOIN lab_dispositions d USING(receipt_id) LEFT JOIN lab_events e ON e.session_id=r.session_id AND e.event_id=r.event_id WHERE r.session_id=? AND r.scope LIKE 'd-ui-%'
         AND d.version=(SELECT max(v.version) FROM lab_dispositions v WHERE v.receipt_id=r.receipt_id) ORDER BY r.rowid`);

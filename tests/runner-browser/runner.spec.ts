@@ -1,5 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -63,7 +63,7 @@ async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<t
   await page.goto(`/run.html?version=${version.version_id}`);
   await expect(page.getByRole('button',{name:'开始本组'})).toBeVisible();
   return {view:()=>call('view'),records:()=>db.prepare("SELECT envelope FROM lab_event_evidence WHERE session_id=? AND kind='GROUP_RECORD' ORDER BY sequence").all(sid).map((e:any)=>JSON.parse(e.envelope).payload.record),
-    requests:()=>groupCalls,downloads:()=>assetCalls,scopeEvents:(scope:string)=>db.prepare('SELECT envelope FROM lab_event_evidence WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,scope).map((row:any)=>JSON.parse(row.envelope)),close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+    interactions:()=>db.prepare("SELECT envelope FROM lab_event_evidence WHERE session_id=? AND kind='INPUT_DIAGNOSTIC' ORDER BY sequence").all(sid).flatMap((row:any)=>JSON.parse(row.envelope).payload.interaction?.samples??[]),requests:()=>groupCalls,downloads:()=>assetCalls,scopeEvents:(scope:string)=>db.prepare('SELECT envelope FROM lab_event_evidence WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,scope).map((row:any)=>JSON.parse(row.envelope)),close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
 }
 
 test('image click visibly confirms first answer; right click, repeated key, and changed second answer are excluded',async({page})=>{
@@ -118,6 +118,8 @@ test('self-paced rating requires selection and submit, clears image, then waits 
     await chooseRating(4);await submit.tap();await expect(page.locator('#done')).toBeVisible({timeout:12000});
     const permit=f.view().permit,records=f.records();expect(permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);
     expect(records.filter((r:any)=>r.type==='RATING').map((r:any)=>r.values)).toEqual([[2],[4]]);
+    for(const r of records.filter((r:any)=>r.instance_id)){expect(r.photo_id).toBe(r.instance_id.split(':')[0]);expect(r.photo_filename).toBe(r.photo_id==='first'?'test.png':'second.png');expect(r.group_id).toBe('ratings');}
+    const actions=f.interactions().filter((s:any)=>s.context?.phase==='rating'&&s.context?.asset_id);expect(actions.length).toBeGreaterThan(0);for(const s of actions){expect(s.context.photo_filename).toBe(s.context.photo_id==='first'?'test.png':'second.png');expect(s.context.stimulus_visible).toBe(true);}
     const replay=new RunReplay(permit.plan);for(const r of records)replay.apply(r);const results=replay.finish();
     expect(results).toHaveLength(2);for(const r of results)expect(r.isi_ms).toBeGreaterThanOrEqual(3000);
     expect(results[1]!.onset-results[0]!.clear!).toBeGreaterThanOrEqual(3000);
@@ -207,6 +209,34 @@ test('a failed group seal removes task input before the retry interface is used'
   }finally{f.close();}
 });
 
+for(const viewport of [{width:704,height:755},{width:390,height:660},{width:320,height:480}])test(`rating borders, feedback and age keypad fit without moving the portrait at ${viewport.width}x${viewport.height}`,async({page})=>{
+ // Production links shared participant CSS after the runner CSS.
+ await page.addInitScript(css=>window.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent=css;document.head.append(style);}),readFileSync(new URL('../../src/web/participant.css',import.meta.url),'utf8'));
+ const prompts=['您觉得这位医生看起来有多值得信任？','您觉得这位医生的专业能力如何？','如果您需要看病，您有多愿意选择这位医生为您诊治？'];
+ const f=await start(page,true,true,p=>{p.groups[0]!.rating!.items=prompts;},viewport);
+ const check=async()=>{
+  const issues=await page.evaluate(()=>{
+   const issues:string[]=[],footer=document.querySelector('.runner-start')!.getBoundingClientRect();
+   for(const node of document.querySelectorAll('main button,main input,.rating-axis,.axis-bottom output')){
+    if(getComputedStyle(node).visibility==='hidden')continue;
+    const r=node.getBoundingClientRect();if(!r.width||!r.height)continue;
+    if(r.left<0||r.top<0||r.right>innerWidth+1||r.bottom>innerHeight+1)issues.push(`clipped ${node.className}`);
+    if(node.classList.contains('rating-axis')&&r.bottom>footer.top-4)issues.push('rating border overlaps submit');
+    if(node.tagName==='OUTPUT'&&r.bottom>node.closest('.rating-axis')!.getBoundingClientRect().bottom)issues.push('feedback outside rating border');
+   }
+   return issues;
+  });expect(issues).toEqual([]);
+ };
+ try{
+  const portrait=await page.locator('#stimulus').boundingBox();await check();
+  await page.getByRole('button',{name:'开始本组',exact:true}).click();
+  for(const prompt of prompts){const slider=page.getByRole('slider',{name:prompt,exact:true});await expect(slider).toBeVisible();await check();await slider.press('End');await check();expect(await page.locator('#stimulus').boundingBox()).toEqual(portrait);await page.getByRole('button',{name:'下一题',exact:true}).click();}
+  await expect(page.getByRole('textbox',{name:'你的年龄是？'})).toBeVisible();await check();expect(await page.locator('#stimulus').boundingBox()).toEqual(portrait);
+  await page.getByRole('button',{name:'1',exact:true}).click();await page.getByRole('button',{name:'8',exact:true}).click();await page.getByRole('button',{name:'提交评分',exact:true}).click();
+  await expect(page.locator('#done')).toBeVisible({timeout:10000});expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);
+ }finally{f.close();}
+});
+
 test('fractional Android WebView slider rectangles pass admission without changing recorded geometry',async({browser})=>{
  const context=await browser.newContext({viewport:{width:400,height:779},deviceScaleFactor:2.7,isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Chrome/150.0.0.0 Mobile Safari/537.36 MicroMessenger/8.0.79'}),page=await context.newPage();
  await context.addInitScript(()=>{const original=Element.prototype.getBoundingClientRect;Element.prototype.getBoundingClientRect=function(){const r=original.call(this);return this.matches('.axis-input')?new DOMRect(r.x,r.y,r.width,r.height-0.000003814697265625):r;};});
@@ -218,4 +248,16 @@ test('fractional Android WebView slider rectangles pass admission without changi
   const age=page.getByRole('textbox',{name:'你的年龄是？'});await age.press('1');await age.press('8');await page.getByRole('button',{name:'提交评分',exact:true}).tap();
   await expect(page.locator('#done')).toBeVisible({timeout:10000});expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toHaveLength(0);expect(f.records().find((r:any)=>r.type==='RATING').values).toEqual([9,18]);
  }finally{await context.close();f.close();}
+});
+
+for(const viewport of [{width:704,height:755},{width:390,height:660},{width:320,height:480}])test(`five impressions then supplementary familiarity then age save without moving the photo at ${viewport.width}x${viewport.height}`,async({page})=>{
+  const items=['可信度','专业能力','亲切友善','外貌吸引力','就诊意愿'],fam='补充问题：在参加本研究前，您对这位医生有多熟悉？';
+  const f=await start(page,true,true,p=>{const r=p.groups[0]!.rating!;r.items=items;r.familiarity={prompt:fam,labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age'};},viewport),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  try{
+    await page.getByRole('button',{name:'开始本组'}).click();await expect(page.getByRole('slider',{name:items[0]!,exact:true})).toBeVisible();const photo=await page.locator('#stimulus').boundingBox(),next=page.getByRole('button',{name:'下一题',exact:true});
+    for(const prompt of [...items,fam]){const range=page.getByRole('slider',{name:prompt,exact:true});await expect(range).toBeVisible();await expect(next).toBeDisabled();await expect(page.locator('#stimulus')).toBeVisible();expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);
+      const axis=await range.locator('xpath=../..').boundingBox(),footer=await next.boundingBox();expect(axis!.y+axis!.height).toBeLessThanOrEqual(footer!.y);expect(footer!.y+footer!.height).toBeLessThanOrEqual(viewport.height+1);await range.press('End');await next.click();}
+    const age=page.getByRole('textbox',{name:'你的年龄是？',exact:true}),submit=page.getByRole('button',{name:'提交评分',exact:true});await expect(age).toBeVisible();await expect(submit).toBeDisabled();expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);await age.press('4');await age.press('0');await submit.click();await expect(page.locator('#done')).toBeVisible({timeout:10000});
+    const records=f.records(),familiarity=records.find((r:any)=>r.type==='RATING_FAMILIARITY');expect(familiarity.value).toBe(6);expect(familiarity.at).toBeGreaterThanOrEqual(Math.max(...records.filter((r:any)=>r.type==='RATING_CHANGE').map((r:any)=>r.at)));expect(records.find((r:any)=>r.type==='RATING').values).toEqual([9,9,9,9,9,40]);expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(errors).toEqual([]);
+  }finally{f.close();}
 });

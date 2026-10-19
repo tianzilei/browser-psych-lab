@@ -19,6 +19,7 @@ import {prepareReplayIndex,indexRecording} from './replay-index.js';
 import {parsePreparationReport} from '../shared/preparation-report.js';
 import {validateSnapshotBudgets} from '../shared/snapshot-budget.js';
 import {prepareScopeUsage} from './scope-usage.js';
+import {recordingPhotos} from './recording-photos.js';
 interface SessionRow { session_id: string; study_id: string; version_id: string; credential_hash: string; admission_id: string;
  state: LabSession['state']; writer_id: string | null; writer_epoch: number; lease_until: number; page_index: number; group_index: number;
  answers: string; path: string; allocation_id: string | null; completion: string | null }
@@ -346,7 +347,7 @@ export class LabStore {
         const row=this.get<{session_id:string;study_id:string;version_id:string;title:string;batches:number;samples:number;screens:number;first_at:number|null;last_at:number|null}>(`SELECT s.session_id,s.study_id,s.version_id,t.title,
           coalesce(i.batches,0) AS batches,coalesce(i.samples,0) AS samples,coalesce(i.screens,0) AS screens,i.first_at,i.last_at
           FROM lab_sessions s JOIN lab_studies t USING(study_id) LEFT JOIN lab_replay_index i USING(session_id) WHERE s.session_id=?`,id(d.session_id));
-        if(!row)throw new ContractError('SESSION_NOT_FOUND',404);return {...row,replayable:row.screens>0};
+        if(!row)throw new ContractError('SESSION_NOT_FOUND',404);return {...row,replayable:row.screens>0,photos:recordingPhotos(this.db,id(d.session_id))};
       }
       case 'session.detail': {
         const sid=id(d.session_id);if(!this.get('SELECT 1 FROM lab_sessions WHERE session_id=?',sid))throw new ContractError('SESSION_NOT_FOUND',404);

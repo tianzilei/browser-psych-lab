@@ -1,9 +1,11 @@
-html:has(body.runner-layout),body.runner-layout { height: 100%; overflow: hidden; }
-body.runner-layout main { height: var(--viewport-height,100dvh); min-height: 0; overflow: hidden; }
+html:has(.runner-stage),body:has(.runner-stage) { height: 100%; overflow: hidden; }
+body:has(.runner-stage) main { height: var(--viewport-height,100dvh); min-height: 0; overflow: hidden; }
 /* Measure once before permit issuance; runtime copy never changes geometry. */
 body.runner-layout #status { display: block; height: 3.6em; overflow: hidden; }
 .runner-stage { min-height: 0; min-width: 0; width: min(100%,960px); height: 100%; justify-self: center; display: grid; grid-template-rows: minmax(0,1fr) auto minmax(48px,auto); gap: 12px; }
-.canvas-slot { display: grid; place-items: center; min-height: 0; min-width: 0; overflow: hidden; }
+.canvas-slot { display: grid; place-items: center; min-height: 0; min-width: 0; overflow: hidden; contain: size; }
+.canvas-slot:has(img) { grid-template-rows: minmax(0,1fr) auto; }
+.canvas-slot img { min-height: 0; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
 #stimulus { max-width: 100%; max-height: 100%; }
 .response-buttons { display: grid; grid-template-columns: repeat(var(--response-columns,2),minmax(0,1fr)); gap: 8px; width: 100%; touch-action: none; }
 .response-buttons button { min-width: 0; min-height: 56px; user-select: none; touch-action: none; }
@@ -13,7 +15,7 @@ body.runner-layout #status { display: block; height: 3.6em; overflow: hidden; }
 body.running #stimulus,
 body.running .response-buttons button { transition: none !important; animation: none !important; }
 body.rating-layout #status { height: 2.4em; }
-.rating-stage { gap: 8px; grid-template-rows: minmax(0,1fr) 190px 48px; }
+.rating-stage { gap: 8px; grid-template-rows: minmax(0,1fr) auto 48px; }
 .rating-stage .canvas-slot { align-items: start; }
 .rating-controls { display: grid; gap: 6px; }
 .rating-controls p { font-size: 16px; }
@@ -22,13 +24,13 @@ body.rating-layout #status { height: 2.4em; }
 .rating-age { width: 100%; min-height: 48px; font: inherit; padding: 8px; }
 .rating-stage .runner-start { position: relative; height: 48px; display: grid; grid-template-rows: 48px; }
 .rating-stage .runner-start button { width: 100%; }
-.rating-controls { position: relative; display: grid; grid-template-rows: 36px 146px; gap: 8px; min-height: 0; }
+.rating-controls { position: relative; display: grid; grid-template-rows: minmax(2.9em,auto) minmax(128px,auto); gap: 8px; min-height: 0; }
 .rating-controls > p { grid-row: 1; }
-.rating-controls > .rating-axis,.rating-age-row { grid-row: 2; grid-column: 1; }
+.rating-controls > .rating-axis,.rating-controls > .familiarity-axis,.rating-age-row { grid-row: 2; grid-column: 1; }
 .rating-start { position: absolute; inset: 0; }
 .rating-ticks { display: flex; justify-content: space-between; margin: -6px 11px 0; font-size: 12px; }
 .rating-ticks span[data-selected=true] { font-weight: 700; }
-.rating-axis { min-height: 0; padding: 8px 12px; border-radius: 12px; }
+.rating-controls .axis-control { min-height: 0; padding: 6px 12px; border-radius: 12px; align-self: stretch; grid-template-rows: auto 44px auto minmax(1.45em,1fr); gap: 4px; }
 .rating-axis[hidden] { display: none !important; }
 .rating-geometry-reserve { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .rating-age-row { display: grid; gap: 6px; min-height: 56px; }
@@ -42,3 +44,13 @@ body.rating-layout #status { height: 2.4em; }
 .rating-age-entry input { height: 44px; min-height: 44px; }
 .rating-age-hint { max-width: 100px; font-size: 12px; text-align: right; }
 .rating-age-keypad button:last-child { font-size: 12px; }
+.simulation-image-nav > p { grid-column: 1 / -1; }
+@media (max-height: 600px) {
+  body.rating-layout main { padding: 4px var(--page-inline) calc(4px + var(--safe-bottom)); gap: 4px; }
+  body.rating-layout header { gap: 2px; }
+  body.rating-layout #title { font-size: 15px; }
+  body.rating-layout #status { height: 1.4em; }
+  .rating-stage { gap: 4px; }
+  .rating-controls { grid-template-rows: minmax(2.6em,auto) minmax(128px,auto); gap: 2px; }
+  .rating-controls > p { font-size: 14px; line-height: 1.3; }
+}

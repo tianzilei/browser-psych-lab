@@ -36,7 +36,7 @@ export function answerLayout(versions:{version_id:string;protocol:Protocol}[]){
   for(const field of fields){columns.push(field.value_column,field.state_column);if(field.label_column)columns.push(field.label_column);if(field.json_column)columns.push(field.json_column);}
   return {columns,fields,byKey};
 }
-export const trajectoryColumns=['snapshot_id','study_id','session_id','version_id','session_state','event_id','scope','sequence','sample_index','writer_epoch','clock_epoch','event_kind','disposition','reason','received_at','event_time_ms','time_origin','clock_origin','at','event_type','page_id','question_id','target','x','y','key','code','value','payload_json'] as const;
+export const trajectoryColumns=['snapshot_id','study_id','session_id','version_id','session_state','event_id','scope','sequence','sample_index','writer_epoch','clock_epoch','event_kind','disposition','reason','received_at','event_time_ms','time_origin','clock_origin','at','event_type','page_id','question_id','group_id','instance_id','photo_order','photo_id','photo_filename','photo_path','photo_category','asset_id','photo_hash','target','x','y','key','code','value','payload_json'] as const;
 export function csvRow(columns:readonly string[],row:Record<string,unknown>):string {
   return columns.map(key=>csvCell(row[key])).join(',')+'\r\n';
 }

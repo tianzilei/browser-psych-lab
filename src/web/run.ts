@@ -61,7 +61,7 @@ async function prepare(){
   const canvas=el('canvas'),buttons=group.choices.map(c=>el('button',c));canvas.id='stimulus';const controls=el('div',undefined,'response-buttons');controls.append(...buttons);
   document.body.classList.add('runner-layout');window.scrollTo(0,0);
   const stage=el('div',undefined,'runner-stage'),slot=el('div',undefined,'canvas-slot'),footer=el('div',undefined,'runner-start');slot.append(canvas);stage.append(slot,controls,footer);content.replaceChildren(stage);preventTaskGestures(stage);showResponse(buttons,null);controls.style.setProperty('--response-columns',String(Math.min(buttons.length,Math.max(2,Math.floor(controls.clientWidth/80)))));for(const b of buttons)b.disabled=true;
-  const rating=group.rating?ratingControls(group.rating.items??[group.rating.prompt],group.rating.labels,buttons,footer,group.rating.age_prompt,group.rating.age_min,group.rating.age_max):undefined;
+  const rating=group.rating?ratingControls(group.rating,footer):undefined;
   if(rating){stage.classList.add('rating-stage');controls.replaceWith(rating.controls);document.body.classList.add('rating-layout');}
   const measuredGeometry=()=>{const g=geometry(canvas,buttons);if(rating){const r=rating.ranges[0]!.getBoundingClientRect();g.buttons=group.choices.map((choice,i)=>({choice,x:r.x+r.width*i/group.choices.length,y:r.y,width:r.width/group.choices.length,height:r.height}));}return g;};
   const layout=innerWidth>innerHeight?'landscape':'portrait',min=layout==='portrait'?p.layout.portrait_min_width:p.layout.landscape_min_width;
@@ -77,7 +77,7 @@ async function prepare(){
     const next=await reserve(preparing.signal);checkReady();if(next.variant_id!==reservation.variant_id)throw new Error('预留方案已变化，请重新准备。');reservation=next;
     const permit=await request<NonNullable<LabSession['permit']>>(api!.path('permit'),{request_id:uid(),...api!.fence(),reservation_id:reservation.reservation_id,readiness:{activity_policy:TASK_ACTIVITY_POLICY.id,...measured,...storage,download:images.download,layout,geometry:ready,assets:images.hashes,decoded_bytes:images.decoded_bytes,protocol_hash:api!.session.frozen.hash}},undefined,preparing.signal);
     permitIssued=true;checkReady();await api!.refresh();checkReady();
-    if(rating){start.style.visibility='hidden';await runRating(permit.plan,api!,canvas,buttons,rating.ranges,rating.axes,rating.submit,rating.heading,rating.age,images.byAsset,ctx,status,measuredGeometry,()=>{releaseImages?.();releaseImages=null;},returnToPage,content);}
+    if(rating){start.style.visibility='hidden';await runRating(permit.plan,api!,canvas,buttons,rating,images.byAsset,ctx,status,measuredGeometry,()=>{releaseImages?.();releaseImages=null;},returnToPage,content);}
     else {for(const b of buttons)b.disabled=false;await run(permit.plan,canvas,buttons,images.byAsset,ctx);}
   }catch(error){releaseImages?.();releaseImages=null;if(permitIssued||api?.session.permit?.state==='ISSUED')await api!.terminate('PREPARATION_INTERRUPTED',{message:String(error)}).catch(()=>{});failure(error);}},'primary');footer.append(start);if(rating)start.classList.add('rating-start');
   ready=measuredGeometry();

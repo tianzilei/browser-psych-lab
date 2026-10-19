@@ -22,8 +22,9 @@ export interface LabSession {
   reanswer?:{old_session_id:string;new_session_id:string;created_at:number}|null;
 }
 export interface SessionAdmissionStatus {status:'QUEUED'|'ACTIVE'|'EXPIRED'|'LEFT'|'ENDED';ticket_id:string|null;position:number;limit:number|null;poll_ms:number;lease_until:number;lease_remaining_ms:number;pinned:boolean}
-export interface RunRecord { type: 'OP' | 'COMMIT' | 'ONSET' | 'WINDOW' | 'END' | 'INPUT' | 'CORRECTION' | 'CLOSING' | 'ABORT' | 'RATING' | 'RATING_INTENT' | 'RATING_CHANGE';
+export interface RunRecord { type: 'OP' | 'COMMIT' | 'ONSET' | 'WINDOW' | 'END' | 'INPUT' | 'CORRECTION' | 'CLOSING' | 'ABORT' | 'RATING' | 'RATING_INTENT' | 'RATING_CHANGE' | 'RATING_FAMILIARITY_CHANGE' | 'RATING_FAMILIARITY';
   value?:number; item?:number; values?:number[];
+  asset_id?:string;photo_id?:string;photo_filename?:string|null;photo_path?:string|null;photo_category?:string|null;photo_order?:number;photo_hash?:string|null;group_id?:string;
   at: number; instance_id?: string; operation?: ScheduleAudit; op_id?: string; evidence?: string; answer?: string | null;
   input_time?: number; pointer_id?: number; reason?: string; root_id?: string; unresolved?: boolean;
   processed_watermark?: number; draw_time?: number;clock_origin?:number;raf_time?:number }

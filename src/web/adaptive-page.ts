@@ -1,6 +1,7 @@
 import {evaluate,copyAnswer,axisAnswers,answerMissing,inputMatchRegex,inputMatchMessage,type Page,type Answer,type Question} from '../shared/protocol.js';
 import {el} from './dom.js';
 import {scaleInput} from './scale-input.js';
+import {numericKeypad,usesNumericKeypad} from './numeric-keypad.js';
 
 type Answers=Record<string,Answer>;
 interface Options {
@@ -51,7 +52,7 @@ export function mountAdaptivePage(element:HTMLDivElement,page:Page,previous:Answ
       input.addEventListener('input',()=>save(q,input.value));input.addEventListener('change',()=>save(q,input.value));
       input.addEventListener('compositionstart',()=>{composing=true;});
       input.addEventListener('compositionend',()=>{composing=false;save(q,input.value);visibility();});
-      input.addEventListener('blur',requestLayout);node.append(input);
+      input.addEventListener('blur',requestLayout);node.append(usesNumericKeypad(q)?numericKeypad(input,q.max_length!,'手机号数字键盘'):input);
     }else if(q.type==='scale')node.append(scaleInput(q,answers[q.id],value=>save(q,value)));
     else if(q.type==='scales')for(const axis of q.axes!){
       const control=scaleInput({...axis,id:`${q.id}-${axis.id}`,required:q.required},axisAnswers(answers[q.id])[axis.id],value=>{

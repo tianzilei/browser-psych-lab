@@ -22,7 +22,8 @@ export interface TimingSpec {base: number; jitter: number}
 export interface TimingDefaults {stimulus_ms?: TimingSpec; isi_ms?: TimingSpec; feedback_ms?: TimingSpec}
 export interface Ordering {mode: 'fixed' | 'shuffle' | 'category' | 'balanced'; max_run?: number}
 export interface Feedback {correct: string; incorrect: string; miss: string; neutral: string}
-export interface Rating {prompt:string;labels:string[];items?:string[];age_prompt?:string;age_min?:number;age_max?:number}
+export interface Familiarity {prompt:string;labels:string[];position?:'before-age'}
+export interface Rating {prompt:string;labels:string[];items?:string[];age_prompt?:string;age_min?:number;age_max?:number;familiarity?:Familiarity}
 export interface Trial { root_id: string; asset_id?: string; text?: string; category?: string; image_ms: number; isi_ms: number; correct: string | null;
   timing?: TimingDefaults; timing_general?: (keyof TimingDefaults)[]; feedback_ms?: number }
 export interface Group { id: string; title: string; choices: string[]; repeats: number; trials: Trial[];
@@ -231,11 +232,15 @@ export function parseProtocol(value: unknown): Protocol {
       throw new ContractError('GROUP_TIME_BUDGET_EXCEEDED');
     const group:Group={ id: unique(g.id), title: text(g.title, TEXT_LIMITS.title), choices, repeats, trials };
     if(g.rating!==undefined){
-      const r=object(g.rating);fields(r,['prompt','labels','items','age_prompt','age_min','age_max']);const prompt=text(r.prompt,TEXT_LIMITS.question),labels=strings(r.labels,choices.length,choices.length),items=r.items===undefined?undefined:strings(r.items,1,20);
+      const r=object(g.rating);fields(r,['prompt','labels','items','age_prompt','age_min','age_max','familiarity']);const prompt=text(r.prompt,TEXT_LIMITS.question),labels=strings(r.labels,choices.length,choices.length),items=r.items===undefined?undefined:strings(r.items,1,20);
       const age_prompt=r.age_prompt===undefined?undefined:text(r.age_prompt,TEXT_LIMITS.question), age_min=r.age_min===undefined?0:number(r.age_min,0,120,true), age_max=r.age_max===undefined?120:number(r.age_max,0,120,true);
       if(age_min>age_max||(age_prompt===undefined&&(r.age_min!==undefined||r.age_max!==undefined))||(age_prompt!==undefined&&age_min===age_max))throw new ContractError('INVALID_RATING_AGE');
       if(!prompt.trim()||choices.some((c,i)=>c!==String(i+1))||repeats!==0||defaults||g.ordering!==undefined||g.response_keys!==undefined||g.feedback!==undefined||trials.some(t=>t.correct!==null||!t.asset_id||t.timing||t.feedback_ms||t.image_ms!==1)||new Set(trials.map(t=>t.asset_id)).size!==trials.length)throw new ContractError('INVALID_SELF_PACED_RATING');
-      group.rating={prompt,labels,...(items?{items}:{}),...(age_prompt?{age_prompt,age_min,age_max}:{})};
+      let familiarity:Familiarity|undefined;
+      if(r.familiarity!==undefined){const f=object(r.familiarity);fields(f,['prompt','labels','position']);const fp=text(f.prompt,TEXT_LIMITS.question),fl=strings(f.labels,2,11);
+        if(!fp.trim()||(f.position!==undefined&&f.position!=='before-age'))throw new ContractError('INVALID_RATING_FAMILIARITY');
+        familiarity={prompt:fp,labels:fl,...(f.position==='before-age'?{position:'before-age' as const}:{})};}
+      group.rating={prompt,labels,...(items?{items}:{}),...(age_prompt?{age_prompt,age_min,age_max}:{}),...(familiarity?{familiarity}:{})};
     }
     if(g.sampling!==undefined){if(!group.rating)throw new ContractError('SAMPLING_REQUIRES_RATING');group.sampling=parseSampling(g.sampling,trials);}
     if(defaults)group.timing_defaults=defaults;

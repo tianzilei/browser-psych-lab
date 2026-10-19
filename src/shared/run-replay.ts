@@ -3,6 +3,7 @@ import { stableJSON } from './protocol.js';
 import type { GroupPlan, InputRecord, RunRecord } from './lab-contract.js';
 import {RatingReplay} from './rating-replay.js';
 export interface TrialResult { instance_id:string;root_id:string;number:number;onset:number;clear:number|null;end:number|null;
+  familiarity?:number;familiarity_label?:string;familiarity_input_time?:number;familiarity_rt_ms?:number;
   rating?:number;rating_label?:string;ratings?:number[];rating_labels?:string[];asset_id?:string;category?:string;isi_ms?:number;first_rt_ms?:number;submit_rt_ms?:number;change_count?:number;
   rating_item_times?:{item:number;first_rt_ms:number|null;last_rt_ms:number|null;changes:number}[];
   answer:string|null;input_time:number|null;correct:boolean|null;rt_ms:number|null;software_quality:string;actual_gap:number|null }
