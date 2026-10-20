@@ -37,7 +37,7 @@ const activityTimer=setInterval(()=>{try{lab.expireTaskActivity();}catch{}},TASK
 const staleSweepIntervalMs=24*3600000;
 let lastStaleSweep=0;
 try{lastStaleSweep=Number((JSON.parse((db.prepare("SELECT value FROM lab_meta WHERE key='stale_sweep'").get() as {value:string}|undefined)?.value??'{}') as {at?:number}).at)||0;}catch{}
-const staleSweep=()=>{const now=Date.now();if(now-lastStaleSweep<staleSweepIntervalMs)return;lastStaleSweep=now;try{lab.expireStaleSessions();}catch(error){console.error('STALE_SWEEP_FAILED',error);}};
+const staleSweep=()=>{const now=Date.now();if(now-lastStaleSweep<staleSweepIntervalMs)return;try{lab.expireStaleSessions();lastStaleSweep=now;}catch(error){console.error('STALE_SWEEP_FAILED',error);}};
 staleSweep();
 const staleTimer=setInterval(staleSweep,3600000);
 port.postMessage({ ready: true });
