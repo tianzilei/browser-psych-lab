@@ -92,6 +92,7 @@ async function run(){
       }db.exec('COMMIT');return {generation_id:config.job,projections,algorithm:'run-replay-v1'};
     }
     if(config.kind==='BACKUP'){
+      const localOnly=config.config.local_only===true;
       const target=await privateRoot(join(config.root,'research-backups',config.job));const destination=join(target,'database.sqlite');
       phase('DATABASE_BACKUP');await db.backup(destination);await chmod(destination,0o600);const restored=new Database(destination,{readonly:true,fileMustExist:true});
       try{
@@ -108,11 +109,11 @@ async function run(){
         for(const runner of runners){const from=join(config.root,'research-assets','runners',runner.runner_hash),release=JSON.parse(await readFile(join(from,'release.json'),'utf8')) as {runnerHash:string;files:{path:string;hash:string}[]};
           if(release.runnerHash!==runner.runner_hash||digest(JSON.stringify(release.files))!==runner.runner_hash)throw new Error('BACKUP_RUNNER_IDENTITY_MISMATCH');for(const f of release.files){if(!/^[a-zA-Z0-9._/-]+$/.test(f.path)||f.path.split('/').some(p=>!p||p==='..')||await fileHash(join(from,f.path))!==f.hash)throw new Error('BACKUP_RUNNER_HASH_MISMATCH');}
           await copyTree(from,join(target,'runners',runner.runner_hash),files,`runners/${runner.runner_hash}`);}
-        const manifest={schema:'backup-v1',job_id:config.job,completed_at:new Date().toISOString(),database_view:'completed-online-backup',files,assets,software:'browser-psych-lab',restore_gate:'CLOSED',secret_configuration:'configure-separately'};
+        const manifest={schema:'backup-v1',job_id:config.job,completed_at:new Date().toISOString(),database_view:'completed-online-backup',backup_scope:localOnly?'local-only':'standard',files,assets,software:'browser-psych-lab',restore_gate:'CLOSED',secret_configuration:'configure-separately'};
         await writeDurable(join(target,'manifest.json'),stableJSON(manifest));await syncDirectory(target);
-        let independent=false;const independentRoot=String(config.config.independent_root??'');
+        let independent=false;const independentRoot=localOnly?'':String(config.config.independent_root??'');
         if(independentRoot){const independentPath=await privateRoot(independentRoot);if((await lstat(independentPath)).dev===(await lstat(config.root)).dev)throw new Error('BACKUP_TARGET_SAME_FILESYSTEM');phase('INDEPENDENT_COPY');const copied:{path:string;hash:string}[]=[];await copyTree(target,join(independentPath,config.job),copied,'backup');for(const file of copied){const local=file.path.slice('backup/'.length);if(await fileHash(join(target,local))!==file.hash)throw new Error('INDEPENDENT_COPY_MISMATCH');}independent=true;}
-        return {job_id:config.job,files:files.length,manifest_hash:await fileHash(join(target,'manifest.json')),independent,independent_target:independentRoot||null};
+        return {job_id:config.job,files:files.length,manifest_hash:await fileHash(join(target,'manifest.json')),independent,local_only:localOnly,independence:localOnly?'LOCAL_ONLY':independent?'INDEPENDENT':'UNSPECIFIED',independent_target:independentRoot||null};
       }finally{restored.close();}
     }
     if(config.kind==='EXPORT'){

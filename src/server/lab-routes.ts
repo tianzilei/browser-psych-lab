@@ -133,8 +133,12 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     if(maintenance.busy)throw new ContractError('MAINTENANCE_BUSY',503);
     const d=object(request.body);if(kind==='EXPORT'&&d.format!==undefined&&d.format!=='all'&&d.format!=='answers')throw new ContractError('INVALID_EXPORT_FORMAT');const job=id(d.job_id);await admin(request,'job.begin',{request_id:id(d.request_id),job_id:job,kind,study_id:kind!=='BACKUP'?id(d.study_id):null,config:d});
     const original=await admin(request,'job.get',{job_id:job}) as {state:string;result:string};if(original.state==='READY')return {job_id:job,result:JSON.parse(original.result)};
+    // Local-only is explicit: it never attempts an independent copy and never
+    // claims one. The backup bundle remains a same-filesystem staging copy that
+    // the operator must download and retain elsewhere before it is a recovery copy.
+    const localOnly=process.env.BACKUP_LOCAL_ONLY==='1';
     // Request remains pending until READY; asynchronous work is isolated in one maintenance worker.
-    return maintenance.run(kind,{...d,...(kind==='BACKUP'?{independent_root:process.env.BACKUP_ROOT??''}:{})},job);
+    return maintenance.run(kind,{...d,...(kind==='BACKUP'?{local_only:localOnly,...(localOnly?{}:{independent_root:process.env.BACKUP_ROOT??''})}:{})},job);
   });
   app.get('/api/lab/jobs/:job/:file',async(request,reply)=>{
     const params=request.params as {job:string;file:string};const job=await admin(request,'job.get',{job_id:id(params.job)}) as {state:string;kind:string;study_id:string|null;result:string|null};
