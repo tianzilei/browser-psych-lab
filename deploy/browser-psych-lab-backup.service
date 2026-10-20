@@ -7,6 +7,7 @@ User=psychlab
 Group=psychlab
 WorkingDirectory=/opt/browser-psych-lab/current
 EnvironmentFile=/etc/browser-psych-lab.env
+# This file must be readable by User=psychlab: 0600 psychlab:psychlab or 0640 root:psychlab.
 Environment=BACKUP_PASSWORD_FILE=/etc/browser-psych-lab-backup-password
 ExecStart=/opt/node/bin/node scripts/backup.mjs
 UMask=0077
