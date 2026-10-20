@@ -1,4 +1,4 @@
-﻿import {test} from 'node:test';
+import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {fixture} from '../helpers/lab-fixture.mjs';
@@ -45,6 +45,28 @@ test('activity lease tolerates transient loss, expires after five minutes and re
  running.call('permit',{request_id:'permit',...fence,reservation_id:reservation.reservation_id,readiness:{activity_policy:'idle120-offline300-v1',frame_ms:1000/60,commit_ms:5,protocol_hash:v.hash,layout:'portrait',geometry:{viewport:{width:800,height:800,dpr:1},canvas:{x:0,y:0,width:500,height:333},buttons:[{choice:'left',x:0,y:400,width:100,height:60},{choice:'right',x:110,y:400,width:100,height:60}]},assets:{[asset.asset_id]:digest('image')}}});
  const retry=session(f,v);f.setNow(120999);assert.throws(retry.join,full);assert.equal(running.call('activity',fence).status,'ACTIVE');f.setNow(300999);assert.equal(f.store.expireTaskActivity(),0);assert.throws(retry.join,full);
  f.setNow(420999);assert.equal(f.store.expireTaskActivity(),1);assert.equal(running.call('view').state,'TERMINATED');assert.equal(running.call('view').permit.state,'CLOSED_UNKNOWN');assert.equal(running.call('activity',fence).status,'TERMINATED');assert.equal(retry.join().status,'ACTIVE');
+});
+test('daily stale sweep terminates idle questionnaire sessions without touching answers',t=>{
+  const f=fixture(t,sampleProtocol(),{sessionConcurrency:1});f.db.close();
+  const db=openDatabase(f.path);try{
+    let now=1000+25*3600000;const store=new LabStore(db,digest('TEST_ONLY-runner'),()=>now,1,24*3600000,7*24*3600000);
+    assert.deepEqual(store.expireStaleSessions(),{sessions:1,permits:0});
+    assert.equal(store.view(f.created.session_id).state,'TERMINATED');
+    assert.equal(db.prepare("SELECT count(*) n FROM lab_diagnostics WHERE session_id=? AND code='STALE_SESSION_TIMEOUT'").get(f.created.session_id).n,1);
+    const meta=JSON.parse(db.prepare("SELECT value FROM lab_meta WHERE key='stale_sweep'").get().value);assert.equal(meta.sessions,1);assert.equal(meta.permits,0);
+  }finally{db.close();}
+});
+test('daily stale sweep only closes an abandoned pinned permit after the longer permit TTL',t=>{
+  const f=fixture(t,sampleProtocol(),{sessionConcurrency:1}),sid=f.created.session_id;
+  f.db.prepare("INSERT INTO lab_permits VALUES (?,?,?,?,?,?,?,?, 'ISSUED')").run('permit-test',sid,'scope-test','group-test',f.fence.writer_epoch,'{}','hash','{}');
+  f.db.close();const db=openDatabase(f.path);try{
+    let now=1000+6*24*3600000;let store=new LabStore(db,digest('TEST_ONLY-runner'),()=>now,1,24*3600000,7*24*3600000);
+    assert.deepEqual(store.expireStaleSessions(),{sessions:0,permits:0});
+    now=1000+8*24*3600000;store=new LabStore(db,digest('TEST_ONLY-runner'),()=>now,1,24*3600000,7*24*3600000);
+    assert.deepEqual(store.expireStaleSessions(),{sessions:0,permits:1});
+    assert.equal(store.view(sid).state,'TERMINATED');assert.equal(store.view(sid).permit.state,'CLOSED_UNKNOWN');
+    assert.equal(db.prepare("SELECT count(*) n FROM lab_diagnostics WHERE session_id=? AND code='STALE_PERMIT_TIMEOUT'").get(sid).n,1);
+  }finally{db.close();}
 });
 test('measured limits above two work; excess offers never accumulate',t=>{
  const f=fixture(t,limitedProtocol(),{sessionConcurrency:8});for(let i=0;i<7;i++)assert.equal(session(f).join().status,'ACTIVE');for(let i=0;i<70;i++)assert.throws(session(f).join,full);

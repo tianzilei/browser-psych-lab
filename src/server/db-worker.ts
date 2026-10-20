@@ -27,10 +27,19 @@ db.transaction(() => {
   }
   heartbeat();
 }).immediate();
-const lab = new LabStore(db, workerData.runnerHash as string | undefined,Date.now,workerData.sessionConcurrency as number|undefined);
+const lab = new LabStore(db, workerData.runnerHash as string | undefined,Date.now,workerData.sessionConcurrency as number|undefined,
+  workerData.staleSessionTtlMs as number|undefined,workerData.stalePermitTtlMs as number|undefined);
 lab.execute({operation:'lab/internal.job.interrupted',data:{}});
 lab.expireTaskActivity();
 const activityTimer=setInterval(()=>{try{lab.expireTaskActivity();}catch{}},TASK_ACTIVITY_POLICY.server_scan_interval_ms);
+// Run at most once per 24 hours, including after a restart. The method only
+// closes stale non-terminal sessions; raw events, answers and seals remain.
+const staleSweepIntervalMs=24*3600000;
+let lastStaleSweep=0;
+try{lastStaleSweep=Number((JSON.parse((db.prepare("SELECT value FROM lab_meta WHERE key='stale_sweep'").get() as {value:string}|undefined)?.value??'{}') as {at?:number}).at)||0;}catch{}
+const staleSweep=()=>{const now=Date.now();if(now-lastStaleSweep<staleSweepIntervalMs)return;lastStaleSweep=now;try{lab.expireStaleSessions();}catch(error){console.error('STALE_SWEEP_FAILED',error);}};
+staleSweep();
+const staleTimer=setInterval(staleSweep,3600000);
 port.postMessage({ ready: true });
 port.on('message', (message: { id: number; command: Command | null }) => {
   if (message.command !== null) heartbeat();
@@ -40,7 +49,7 @@ port.on('message', (message: { id: number; command: Command | null }) => {
       if (record && (JSON.parse(record.value) as { owner: string }).owner === owner)
         db.prepare("DELETE FROM p0_meta WHERE key='app_instance'").run();
     }).immediate();
-    clearInterval(heartbeatTimer); clearInterval(activityTimer); db.close(); port.close(); return;
+    clearInterval(heartbeatTimer); clearInterval(activityTimer); clearInterval(staleTimer); db.close(); port.close(); return;
   }
   try {
     const result = message.command.operation.startsWith('lab/') ? lab.execute(message.command) : store.execute(message.command);

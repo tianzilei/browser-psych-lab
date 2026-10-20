@@ -35,7 +35,8 @@
     "profile:transport": "node --import tsx scripts/profile-transport.mjs",
     "profile:ingestion": "node --import tsx scripts/profile-ingestion.mjs",
     "profile:transfer-storage": "node --import tsx scripts/profile-transfer-storage.mjs",
-    "purge:trajectories": "node scripts/purge-interaction-trajectories.mjs"
+    "purge:trajectories": "node scripts/purge-interaction-trajectories.mjs",
+    "purge:export-snapshots": "node scripts/purge-export-snapshots.mjs"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",

@@ -28,7 +28,10 @@ interface StoredEvent { event_id: string; hash: string; scope: string; sequence:
 class Rejection { constructor(readonly error: ContractError) {} }
 export class LabStore {
   readonly admission:SessionAdmission;
-  constructor(readonly db: Database.Database, readonly runnerHash = digest('TEST_ONLY'), private now = Date.now,sessionConcurrency=2) {
+  constructor(readonly db: Database.Database, readonly runnerHash = digest('TEST_ONLY'), private now = Date.now,sessionConcurrency=2,
+    readonly staleSessionTtlMs=24*3600000, readonly stalePermitTtlMs=7*24*3600000) {
+    for(const [name,value] of [['STALE_SESSION_TTL_MS',staleSessionTtlMs],['STALE_PERMIT_TTL_MS',stalePermitTtlMs]] as const)
+      if(!Number.isSafeInteger(value)||value<0)throw new Error(`INVALID_${name}`);
     installEvidenceFunctions(db);
     db.exec(LAB_SQL);
     if (!['1','2'].includes(this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='schema'")?.value??'')) throw new Error('UNSUPPORTED_LAB_SCHEMA');
@@ -209,6 +212,44 @@ export class LabStore {
       const expired=this.all<{session_id:string}>("SELECT a.session_id FROM lab_task_activity a JOIN lab_sessions s USING(session_id) WHERE a.last_seen<=? AND s.state='ACTIVE' AND a.writer_epoch=s.writer_epoch",this.now()-TASK_ACTIVITY_POLICY.connection_timeout_ms);
       for(const {session_id:sid} of expired){this.run("UPDATE lab_sessions SET state='TERMINATED',lease_until=0 WHERE session_id=?",sid);this.run("UPDATE lab_permits SET state='CLOSED_UNKNOWN' WHERE session_id=? AND state='ISSUED'",sid);this.admission.ended(sid);this.diagnostic(sid,null,'CONNECTION_TIMEOUT',{timeout_ms:TASK_ACTIVITY_POLICY.connection_timeout_ms});}
       this.run("DELETE FROM lab_task_activity WHERE session_id IN (SELECT session_id FROM lab_sessions WHERE state IN ('COMPLETED','TERMINATED'))");return expired.length;
+    }).immediate();
+  }
+  // Daily safety valve for sessions that are not covered by the 300-second task
+  // heartbeat: pure questionnaires, never-started sessions, and pinned permits
+  // abandoned after a long offline period. Answers, raw events and seals remain.
+  expireStaleSessions(){
+    return this.db.transaction(()=>{
+      const now=this.now(),sessionTtl=this.staleSessionTtlMs,permitTtl=this.stalePermitTtlMs;
+      let sessions=0,permits=0;
+      const rows=this.all<{session_id:string;state:string;created_at:number;lease_until:number;last_raw:number|null;last_activity:number|null;issued:number}>(
+        `SELECT s.session_id,s.state,s.created_at,s.lease_until,
+          (SELECT max(r.received_at) FROM lab_raw r WHERE r.session_id=s.session_id) last_raw,
+          (SELECT max(a.last_seen) FROM lab_task_activity a WHERE a.session_id=s.session_id) last_activity,
+          (SELECT count(*) FROM lab_permits p WHERE p.session_id=s.session_id AND p.state='ISSUED') issued
+         FROM lab_sessions s WHERE s.state NOT IN ('COMPLETED','TERMINATED')`);
+      for(const row of rows){
+        const last=Math.max(row.last_raw??0,row.last_activity??0,row.lease_until??0,row.created_at??0);
+        if(row.issued){
+          if(permitTtl>0&&last<now-permitTtl){
+            this.run("UPDATE lab_permits SET state='CLOSED_UNKNOWN' WHERE session_id=? AND state='ISSUED'",row.session_id);
+            this.run("UPDATE lab_sessions SET state='TERMINATED',lease_until=0 WHERE session_id=?",row.session_id);
+            this.run('DELETE FROM lab_task_activity WHERE session_id=?',row.session_id);
+            this.admission.ended(row.session_id);
+            this.diagnostic(row.session_id,null,'STALE_PERMIT_TIMEOUT',{last_activity:last,ttl_ms:permitTtl});
+            permits++;
+          }
+        }else if(sessionTtl>0&&last<now-sessionTtl){
+          this.run("UPDATE lab_sessions SET state='TERMINATED',lease_until=0 WHERE session_id=?",row.session_id);
+          this.run('DELETE FROM lab_task_activity WHERE session_id=?',row.session_id);
+          this.admission.ended(row.session_id);
+          this.diagnostic(row.session_id,null,'STALE_SESSION_TIMEOUT',{last_activity:last,ttl_ms:sessionTtl});
+          sessions++;
+        }
+      }
+      const summary={at:now,sessions,permits,session_ttl_ms:sessionTtl,permit_ttl_ms:permitTtl};
+      this.run("INSERT INTO lab_meta(key,value) VALUES('stale_sweep',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(summary));
+      if(sessions||permits)this.audit('SYSTEM','stale.session.sweep','stale-session-sweep',summary);
+      return {sessions,permits};
     }).immediate();
   }
   private dispatch(c: Command): unknown {
@@ -682,7 +723,8 @@ export class LabStore {
       case 'internal.projection.publish':{const generation=id(d.job_id);if(!Array.isArray(d.projections))throw new ContractError('INVALID_PROJECTIONS');for(const item of d.projections){const p=object(item);this.run('INSERT INTO lab_projections VALUES (?,?,?,?,?,?)',generation,id(p.session_id),id(p.scope),hash(p.source_hash),'run-replay-v1',stableJSON(p.result));}this.run("INSERT INTO lab_meta VALUES ('active_projection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",generation);this.audit('SYSTEM','PROJECTION_PUBLISHED',generation,{count:d.projections.length});return {generation};}
       case 'internal.job.get':return this.get('SELECT * FROM lab_jobs WHERE job_id=?',id(d.job_id));
       case 'internal.operations':return {admission:this.admission.stats(),gate:this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='collection_gate'")!.value,barrier:this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='resource_barrier'")!.value,
-        sessions:this.all('SELECT state,count(*) AS count FROM lab_sessions GROUP BY state'),dispositions:this.all('SELECT disposition,count(*) AS count FROM lab_events GROUP BY disposition'),open_permits:this.get("SELECT count(*) AS count FROM lab_permits WHERE state='ISSUED'"),jobs:this.all("SELECT job_id,kind,state,phase,error FROM lab_jobs WHERE state IN ('RUNNING','RECOVERY_REQUIRED')"),last_backup:this.get("SELECT job_id,updated_at,result FROM lab_jobs WHERE kind='BACKUP' AND state='READY' ORDER BY updated_at DESC LIMIT 1")??null};
+        sessions:this.all('SELECT state,count(*) AS count FROM lab_sessions GROUP BY state'),dispositions:this.all('SELECT disposition,count(*) AS count FROM lab_events GROUP BY disposition'),open_permits:this.get("SELECT count(*) AS count FROM lab_permits WHERE state='ISSUED'"),jobs:this.all("SELECT job_id,kind,state,phase,error FROM lab_jobs WHERE state IN ('RUNNING','RECOVERY_REQUIRED')"),last_backup:this.get("SELECT job_id,updated_at,result FROM lab_jobs WHERE kind='BACKUP' AND state='READY' ORDER BY updated_at DESC LIMIT 1")??null,
+        stale_sweep:this.get<{value:string}>("SELECT value FROM lab_meta WHERE key='stale_sweep'")??null};
       case 'internal.asset.info':return this.get('SELECT * FROM lab_assets WHERE asset_id=?',id(d.asset_id));
       default:throw new ContractError('UNKNOWN_INTERNAL_OPERATION');
     }

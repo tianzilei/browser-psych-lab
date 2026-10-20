@@ -26,7 +26,11 @@ for(const bucket of ['research-assets','research-exports','research-backups']) a
 const runnerHash = await retainRelease(storageRoot);
 const sessionConcurrency=Number(process.env.SESSION_CONCURRENCY??2);
 if(!Number.isSafeInteger(sessionConcurrency)||sessionConcurrency<1||sessionConcurrency>10000)throw new Error('INVALID_SESSION_CONCURRENCY');
-const writer = new DatabaseWriter(resolve(process.env.DATABASE_PATH),{workerData:{runnerHash,sessionConcurrency}});
+const staleSessionHours=Number(process.env.STALE_SESSION_TTL_HOURS??24),stalePermitHours=Number(process.env.STALE_PERMIT_TTL_HOURS??168);
+if(!Number.isInteger(staleSessionHours)||staleSessionHours<0||staleSessionHours>87600||
+  !Number.isInteger(stalePermitHours)||stalePermitHours<0||stalePermitHours>87600)throw new Error('INVALID_STALE_SESSION_TTL');
+const writer = new DatabaseWriter(resolve(process.env.DATABASE_PATH),{workerData:{runnerHash,sessionConcurrency,
+  staleSessionTtlMs:staleSessionHours*3600000,stalePermitTtlMs:stalePermitHours*3600000}});
 await writer.start();
 export const app = Fastify({
   ...(tls?{https:tls}:{}),
