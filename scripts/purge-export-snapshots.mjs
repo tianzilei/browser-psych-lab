@@ -2,11 +2,12 @@
 // Delete historical EXPORT job directories for selected studies while keeping
 // the live answer evidence in SQLite. The job row is retained as PURGED so the
 // admin page regenerates a fresh export instead of offering a missing file.
-import {createHash,randomUUID} from 'node:crypto';
+import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {mkdir,lstat,readdir,rename,rm,stat,writeFile} from 'node:fs/promises';
+import {mkdir,lstat,readdir,stat,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import Database from 'better-sqlite3';
+import {recoverExportPurges,purgeExportSnapshots} from './lib/export-purge.mjs';
 
 const args=process.argv.slice(2);
 const studies=[],studyIds=[];
@@ -60,6 +61,7 @@ for(const id of ids){const sessions=one(`SELECT count(*) n FROM lab_sessions WHE
   if(!seals||!snapshots)throw new Error(`ANSWER_EVIDENCE_MISSING:${id}:seals=${seals}:snapshots=${snapshots}`);
   evidence[id]={sessions,seals,page_events:pageEvents,snapshots};}
 const states=includeFailed?['READY','FAILED']:['READY'];
+await recoverExportPurges(db,storageRoot,ids,{apply});
 const jobs=q(`SELECT job_id,study_id,state,created_at,result FROM lab_jobs WHERE kind='EXPORT' AND study_id IN (${sph}) AND state IN (${ph(states)}) ORDER BY created_at`,...ids,...states);
 if(!jobs.length){console.log(JSON.stringify({purged:false,reason:'NO_EXPORT_SNAPSHOTS',studies:uniqueStudies,evidence},null,2));db.close();process.exit(0);}
 
@@ -86,29 +88,7 @@ await mkdir(dir,{recursive:true,mode:0o700});
 const beforePath=join(dir,'before.sqlite');
 await db.backup(beforePath);
 await writeFile(join(dir,'inventory-before.json'),JSON.stringify(summary,null,2));
-const moved=[],purged=[];
-for(const job of plan){
-  if(job.missing)continue;
-  const from=join(storageRoot,'research-exports',job.job_id),to=`${from}.purging-${stamp}`;
-  await rename(from,to);moved.push({job,from,to});
-}
-try{
-  db.transaction(()=>{
-    for(const job of plan){
-      const detail={reason:'OPERATOR_EXPORT_SNAPSHOT_PURGE',study_id:job.study_id,state:job.state,files:job.files.length,bytes:job.bytes,missing:job.missing,answer_evidence:'retained-in-live-database',inventory:'inventory-before.json'};
-      const result=JSON.stringify(detail);
-      const changed=db.prepare("UPDATE lab_jobs SET state='PURGED',phase='PURGED',result=?,error=NULL,updated_at=? WHERE job_id=? AND state IN ('READY','FAILED')").run(result,Date.now(),job.job_id);
-      if(changed.changes!==1)throw new Error(`JOB_STATE_CHANGED:${job.job_id}`);
-      db.prepare('INSERT INTO lab_audit VALUES (?,?,?,?,?,?)').run(randomUUID(),'OPERATOR','export.snapshot.purge',job.job_id,result,Date.now());
-      purged.push({job_id:job.job_id,study_id:job.study_id,state:job.state,files:job.files.length,bytes:job.bytes,missing:job.missing});
-    }
-  }).immediate();
-}catch(error){
-  // Restore directory names if the database could not record the purge.
-  for(const {from,to} of moved.reverse())await rename(to,from).catch(()=>{});
-  throw error;
-}
-for(const {to} of moved)await rm(to,{recursive:true,force:false});
+const purged=await purgeExportSnapshots(db,storageRoot,plan,stamp);
 const report={schema:'export-snapshot-purge-v1',completed_at:ts(),mode:'apply',studies:uniqueStudies,evidence,purged,bytes:purged.reduce((n,j)=>n+j.bytes,0),backup:{path:beforePath,bytes:(await stat(beforePath)).size},inventory:join(dir,'inventory-before.json')};
 await writeFile(join(dir,'purge-report.json'),JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));

@@ -9,9 +9,11 @@ import {spawnSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 
-const require=createRequire('/opt/browser-psych-lab/current/package.json');
+const currentRelease=process.env.BACKUP_RELEASE_ROOT??'/opt/browser-psych-lab/current';
+const require=createRequire(path.join(currentRelease,'package.json'));
+const {businessFingerprint:fingerprint,bundleStructure:structure,baseCovers:verifiedBaseCovers,fileSha256:sha256,validBasePointer}=await import(pathToFileURL(path.join(currentRelease,'scripts/lib/backup-integrity.mjs')).href);
 const Database=require('better-sqlite3');
-const {verifyEvidence}=await import(pathToFileURL('/opt/browser-psych-lab/current/dist/server/evidence-storage.js').href);
+const {verifyEvidence}=await import(pathToFileURL(path.join(currentRelease,'dist/server/evidence-storage.js')).href);
 const args=new Set(process.argv.slice(2));
 const dryRun=args.has('--dry-run'),force=args.has('--force');
 const database=process.env.DATABASE_PATH,storageRoot=process.env.STORAGE_ROOT;
@@ -20,43 +22,10 @@ const backupsRoot=path.join(storageRoot,'research-backups');
 const snapshotRoot=path.join(backupsRoot,'sqlite-snapshots');
 const basePointer=path.join(backupsRoot,'.base-bundle.json');
 const sidecar=path.join(backupsRoot,'.last-sqlite-fingerprint.json');
-const currentRelease='/opt/browser-psych-lab/current';
 const now=()=>new Date().toISOString();
 const jobIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function open(file,readonly=true){const db=new Database(file,{readonly,fileMustExist:true});db.pragma('busy_timeout=15000');return db;}
-function sha256(file){return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
-function fingerprint(db){
-  return JSON.stringify(db.prepare(`SELECT
-    (SELECT count(*) FROM lab_studies) AS studies,
-    (SELECT coalesce(sum(revision),0) FROM lab_studies) AS revisions,
-    (SELECT coalesce(sum(length(title)),0) FROM lab_studies) AS title_bytes,
-    (SELECT count(*) FROM lab_studies WHERE admission='OPEN') AS open_studies,
-    (SELECT count(*) FROM lab_versions) AS versions,
-    (SELECT count(*) FROM lab_sessions) AS sessions,
-    (SELECT count(*) FROM lab_sessions WHERE state='COMPLETED') AS completed,
-    (SELECT count(*) FROM lab_sessions WHERE state='TERMINATED') AS terminated,
-    (SELECT count(*) FROM lab_sessions WHERE state='ACTIVE') AS active,
-    (SELECT count(*) FROM lab_raw) AS raw,
-    (SELECT coalesce(max(received_at),0) FROM lab_raw) AS last_raw,
-    (SELECT count(*) FROM lab_events) AS events,
-    (SELECT count(*) FROM lab_seals) AS seals,
-    (SELECT count(*) FROM lab_consents) AS consents,
-    (SELECT count(*) FROM lab_covariates) AS covariates,
-    (SELECT count(*) FROM lab_assets) AS assets,
-    (SELECT coalesce(sum(bytes),0) FROM lab_assets) AS asset_bytes,
-    (SELECT count(*) FROM lab_packages) AS packages,
-    (SELECT count(*) FROM lab_diagnostics) AS diagnostics,
-    (SELECT count(*) FROM lab_marks) AS marks,
-    (SELECT count(*) FROM lab_permits) AS permits,
-    (SELECT count(*) FROM lab_session_queue) AS queue`).get());
-}
-function structure(db){
-  return {
-    assets:db.prepare("SELECT asset_id,hash FROM lab_assets WHERE state='READY' ORDER BY asset_id").all(),
-    runners:db.prepare('SELECT DISTINCT runner_hash FROM lab_versions ORDER BY runner_hash').all().map(r=>r.runner_hash)
-  };
-}
 function counts(db){
   return db.prepare(`SELECT
     (SELECT count(*) FROM lab_studies) AS studies,
@@ -70,15 +39,7 @@ function counts(db){
     (SELECT count(*) FROM lab_assets WHERE state='READY') AS assets,
     (SELECT count(DISTINCT runner_hash) FROM lab_versions) AS runners`).get();
 }
-function baseCovers(baseDir,current){
-  const manifestPath=path.join(baseDir,'manifest.json'),dbPath=path.join(baseDir,'database.sqlite');
-  if(!fs.existsSync(manifestPath)||!fs.existsSync(dbPath))return false;
-  const base=open(dbPath,true);
-  try{
-    const s=structure(base),assets=new Set(s.assets.map(a=>`${a.asset_id}:${a.hash}`)),runners=new Set(s.runners);
-    return current.assets.every(a=>assets.has(`${a.asset_id}:${a.hash}`))&&current.runners.every(r=>runners.has(r));
-  }finally{base.close();}
-}
+const baseCovers=(dir,current,expected={})=>verifiedBaseCovers(Database,dir,current,expected);
 function writeBase(jobId,dir){
   const manifestHash=sha256(path.join(dir,'manifest.json'));
   fs.writeFileSync(basePointer,JSON.stringify({job_id:jobId,manifest_hash:manifestHash,path:jobId,updated_at:now()},null,2)+'\n',{mode:0o600});
@@ -89,14 +50,14 @@ function writeBase(jobId,dir){
 function latestReadyFull(db){return db.prepare("SELECT job_id FROM lab_jobs WHERE kind='BACKUP' AND state='READY' ORDER BY updated_at DESC").all();}
 function ensureBase(db,current,refresh=true){
   if(fs.existsSync(basePointer)){
-    try{const p=JSON.parse(fs.readFileSync(basePointer,'utf8')),dir=path.join(backupsRoot,p.path??p.job_id);if(baseCovers(dir,current))return {job_id:p.job_id,manifest_hash:p.manifest_hash,dir};}catch{}
+    try{const p=JSON.parse(fs.readFileSync(basePointer,'utf8'));if(validBasePointer(p)){const dir=path.join(backupsRoot,p.job_id);if(baseCovers(dir,current,{manifestHash:p.manifest_hash,jobId:p.job_id}))return {job_id:p.job_id,manifest_hash:p.manifest_hash,dir};}}catch{}
   }
-  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current)){const manifest_hash=writeBase(job,dir);return {job_id:job,manifest_hash,dir};}}
+  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current,{jobId:job})){const manifest_hash=writeBase(job,dir);return {job_id:job,manifest_hash,dir};}}
   if(!refresh)throw new Error('BASE_REFRESH_REQUIRED');
   if(!process.env.BACKUP_PASSWORD_FILE)throw new Error('BASE_STRUCTURE_CHANGED_AND_BACKUP_PASSWORD_FILE_MISSING');
   const run=spawnSync(process.execPath,['/usr/local/bin/psychlab-light-backup.mjs','--force'],{env:process.env,stdio:'inherit'});
   if(run.status!==0)throw new Error(`BASE_REFRESH_FAILED:${run.status}`);
-  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current)){const manifest_hash=writeBase(job,dir);return {job_id:job,manifest_hash,dir};}}
+  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current,{jobId:job})){const manifest_hash=writeBase(job,dir);return {job_id:job,manifest_hash,dir};}}
   throw new Error('NO_BASE_BUNDLE_COVERS_CURRENT_STRUCTURE');
 }
 function physicalTemp(){
@@ -134,7 +95,7 @@ try{
       const integrity=snap.pragma('integrity_check',{simple:true}),fk=snap.pragma('foreign_key_check').length;
       if(integrity!=='ok'||fk!==0)throw new Error(`SNAPSHOT_DB_CHECK_FAILED:${integrity}:${fk}`);
       const evidence=verifyEvidence(snap);const snapStructure=structure(snap);
-      if(!baseCovers(base.dir,snapStructure))throw new Error('SNAPSHOT_STRUCTURE_NOT_COVERED_BY_BASE');
+      if(!baseCovers(base.dir,snapStructure,{manifestHash:base.manifest_hash,jobId:base.job_id}))throw new Error('SNAPSHOT_STRUCTURE_NOT_COVERED_BY_BASE');
       check={integrity,foreign_key_issues:fk,evidence,counts:counts(snap)};
     }finally{snap.close();}
     for(const suffix of ['-wal','-shm']){const p=temp+suffix;if(fs.existsSync(p))fs.rmSync(p);}
