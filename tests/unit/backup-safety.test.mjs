@@ -46,8 +46,17 @@ test('business fingerprints track reorder, equal-count admission swaps and envir
   assert.notEqual(businessFingerprint(f.db),before);
 });
 
-test('backup bookkeeping leaves the shared fingerprint unchanged and readonly computation is stable',t=>{
-  const f=fixture(t),before=businessFingerprint(f.db);
+test('business fingerprint covers uploaded assets and asset references',t=>{
+  const f=fixture(t),before=businessFingerprint(f.db),asset=randomUUID();
+  f.db.prepare("INSERT INTO lab_assets(asset_id,study_id,name,state,hash,bytes,width,height,format,upload_id,created_at) VALUES (?,?,?,'READY',?,?,?,?,?,?,?)")
+    .run(asset,f.study.study_id,'new.png','a'.repeat(64),128,8,8,'png',randomUUID(),Date.now());
+  assert.notEqual(businessFingerprint(f.db),before);
+  const withAsset=businessFingerprint(f.db);
+  f.db.prepare("INSERT INTO lab_asset_refs VALUES (?,'DRAFT',?)").run(asset,f.study.study_id);
+  assert.notEqual(businessFingerprint(f.db),withAsset);
+});
+
+test('backup bookkeeping leaves the shared fingerprint unchanged and readonly computation is stable',t=>{  const f=fixture(t),before=businessFingerprint(f.db);
   addJob(f,randomUUID());
   f.db.prepare('INSERT INTO lab_audit VALUES (?,?,?,?,?,?)').run(randomUUID(),'SYSTEM','backup.test','test','{}',Date.now());
   f.db.prepare("UPDATE lab_meta SET value='backup-test' WHERE key='resource_barrier'").run();
@@ -151,4 +160,11 @@ test('ARCHIVED leftover cleanup refuses a damaged archive instead of deleting it
   f.db.prepare("UPDATE lab_jobs SET state='ARCHIVED',result=? WHERE job_id=?").run(JSON.stringify({manifest_hash:b.manifestHash,archive_sha256:fileSha256(archive)}),b.job);
   assert.throws(()=>archiveBackup(f.db,b.dir,{backupsRoot:b.backupsRoot}),/ARCHIVE_COMMAND_FAILED/);
   assert.equal(verifyBundle(b.dir).manifestHash,b.manifestHash);
+});
+
+test('sqlite dry-run neither writes the base pointer nor pins the selected bundle',async t=>{
+  const f=fixture(t),b=await bundle(f);
+  const snap=script(f,'sqlite-snapshot',['--dry-run']);assert.equal(snap.status,0,snap.stderr);
+  assert.equal(fs.existsSync(path.join(b.backupsRoot,'.base-bundle.json')),false);
+  assert.equal(fs.existsSync(path.join(b.dir,'.keep')),false);
 });

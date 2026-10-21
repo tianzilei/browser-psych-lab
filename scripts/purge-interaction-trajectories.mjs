@@ -33,7 +33,9 @@ for(let i=0;i<args.length;i++){
   --apply                 Perform deletion; without it only prints the plan
 The command creates an online backup, drops/recreates the delete-guard triggers
 inside one transaction, removes only whole INPUT_DIAGNOSTIC scopes, rebuilds the
-replay-index marker, writes an audit row and verifies page/seal counts.`);
+replay-index marker, writes an audit row and verifies page/seal counts.
+Before --apply, hide/pause the selected studies so no new session can recreate
+trajectory data; OPEN admission is refused.`);
     process.exit(0);
   } else throw new Error(`UNKNOWN_ARGUMENT:${arg}`);
 }
@@ -63,6 +65,9 @@ for(const id of studyIds){
 }
 const uniqueStudies=[...new Map(selected.map(s=>[s.study_id,s])).values()];
 const ids=uniqueStudies.map(s=>s.study_id);
+// A purge is only complete for a closed study. Hiding admission stops new
+// sessions from recreating trajectory scopes while the operator runs --apply.
+if(apply)for(const id of ids){const study=one('SELECT admission FROM lab_studies WHERE study_id=?',id);if(study?.admission!=='PAUSED')throw new Error(`STUDY_ADMISSION_OPEN:${id}; hide/pause the study before purging trajectories`);}
 const sessions=q(`SELECT session_id,study_id,state,created_at FROM lab_sessions WHERE study_id IN (${ph(ids)}) ORDER BY created_at`,...ids);
 if(!sessions.length)throw new Error('NO_SESSIONS_FOR_STUDIES');
 const nonTerminal=sessions.filter(s=>!['COMPLETED','TERMINATED'].includes(s.state));
@@ -112,6 +117,8 @@ try{
 
 const deleteTriggers=q(`SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name IN ('lab_raw','lab_events','lab_dispositions') AND sql LIKE '%BEFORE DELETE%'`);
 const deleted=db.transaction(()=>{
+  const current=q(`SELECT session_id FROM lab_sessions WHERE study_id IN (${ph(ids)})`,...ids).map(row=>row.session_id),selectedSessions=new Set(sessionIds);
+  if(current.length!==sessionIds.length||current.some(session=>!selectedSessions.has(session)))throw new Error('STUDY_SESSION_SET_CHANGED');
   db.exec('CREATE TEMP TABLE purge_scopes(session_id TEXT NOT NULL,scope TEXT NOT NULL,PRIMARY KEY(session_id,scope))');
   const insert=db.prepare('INSERT INTO purge_scopes VALUES (?,?)');
   for(const s of scopes)insert.run(s.session_id,s.scope);
@@ -124,6 +131,8 @@ const deleted=db.transaction(()=>{
     const replay=db.prepare(`DELETE FROM lab_replay_index WHERE session_id IN (SELECT session_id FROM lab_sessions WHERE study_id IN (${ph(ids)}))`).run(...ids).changes;
     const maxRow=one('SELECT coalesce(max(rowid),0) n FROM lab_events').n;
     db.prepare("INSERT INTO lab_meta(key,value) VALUES('replay_index',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(`valid-screen-v1:${maxRow}`);
+    const remaining=one(`SELECT count(*) n FROM lab_raw r JOIN lab_events e ON e.session_id=r.session_id AND e.event_id=r.event_id AND e.hash=r.hash JOIN lab_sessions s ON s.session_id=e.session_id WHERE s.study_id IN (${ph(ids)}) AND e.kind='INPUT_DIAGNOSTIC'`,...ids).n;
+    if(remaining)throw new Error(`TRAJECTORY_REMAINS:${remaining}`);
     const detail={reason:'OPERATOR_TRAJECTORY_PURGE',studies:uniqueStudies.map(s=>({study_id:s.study_id,title:s.title})),sessions:sessions.length,scopes:scopes.length,events:before.events,bytes:before.bytes,backup:'before.sqlite',backup_sha256:sha256(backupBytes),deleted:{dispositions,events,raw,usage,replay_index:replay}};
     db.prepare('INSERT INTO lab_audit VALUES (?,?,?,?,?,?)').run(randomUUID(),'OPERATOR','trajectory.purge',uniqueStudies.map(s=>s.study_id).join(','),JSON.stringify(detail),Date.now());
     db.exec('DROP TABLE purge_scopes');
@@ -138,7 +147,7 @@ const after={page_events:one(`SELECT count(*) n FROM lab_events WHERE session_id
   consents:one(`SELECT count(*) n FROM lab_consents WHERE session_id IN (${sessionPh})`,...sessionIds).n,
   covariates:one(`SELECT count(*) n FROM lab_covariates WHERE session_id IN (${sessionPh})`,...sessionIds).n,
   replay_index:one(`SELECT count(*) n FROM lab_replay_index WHERE session_id IN (${sessionPh})`,...sessionIds).n,
-  remaining_trajectory_scopes:one(`SELECT count(*) n FROM lab_raw r JOIN lab_events e ON e.session_id=r.session_id AND e.event_id=r.event_id AND e.hash=r.hash WHERE r.session_id IN (${sessionPh}) AND e.kind='INPUT_DIAGNOSTIC'`,...sessionIds).n,
+  remaining_trajectory_scopes:one(`SELECT count(*) n FROM lab_raw r JOIN lab_events e ON e.session_id=r.session_id AND e.event_id=r.event_id AND e.hash=r.hash JOIN lab_sessions s ON s.session_id=e.session_id WHERE s.study_id IN (${ph(ids)}) AND e.kind='INPUT_DIAGNOSTIC'`,...ids).n,
   total_events:one('SELECT count(*) n FROM lab_events').n,total_raw:one('SELECT count(*) n FROM lab_raw').n,
   quick_check:one('PRAGMA quick_check').quick_check,foreign_key_issues:q('PRAGMA foreign_key_check').length};
 const mismatched=[];

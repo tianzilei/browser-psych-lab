@@ -34,7 +34,7 @@ test('legacy role tokens migrate once with millisecond expiry and unified permis
 
 test('password-only HTTP login keeps cookie, Origin, CSRF, logout and login limits',async t=>{
   const origin='http://localhost',savedOrigin=process.env.PUBLIC_ORIGIN,savedHash=process.env.ADMIN_PASSWORD_HASH;
-  process.env.PUBLIC_ORIGIN=origin;process.env.ADMIN_PASSWORD_HASH=await passwordHash('TEST_ONLY-unified-password');
+  process.env.PUBLIC_ORIGIN=origin+'/';process.env.ADMIN_PASSWORD_HASH=await passwordHash('TEST_ONLY-unified-password');
   t.after(()=>{for(const [key,value] of [['PUBLIC_ORIGIN',savedOrigin],['ADMIN_PASSWORD_HASH',savedHash]]){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
   const db=new Database(':memory:'),store=new LabStore(db),app=Fastify();
   t.after(async()=>{await app.close();db.close();});

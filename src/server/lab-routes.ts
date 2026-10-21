@@ -21,7 +21,10 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   const recordings=new RecordingDownloads(maintenance.path,root);app.addHook('onClose',async()=>recordings.close());
   app.addHook('onClose',async()=>preparation.close());
   const limits=new RateLimits();let loginBusy=0;let receiving=0,receivingBytes=0;const charged=new Map<string,number>();
-  const secure=(request:FastifyRequest)=>request.protocol==='https'||(process.env.PUBLIC_ORIGIN??'').startsWith('https:');
+  // Normalize once so a trailing slash, default port or uppercase host in the
+  // environment cannot make every browser write fail the exact Origin check.
+  const publicOrigin=process.env.PUBLIC_ORIGIN?new URL(process.env.PUBLIC_ORIGIN).origin:null;
+  const secure=(request:FastifyRequest)=>request.protocol==='https'||publicOrigin?.startsWith('https:')===true;
   const cookie=(request:FastifyRequest,name:string)=>request.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1)??'';
   const release=(r:FastifyRequest)=>{const b=charged.get(r.id);if(b!==undefined){receiving--;receivingBytes-=b;charged.delete(r.id);}};
   app.addHook('onResponse',async request=>release(request));app.addHook('onRequestAbort',async request=>release(request));
@@ -30,7 +33,7 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     limits.take('global',200,100);const session=(request.params as {session?:string}).session;
     if(session)limits.take(`session-${session}`,50,10);
     if(request.method!=='GET'){
-      const expected=process.env.PUBLIC_ORIGIN||`${request.protocol}://${request.host}`;
+      const expected=publicOrigin??`${request.protocol}://${request.host}`;
       if(request.headers.origin!==expected)throw new ContractError('ORIGIN_REJECTED',403);
       const upload=request.routeOptions.url?.endsWith('/upload')||request.routeOptions.url?.endsWith('/package');const declared=Number(request.headers['content-length']??(upload?8*1024*1024:1024*1024));
       const max=upload?8*1024*1024:1024*1024;if(!Number.isSafeInteger(declared)||declared<0||declared>max)throw new ContractError('REQUEST_TOO_LARGE',413);
@@ -75,7 +78,13 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     if(original.state==='READY'){const result=JSON.parse(original.result) as {hash:string},temp=await receiveUpload(root,job,request.body as Readable);const matches=await fileHash(temp.path)===result.hash;await unlink(temp.path);if(!matches)throw new ContractError('UPLOAD_IDEMPOTENCY_CONFLICT',409);return {job_id:job,result};}
     if(original.state!=='RUNNING')throw new ContractError('UPLOAD_RECOVERY_REQUIRED',409);
     try{const temp=await receiveUpload(root,job,request.body as Readable);return await maintenance.run('PACKAGE',{study_id:study,name,temp:temp.path,package_id:job},job);}
-    catch(error){await writer.request({operation:'lab/internal.job.finish',data:{job_id:job,state:'RECOVERY_REQUIRED',error:String(error)}}).catch(()=>{});throw error;}
+    catch(error){
+      // Nothing was published when the request body itself failed. Only a job
+      // that may have reached the maintenance worker needs recovery review.
+      const current=await admin(request,'job.get',{job_id:job}).catch(()=>null) as {state?:string}|null;
+      if(current?.state==='RUNNING')await writer.request({operation:'lab/internal.job.finish',data:{job_id:job,state:'FAILED',release_verified:true,error:String(error).slice(0,300)}}).catch(()=>{});
+      throw error;
+    }
   });
   app.post('/api/lab/studies/:study/upload',{bodyLimit:8*1024*1024},async request=>{
     if(maintenance.busy)throw new ContractError('MAINTENANCE_BUSY',503);
@@ -84,7 +93,14 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     try{const temp=await receiveUpload(root,intent.asset_id,request.body as Readable);const original=await admin(request,'job.get',{job_id:job}) as {state:string;result:string};
       if(original.state==='READY'){const result=JSON.parse(original.result) as {info:{hash:string}};const matches=await fileHash(temp.path)===result.info.hash;await unlink(temp.path);if(!matches)throw new ContractError('UPLOAD_IDEMPOTENCY_CONFLICT',409);return {job_id:job,result};}
       if(original.state!=='RUNNING')throw new ContractError('UPLOAD_RECOVERY_REQUIRED',409);return await maintenance.run('UPLOAD',{asset_id:intent.asset_id,temp:temp.path,study_id:study},job);}
-    catch(error){await writer.request({operation:'lab/internal.job.finish',data:{job_id:job,state:'RECOVERY_REQUIRED',error:error instanceof Error?error.message:'UPLOAD_FAILED'}}).catch(()=>{});throw error;}
+    catch(error){
+      const current=await admin(request,'job.get',{job_id:job}).catch(()=>null) as {state?:string}|null;
+      if(current?.state==='RUNNING'){
+        await writer.request({operation:'lab/internal.job.finish',data:{job_id:job,state:'FAILED',release_verified:true,error:error instanceof Error?error.message:'UPLOAD_FAILED'}}).catch(()=>{});
+        await writer.request({operation:'lab/internal.asset.failed',data:{asset_id:intent.asset_id}}).catch(()=>{});
+      }
+      throw error;
+    }
   });
   app.post('/api/lab/assets/:asset/delete',async request=>{
     const asset=id((request.params as {asset:string}).asset);await admin(request,'asset.delete',{...object(request.body),asset_id:asset});
@@ -108,9 +124,14 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
     const controller=new AbortController(),abort=()=>controller.abort();reply.raw.once('close',abort);
     let artifact:Awaited<ReturnType<RecordingDownloads['build']>>|undefined;
     try{
-      artifact=await recordings.build(sid,controller.signal,format);reply.raw.removeListener('close',abort);
+      artifact=await recordings.build(sid,controller.signal,format);
       const file=await openPrivate(artifact.path),stream=file.createReadStream();let cleaned=false;
-      const cleanup=()=>{if(cleaned)return;cleaned=true;stream.destroy();void artifact!.cleanup().catch(()=>{});};reply.raw.once('close',cleanup);reply.raw.once('finish',cleanup);
+      const cleanup=()=>{if(cleaned)return;cleaned=true;stream.destroy();void artifact!.cleanup().catch(()=>{});};
+      // Register cleanup before dropping the build-abort listener; a client that
+      // disconnects between build completion and header write must not orphan
+      // the private temporary artifact.
+      reply.raw.once('close',cleanup);reply.raw.once('finish',cleanup);reply.raw.removeListener('close',abort);
+      if(reply.raw.destroyed){cleanup();throw new ContractError('TRAJECTORY_EXPORT_ABORTED',409);}
       reply.type(format==='html'?'text/html; charset=utf-8':'application/gzip').header('Content-Disposition',downloadDisposition(downloadName(`${info.title}_${sid.slice(0,8)}`,format==='html'?'html':'json.gz')))
         .header('Cache-Control','private, no-store, no-transform').header('X-Content-SHA256',artifact.hash);return reply.send(stream);
     }catch(error){reply.raw.removeListener('close',abort);await artifact?.cleanup();throw error;}

@@ -41,7 +41,8 @@ export class Scheduler {
       || roots.some(r => !r.root_id || !Number.isFinite(r.image_ms) || r.image_ms <= 0
         || !Number.isFinite(r.isi_ms) || r.isi_ms < 0
         || (r.feedback_ms!==undefined&&(!Number.isFinite(r.feedback_ms)||r.feedback_ms<0)))) throw new Error('INVALID_TEST_PLAN');
-    if (cap > 0 && roots.some(r => r.isi_ms < budget.commit_ms + budget.activate_ms + budget.margin_ms))
+    const commitWindow = budget.commit_ms + budget.activate_ms + budget.margin_ms;
+    if (cap > 0 && roots.some(r => (r.feedback_ms ?? 0) + r.isi_ms < commitWindow))
       throw new Error('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
     this.rng = new Xoshiro128(state); this.base = start;
     this.candidates = roots.flatMap(r => Array.from({ length: cap + 1 }, (_, i) => ({

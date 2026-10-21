@@ -314,7 +314,8 @@ export class LabStore {
         this.barrier();const sid=id(d.study_id),s=this.get<{revision:number}>('SELECT revision FROM lab_studies WHERE study_id=?',sid);
         if(!s||s.revision!==d.revision||this.get('SELECT 1 FROM lab_archived_studies WHERE study_id=?',sid))throw new ContractError('DRAFT_REVISION_CONFLICT',409);
         if(typeof d.source!=='string')throw new ContractError('JSON_REQUIRED');
-        const p=compileQuestionnaire(parseQuestionnaireText(d.source),ref=>{
+        let sourceValue:unknown;try{sourceValue=parseQuestionnaireText(d.source);}catch(error){const reason=error instanceof Error?error.message:String(error);const contract=new ContractError('INVALID_QUESTIONNAIRE_JSON',400,{reason});contract.message=reason;throw contract;}
+        const p=compileQuestionnaire(sourceValue,ref=>{
           const a=this.get<{asset_id:string}>("SELECT p.asset_id FROM lab_package_images p JOIN lab_assets a USING(asset_id) WHERE p.study_id=? AND p.name=? AND p.path=? AND a.state='READY'",sid,ref.package,ref.path);
           if(!a)throw new ContractError('IMAGE_PACKAGE_REFERENCE_MISSING',409,ref);return a.asset_id;
         });
@@ -506,7 +507,8 @@ export class LabStore {
     });
     if(op==='participant.covariates')return this.request(sid,op,d,()=>{
       if(typeof d.raw!=='string'||Buffer.byteLength(d.raw)>32*1024)throw new ContractError('INVALID_COVARIATES');
-      const parsed=object(JSON.parse(d.raw)),preparation=parsed.schema==='preparation-v1';
+      let parsedValue:unknown;try{parsedValue=JSON.parse(d.raw);}catch{throw new ContractError('INVALID_COVARIATES');}
+      const parsed=object(parsedValue),preparation=parsed.schema==='preparation-v1';
       if(preparation){const report=parsePreparationReport(parsed),p=this.frozen(s.version_id).protocol;
         if(report.attempt_id!==d.sample_id||report.configured_commit_ms!==p.budget.commit_ms||report.group_id!==null&&!p.groups.some(g=>g.id===report.group_id))throw new ContractError('INVALID_PREPARATION_REPORT');
       }else if(parsed.schema!=='environment-v1')throw new ContractError('INVALID_COVARIATES');
@@ -548,7 +550,19 @@ export class LabStore {
       if(old){if(old.manifest_hash!==digest(manifestText(manifest)))throw new ContractError('SEAL_CONFLICT',409);return {replay_required:false};}
       this.active(s,d);
       if(this.frozen(s.version_id).protocol.pages[s.page_index]?.id===manifest.scope)return {replay_required:false};
-      if(!this.get("SELECT 1 FROM lab_permits WHERE session_id=? AND scope=? AND writer_epoch=? AND state='ISSUED'",sid,manifest.scope,s.writer_epoch))throw new ContractError('OUTSIDE_PERMIT',409);
+      const permit=this.get<{group_id:string}>("SELECT group_id FROM lab_permits WHERE session_id=? AND scope=? AND writer_epoch=? AND state='ISSUED'",sid,manifest.scope,s.writer_epoch);
+      if(!permit)throw new ContractError('OUTSIDE_PERMIT',409);
+      // A replay is an expensive, globally serialized job. Never start one for
+      // a manifest that seal() will reject anyway (missing/extra/quarantined
+      // evidence) or for a path that cannot seal; otherwise a participant can
+      // repeatedly occupy the single maintenance slot.
+      const refs=this.all<{event_id:string;hash:string;disposition:string;writer_epoch:number}>('SELECT event_id,hash,disposition,writer_epoch FROM lab_events WHERE session_id=? AND scope=? ORDER BY sequence',sid,manifest.scope);
+      const received=new Set(refs.map(r=>`${r.event_id}:${r.hash}`)),declared=new Set(manifest.events.map(r=>`${r.event_id}:${r.hash}`));
+      const missing=manifest.events.filter(r=>!received.has(`${r.event_id}:${r.hash}`));
+      const extra=refs.filter(r=>!declared.has(`${r.event_id}:${r.hash}`));
+      if(!refs.length||missing.length||extra.length||refs.some(e=>e.disposition!=='ACCEPTED'||e.writer_epoch!==s.writer_epoch)
+        ||this.get('SELECT 1 FROM lab_diagnostics WHERE session_id=? AND scope=?',sid,manifest.scope)
+        ||stableJSON(manifest.path)!==stableJSON([...JSON.parse(s.path) as string[],permit.group_id]))return {replay_required:false};
       return {replay_required:true};
     }
     if(op==='participant.preparation'){

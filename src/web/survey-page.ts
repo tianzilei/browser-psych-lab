@@ -210,7 +210,13 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   function backward() {
     if (composing) return;
-    if (pager.back) { pager.previous(); render(true); return; }
+    if (pager.back) {
+      // The pager must remain usable while a text input is focused; otherwise
+      // render() keeps returning early for the typing layout and the visible
+      // segment never changes.
+      editing = false; document.body.classList.remove('typing');
+      pager.previous(); render(true); return;
+    }
     show(visible.filter(i => i < current).at(-1) ?? -1);
   }
   function navigate(action: () => void) {

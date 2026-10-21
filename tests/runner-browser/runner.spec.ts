@@ -66,6 +66,16 @@ async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<t
     interactions:()=>db.prepare("SELECT envelope FROM lab_event_evidence WHERE session_id=? AND kind='INPUT_DIAGNOSTIC' ORDER BY sequence").all(sid).flatMap((row:any)=>JSON.parse(row.envelope).payload.interaction?.samples??[]),requests:()=>groupCalls,downloads:()=>assetCalls,scopeEvents:(scope:string)=>db.prepare('SELECT envelope FROM lab_event_evidence WHERE session_id=? AND scope=? ORDER BY sequence').all(sid,scope).map((row:any)=>JSON.parse(row.envelope)),close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
 }
 
+test('configured feedback stays visible for the whole feedback interval',async({page})=>{
+  const f=await start(page,false,false,p=>{p.timing_defaults!.feedback_ms={base:1500,jitter:0};});try{
+    await page.getByRole('button',{name:'开始本组'}).click();
+    await expect(page.locator('#status')).toContainText('第 1 次呈现');
+    await page.getByRole('button',{name:'Left',exact:true}).click();
+    await expect(page.locator('#status')).toContainText('请等待下一次呈现');
+    expect(await page.locator('#stimulus').evaluate(element=>(element as HTMLElement).style.visibility)).toBe('visible');
+  }finally{f.close();}
+});
+
 test('image click visibly confirms first answer; right click, repeated key, and changed second answer are excluded',async({page})=>{
   const f=await start(page);try{
     await page.getByRole('button',{name:'开始本组'}).click();

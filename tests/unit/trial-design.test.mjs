@@ -55,7 +55,7 @@ test('fixed, image shuffle, category blocks and balanced interleaving retain eve
 
 test('invalid ranges, ambiguous stimuli, key maps and minimum repeat ISI fail at import',()=>{
   for(const update of [p=>p.timing_defaults.stimulus_ms='0.2+-0.5',p=>p.groups[0].trials[0].asset_id='image',
-    p=>p.groups[0].response_keys.right='KeyF',p=>{p.groups[0].repeats=1;p.timing_defaults.isi_ms='0.1+-0.09';}]){
+    p=>p.groups[0].response_keys.right='KeyF',p=>{p.groups[0].repeats=1;p.timing_defaults.isi_ms='0.1+-0.09';p.timing_defaults.feedback_ms=0;}]){
     const p=questionnaire();update(p);assert.throws(()=>compileQuestionnaire(p));
   }
   const p=sampleProtocol();assert.deepEqual(parseProtocol(p),p);
@@ -134,4 +134,16 @@ test('published example compiles with a ZIP reference and keeps item overrides o
   assert.deepEqual(parseProtocol(p),p);
   const g=p.groups[0],plan=realizeTrials(g,g.trials,seed,10);
   assert.equal(plan.roots.length,6);assert.equal(plan.design.balanced_pools.stimulus_ms.length,4);assert.equal(plan.design.balanced_pools.isi_ms.length,5);
+});
+
+test('numeric correct answers normalize, empty age prompts fail and short multi-trial cycles are rejected',()=>{
+  const base={schema:'questionnaire-v1',title:'Contract regression',orientation:'portrait',pages:[]};
+  const numeric=compileQuestionnaire({...base,groups:[{id:'choice',title:'Choice',choices:['1','2'],repeats:0,
+    trials:[{root_id:'one',text:'ONE',image_ms:200,isi_ms:300,correct:1}]}]});
+  assert.equal(numeric.groups[0].trials[0].correct,'1');
+  assert.throws(()=>compileQuestionnaire({...base,groups:[{id:'rating',title:'Rating',choices:['1','2'],repeats:0,
+    rating:{prompt:'Rate',labels:['low','high'],age_prompt:'',age_min:18,age_max:80},
+    trials:[{root_id:'photo',asset_id:'asset',image_ms:1,isi_ms:3000,correct:null}]}]}),/INVALID_RATING_AGE/);
+  assert.throws(()=>compileQuestionnaire({...base,groups:[{id:'short',title:'Short',choices:['1','2'],repeats:0,
+    trials:[{root_id:'a',text:'A',image_ms:1,isi_ms:0,correct:null},{root_id:'b',text:'B',image_ms:1,isi_ms:0,correct:null}]}]}),/DYNAMIC_ISI_BUDGET_INSUFFICIENT/);
 });

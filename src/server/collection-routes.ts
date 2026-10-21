@@ -4,7 +4,8 @@ import { digest, type Command } from './collection-store.js';
 import { DatabaseWriter } from './writer.js';
 
 export async function collectionRoutes(app: FastifyInstance, writer: DatabaseWriter) {
-  const origins = new Set(process.env.PUBLIC_ORIGIN ? [new URL(process.env.PUBLIC_ORIGIN).origin] : []);
+  const publicOrigin=process.env.PUBLIC_ORIGIN?new URL(process.env.PUBLIC_ORIGIN):null;
+  const origins = new Set(publicOrigin ? [publicOrigin.origin] : []);
   const originFor = (request: FastifyRequest) => `${request.protocol}://${request.host}`;
   const receiving = new Map<string, number>(); let receivingBytes = 0;
   const release = (request: FastifyRequest) => {
@@ -41,7 +42,7 @@ export async function collectionRoutes(app: FastifyInstance, writer: DatabaseWri
     const view = object(await writer.request({ operation: 'create', data: { request_id: d.request_id, credential_hash: digest(d.credential) } }));
     const sid = id(view.session_id);
     reply.header('Set-Cookie', `p0_${sid}=${d.credential}; Path=/api/p0/sessions/${sid}; HttpOnly; SameSite=Strict${
-      (process.env.PUBLIC_ORIGIN ?? originFor(request)).startsWith('https:') ? '; Secure' : ''}`);
+      (publicOrigin?.protocol === 'https:' || originFor(request).startsWith('https:')) ? '; Secure' : ''}`);
     return view;
   });
   const command = (request: FastifyRequest, operation: string, data: Record<string, unknown>): Command => {

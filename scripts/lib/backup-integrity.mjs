@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 // by their SHA-256 rather than read/decompressed a second time.
 const businessTables=[
   'lab_studies','lab_study_order','lab_versions','lab_questionnaire_sources',
-  'lab_archived_studies','lab_packages','lab_package_images','lab_covariates',
+  'lab_archived_studies','lab_assets','lab_asset_refs','lab_packages','lab_package_images','lab_covariates',
   'lab_group_selections','lab_consents','lab_sessions','lab_writers',
   'lab_session_queue','lab_slots','lab_permits','lab_raw','lab_events',
   'lab_dispositions','lab_seals','lab_diagnostics','lab_marks','lab_environments',

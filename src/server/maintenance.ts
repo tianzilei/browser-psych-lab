@@ -31,11 +31,14 @@ export class Maintenance {
     }catch(error){
       const rejected=kind==='PACKAGE'&&(error as {validation_rejected?:boolean}).validation_rejected===true;
       // Exports only create private derived files and hold no pins or barrier.
-      // Observe their worker's exit before failing the job and allowing a retry.
-      const failedExport=kind==='EXPORT';
-      if(failedExport)await worker.terminate();
-      await this.call('job.finish',{job_id:job,state:rejected||failedExport?'FAILED':'RECOVERY_REQUIRED',release_verified:rejected||failedExport,error:error instanceof Error?error.message:'FAILED'}).catch(()=>{});
-      if(failedExport&&error instanceof Error&&['EXPORT_BUDGET_EXCEEDED','EXPORT_ROW_BUDGET_EXCEEDED'].includes(error.message))throw new ContractError(error.message,413);
+      // Replay jobs are also read-only: they neither publish files nor acquire
+      // pins, so a participant-triggered replay failure must not become a
+      // durable global RECOVERY_REQUIRED lock that blocks exports and backups.
+      const disposable=kind==='EXPORT'||kind==='REPLAY';
+      if(disposable)await worker.terminate();
+      await this.call('job.finish',{job_id:job,state:rejected||disposable?'FAILED':'RECOVERY_REQUIRED',release_verified:rejected||disposable,error:error instanceof Error?error.message:'FAILED'}).catch(()=>{});
+      if(disposable&&error instanceof Error&&['EXPORT_BUDGET_EXCEEDED','EXPORT_ROW_BUDGET_EXCEEDED'].includes(error.message))throw new ContractError(error.message,413);
+      if(kind==='REPLAY')throw new ContractError('REPLAY_PROOF_STALE_OR_INVALID',409);
       if(rejected)throw new ContractError('INVALID_IMAGE_PACKAGE',400,{reason:error instanceof Error?error.message:'INVALID_ZIP'});throw error;
     }finally{
       // A replacement cannot start before actual worker exit, even after a timeout.

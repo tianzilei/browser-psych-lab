@@ -202,6 +202,7 @@ export function parseProtocol(value: unknown): Protocol {
     const g = object(value); fields(g, ['id', 'title', 'choices', 'repeats', 'trials','timing_defaults','ordering','response_keys','feedback','rating','sampling']);
     const choices = strings(g.choices, 2, g.rating===undefined?6:11); const repeats = number(g.repeats, 0, 2, true);
     const defaults=general||g.timing_defaults!==undefined?{...general,...(g.timing_defaults===undefined?{}:parseTimingDefaults(g.timing_defaults))}:undefined;
+    const minimumCycles:{image:number;feedback:number;isi:number}[]=[];
     const trials: Trial[] = list(g.trials, g.rating!==undefined&&g.sampling!==undefined?200:100).map(value => {
       const t = object(value); fields(t, ['root_id', 'asset_id', 'image_ms', 'isi_ms', 'correct','text','category','timing','feedback_ms','timing_general']);
       const timing=t.timing===undefined?{}:parseTimingDefaults(t.timing);
@@ -216,10 +217,18 @@ export function parseProtocol(value: unknown): Protocol {
       const stimulus=timing.stimulus_ms??defaults?.stimulus_ms,interval=timing.isi_ms??defaults?.isi_ms,feedbackTime=timing.feedback_ms??defaults?.feedback_ms;
       const image_ms = number(stimulus?.base??t.image_ms, 1, 60000); const isi_ms = number(interval?.base??t.isi_ms, 0, 60000);
       if(stimulus&&stimulus.base-stimulus.jitter<1)throw new ContractError('INVALID_STIMULUS_DURATION');
-      if (t.correct !== null && !choices.includes(String(t.correct))) throw new ContractError('INVALID_CORRECT_ANSWER');
-      if (repeats && isi_ms-(interval?.jitter??0) < budget.commit_ms + budget.activate_ms + budget.margin_ms) throw new ContractError('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
+      if(t.correct!==null&&typeof t.correct!=='string'&&typeof t.correct!=='number')throw new ContractError('INVALID_CORRECT_ANSWER');
+      const correct=t.correct===null?null:String(t.correct);
+      if (correct !== null && !choices.includes(correct)) throw new ContractError('INVALID_CORRECT_ANSWER');
+      // The next instance is staged at the current onset (multiple roots) or
+      // at the current window close (a proposed repeat). Validate the smallest
+      // cycle the scheduler can actually be asked to prepare, after jitter.
+      const minImage=stimulus?Math.max(1,stimulus.base-stimulus.jitter):image_ms;
+      const minIsi=interval?Math.max(0,interval.base-interval.jitter):isi_ms;
+      const minFeedback=feedbackTime?Math.max(0,feedbackTime.base-feedbackTime.jitter):(t.feedback_ms===undefined?0:number(t.feedback_ms,0,60000));
+      minimumCycles.push({image:minImage,feedback:minFeedback,isi:minIsi});
       if((t.text===undefined)===(t.asset_id===undefined))throw new ContractError('ONE_STIMULUS_REQUIRED');
-      const result:Trial={ root_id: unique(t.root_id), ...(t.text!==undefined?{text:text(t.text,200)}:{asset_id:id(t.asset_id)}), image_ms, isi_ms, correct: t.correct as string | null };
+      const result:Trial={ root_id: unique(t.root_id), ...(t.text!==undefined?{text:text(t.text,200)}:{asset_id:id(t.asset_id)}), image_ms, isi_ms, correct };
       if(result.text!==undefined&&!result.text.trim())throw new ContractError('INVALID_TEXT_STIMULUS');
       if(t.category!==undefined)result.category=id(t.category);
       if(Object.keys(timing).length)result.timing=timing;
@@ -227,6 +236,13 @@ export function parseProtocol(value: unknown): Protocol {
       if(feedbackTime||t.feedback_ms!==undefined)result.feedback_ms=number(feedbackTime?.base??t.feedback_ms,0,60000);
       return result;
     });
+    // Multiple initial roots stage their successor at the current onset;
+    // repeats propose their successor after the window closes. Validate the
+    // smallest cycle the scheduler can be asked to prepare, after jitter.
+    const commitWindow=budget.commit_ms+budget.activate_ms+budget.margin_ms;
+    if(!g.rating&&((repeats>0&&minimumCycles.some(c=>c.feedback+c.isi<commitWindow))
+      ||(minimumCycles.slice(0,-1).some(c=>c.image+c.feedback+c.isi<commitWindow))))
+      throw new ContractError('DYNAMIC_ISI_BUDGET_INSUFFICIENT');
     const maxTime=(t:Trial,phase:keyof TimingDefaults,base:number)=>{const spec=t.timing?.[phase]??defaults?.[phase];return spec?spec.base+spec.jitter:base;};
     if (!trials.length || trials.reduce((n, t) => n + (maxTime(t,'stimulus_ms',t.image_ms)+maxTime(t,'isi_ms',t.isi_ms)+maxTime(t,'feedback_ms',t.feedback_ms??0)) * (repeats + 1), 0) > budget.max_group_ms)
       throw new ContractError('GROUP_TIME_BUDGET_EXCEEDED');
@@ -234,13 +250,14 @@ export function parseProtocol(value: unknown): Protocol {
     if(g.rating!==undefined){
       const r=object(g.rating);fields(r,['prompt','labels','items','age_prompt','age_min','age_max','familiarity']);const prompt=text(r.prompt,TEXT_LIMITS.question),labels=strings(r.labels,choices.length,choices.length),items=r.items===undefined?undefined:strings(r.items,1,20);
       const age_prompt=r.age_prompt===undefined?undefined:text(r.age_prompt,TEXT_LIMITS.question), age_min=r.age_min===undefined?0:number(r.age_min,0,120,true), age_max=r.age_max===undefined?120:number(r.age_max,0,120,true);
+      if(age_prompt!==undefined&&!age_prompt.trim())throw new ContractError('INVALID_RATING_AGE');
       if(age_min>age_max||(age_prompt===undefined&&(r.age_min!==undefined||r.age_max!==undefined))||(age_prompt!==undefined&&age_min===age_max))throw new ContractError('INVALID_RATING_AGE');
       if(!prompt.trim()||choices.some((c,i)=>c!==String(i+1))||repeats!==0||defaults||g.ordering!==undefined||g.response_keys!==undefined||g.feedback!==undefined||trials.some(t=>t.correct!==null||!t.asset_id||t.timing||t.feedback_ms||t.image_ms!==1)||new Set(trials.map(t=>t.asset_id)).size!==trials.length)throw new ContractError('INVALID_SELF_PACED_RATING');
       let familiarity:Familiarity|undefined;
       if(r.familiarity!==undefined){const f=object(r.familiarity);fields(f,['prompt','labels','position']);const fp=text(f.prompt,TEXT_LIMITS.question),fl=strings(f.labels,2,11);
         if(!fp.trim()||(f.position!==undefined&&f.position!=='before-age'))throw new ContractError('INVALID_RATING_FAMILIARITY');
         familiarity={prompt:fp,labels:fl,...(f.position==='before-age'?{position:'before-age' as const}:{})};}
-      group.rating={prompt,labels,...(items?{items}:{}),...(age_prompt?{age_prompt,age_min,age_max}:{}),...(familiarity?{familiarity}:{})};
+      group.rating={prompt,labels,...(items?{items}:{}),...(age_prompt!==undefined?{age_prompt,age_min,age_max}:{}),...(familiarity?{familiarity}:{})};
     }
     if(g.sampling!==undefined){if(!group.rating)throw new ContractError('SAMPLING_REQUIRES_RATING');group.sampling=parseSampling(g.sampling,trials);}
     if(defaults)group.timing_defaults=defaults;

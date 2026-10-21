@@ -40,24 +40,32 @@ function counts(db){
     (SELECT count(DISTINCT runner_hash) FROM lab_versions) AS runners`).get();
 }
 const baseCovers=(dir,current,expected={})=>verifiedBaseCovers(Database,dir,current,expected);
-function writeBase(jobId,dir){
-  const manifestHash=sha256(path.join(dir,'manifest.json'));
-  fs.writeFileSync(basePointer,JSON.stringify({job_id:jobId,manifest_hash:manifestHash,path:jobId,updated_at:now()},null,2)+'\n',{mode:0o600});
+function keepBase(dir){
   fs.writeFileSync(path.join(dir,'.keep'),'',{flag:'a',mode:0o600});
   fs.chmodSync(path.join(dir,'.keep'),0o600);
+}
+function writeBase(jobId,dir){
+  // Pin the bundle before publishing the pointer. A crash after the pin is
+  // harmless; a pointer without the pin lets the wrapper archive the base.
+  keepBase(dir);
+  const manifestHash=sha256(path.join(dir,'manifest.json'));
+  fs.writeFileSync(basePointer,JSON.stringify({job_id:jobId,manifest_hash:manifestHash,path:jobId,updated_at:now()},null,2)+'\n',{mode:0o600});
   return manifestHash;
 }
+function selectedBase(job,dir,persist){
+  return persist?{job_id:job,manifest_hash:writeBase(job,dir),dir}:{job_id:job,manifest_hash:sha256(path.join(dir,'manifest.json')),dir};
+}
 function latestReadyFull(db){return db.prepare("SELECT job_id FROM lab_jobs WHERE kind='BACKUP' AND state='READY' ORDER BY updated_at DESC").all();}
-function ensureBase(db,current,refresh=true){
+function ensureBase(db,current,{refresh=true,persist=true}={}){
   if(fs.existsSync(basePointer)){
-    try{const p=JSON.parse(fs.readFileSync(basePointer,'utf8'));if(validBasePointer(p)){const dir=path.join(backupsRoot,p.job_id);if(baseCovers(dir,current,{manifestHash:p.manifest_hash,jobId:p.job_id}))return {job_id:p.job_id,manifest_hash:p.manifest_hash,dir};}}catch{}
+    try{const p=JSON.parse(fs.readFileSync(basePointer,'utf8'));if(validBasePointer(p)){const dir=path.join(backupsRoot,p.job_id);if(baseCovers(dir,current,{manifestHash:p.manifest_hash,jobId:p.job_id})){if(persist)keepBase(dir);return {job_id:p.job_id,manifest_hash:p.manifest_hash,dir};}}}catch{}
   }
-  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current,{jobId:job})){const manifest_hash=writeBase(job,dir);return {job_id:job,manifest_hash,dir};}}
+  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current,{jobId:job}))return selectedBase(job,dir,persist);}
   if(!refresh)throw new Error('BASE_REFRESH_REQUIRED');
   if(!process.env.BACKUP_PASSWORD_FILE)throw new Error('BASE_STRUCTURE_CHANGED_AND_BACKUP_PASSWORD_FILE_MISSING');
   const run=spawnSync(process.execPath,['/usr/local/bin/psychlab-light-backup.mjs','--force'],{env:process.env,stdio:'inherit'});
   if(run.status!==0)throw new Error(`BASE_REFRESH_FAILED:${run.status}`);
-  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current,{jobId:job})){const manifest_hash=writeBase(job,dir);return {job_id:job,manifest_hash,dir};}}
+  for(const {job_id:job} of latestReadyFull(db)){if(!jobIdPattern.test(job))continue;const dir=path.join(backupsRoot,job);if(baseCovers(dir,current,{jobId:job}))return selectedBase(job,dir,persist);}
   throw new Error('NO_BASE_BUNDLE_COVERS_CURRENT_STRUCTURE');
 }
 function physicalTemp(){
@@ -82,7 +90,7 @@ try{
   let previous=null;try{previous=JSON.parse(fs.readFileSync(sidecar,'utf8'));}catch{}
   const needsSnapshot=force||!previous||previous.fingerprint!==currentFingerprint;
   let base;
-  try{base=ensureBase(db,currentStructure,!dryRun);}catch(error){if(dryRun&&error.message==='BASE_REFRESH_REQUIRED'){console.log(JSON.stringify({at:now(),mode:'dry-run',base_refresh_required:true,fingerprint:currentFingerprint,counts:currentCounts},null,2));db.close();process.exit(0);}throw error;}
+  try{base=ensureBase(db,currentStructure,{refresh:!dryRun,persist:!dryRun});}catch(error){if(dryRun&&error.message==='BASE_REFRESH_REQUIRED'){console.log(JSON.stringify({at:now(),mode:'dry-run',base_refresh_required:true,fingerprint:currentFingerprint,counts:currentCounts},null,2));db.close();process.exit(0);}throw error;}
   console.log(JSON.stringify({at:now(),mode:dryRun?'dry-run':'apply',needs_snapshot:needsSnapshot,previous_snapshot:previous?.file??null,base_job:base.job_id,base_manifest:base.manifest_hash,fingerprint:currentFingerprint,counts:currentCounts},null,2));
   if(dryRun){db.close();process.exit(0);}
   if(!needsSnapshot){db.close();console.log(JSON.stringify({action:'SKIP_NO_DATA_CHANGES',fingerprint:currentFingerprint,base_job:base.job_id},null,2));process.exit(0);}

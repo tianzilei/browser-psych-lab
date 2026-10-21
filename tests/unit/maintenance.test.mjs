@@ -51,3 +51,14 @@ test('header validation, blocked recovery, snapshot CSV, joint backup and closed
   }finally{restored.close();}
   await assert.rejects(restoreBackup(bundle,destination),/MUST_NOT_EXIST/);const manifest=JSON.parse(await readFile(join(bundle,'manifest.json'),'utf8'));manifest.files[0].hash=digest('wrong');await writeFile(join(bundle,'manifest.json'),JSON.stringify(manifest));await assert.rejects(restoreBackup(bundle,join(root,'corrupt-restore')),/HASH_MISMATCH/);
 });
+
+test('a read-only replay failure fails its job and never blocks the next maintenance job',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'bpl-replay-failure-')),writer=new DatabaseWriter(join(root,'db.sqlite')),maintenance=new Maintenance(writer,join(root,'db.sqlite'),root);await writer.start();
+  t.after(async()=>{await maintenance.close();await writer.close();await rm(root,{recursive:true,force:true});});
+  const token=digest('admin'),csrf=randomUUID(),admin=(op,data={})=>writer.request({operation:`lab/${op}`,credential_hash:token,data:{...data,csrf}});
+  await writer.request({operation:'lab/admin.issue',data:{token_hash:token,csrf}});
+  const study=await admin('study.create',{request_id:randomUUID()});
+  await assert.rejects(maintenance.run('REPLAY',{session_id:randomUUID(),scope:'missing-scope'}),error=>error.code==='REPLAY_PROOF_STALE_OR_INVALID');
+  const replay=(await admin('job.list')).jobs.find(job=>job.kind==='REPLAY');assert.equal(replay.state,'FAILED');
+  const exported=await maintenance.run('EXPORT',{study_id:study.study_id});assert.equal(exported.result.study_id,study.study_id);
+});

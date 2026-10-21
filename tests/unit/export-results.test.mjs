@@ -29,7 +29,7 @@ test('result and trajectory CSVs preserve answer states, source clocks, safe tex
     {id:'optional',type:'single',title:'选填',required:false,choices:['A','B']},
     {id:'skipped',type:'single',title:'分支题',choices:['A','B'],condition:{op:'eq',question:'gate',value:'否'}},
   ]}]});
-  const f=fixture(t,protocol),sample={type:'pointerdown',at:12.5,raw_timestamp:12.5,context:{page_id:'page',question_id:'gate'},target:'=target',box:null,x:0,y:2,trusted:true,data:'无损压缩测试'.repeat(1000)};
+  const f=fixture(t,protocol),sample={type:'pointerdown',at:12.5,raw_timestamp:12.5,context:{page_id:'page',question_id:'gate'},target:'=target',box:null,x:0,y:2,trusted:true,data:'无损压缩测试'.repeat(1000),session_id:'FAKE-SESSION',event_id:'FAKE-EVENT',time_origin:0};
   const action=f.wire('d-ui-test','INPUT_DIAGNOSTIC',{interaction:{schema:'interaction-v1',time_origin:1700000000123.5,samples:[sample]}},{sequence:0,previous:null});assert.equal(f.ingest([action]).receipts[0].disposition,'ACCEPTED');
   const final=f.wire('page','PAGE_SNAPSHOT',{answers:{gate:'是',score:-1,note:' =SUM(1,2)',multi:['中文,"引号"\n下一行'],axes:{left:0},optional:null}},{sequence:0,previous:null});f.ingest([final]);const seal=f.seal('page',[final],['page']);f.call('finalize',{request_id:randomUUID(),...f.fence,seal_ids:[seal.seal_id]});
   // Export even a completed session with later quarantined diagnostic evidence.
@@ -54,6 +54,8 @@ test('result and trajectory CSVs preserve answer states, source clocks, safe tex
     assert.equal(answers[0].session_created_at,'1970-01-01 08:00:01.000');assert.equal(answers[0].last_received_at,'1970-01-01 08:00:01.000');assert.equal(answers[0].time_zone,'Asia/Shanghai');
     assert.equal(manifest.answers_layout,'one-session-per-row-v1');assert.equal(manifest.answers_time_zone,'Asia/Shanghai');
     const trajectory=trajectories.find(row=>row.event_id===action.event_id);assert.equal(trajectory.time_origin,'1700000000123.5');assert.equal(trajectory.at,'12.5');assert.equal(trajectory.x,'0');assert.equal(trajectory.target,"'=target");assert.equal(trajectory.disposition,'ACCEPTED');assert.deepEqual(JSON.parse(trajectory.payload_json),sample);
+    const actionRow=full.filter(row=>row.table==='interaction_actions').map(row=>JSON.parse(row.data_json)).find(row=>row.event_id===action.event_id);
+    assert.equal(actionRow.session_id,f.created.session_id);assert.equal(actionRow.event_id,action.event_id);assert.equal(actionRow.time_origin,1700000000123.5);
     const rejected=trajectories.find(row=>row.event_id===invalid.event_id);assert.equal(rejected.disposition,'QUARANTINED');assert.equal(rejected.reason,'INVALID_INTERACTION_BATCH');assert.ok(rejected.payload_json.includes('interaction'));
     assert.equal(manifest.files['answers.csv'].rows,answers.length);assert.equal(manifest.files['trajectories.csv'].rows,trajectories.length);
     for(const file of ['answers.csv','trajectories.csv']){assert.equal(manifest.files[file].hash,await fileHash(join(directory,file)));assert.equal(manifest.files[file].bytes,(await readFile(join(directory,file))).length);}

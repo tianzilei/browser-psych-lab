@@ -115,5 +115,8 @@ test('readiness cannot omit storage or geometry, allocation is once, unclosed pe
   const rounded=structuredClone(readiness);for(const b of rounded.geometry.buttons)b.height=43.999996185302734;
   const data={request_id:'permit',...fence,reservation_id:reservation.reservation_id,readiness:rounded},permit=call('permit',data);assert.equal(permit.plan.geometry.buttons[0].height,43.999996185302734);assert.deepEqual(call('permit',data),permit);assert.throws(()=>call('preparation',fence),/UNAVAILABLE/);assert.throws(()=>call('reserve',{request_id:'during-run',...fence}),/RUN_LOCKED/);assert.equal(f.db.prepare('SELECT count(*) AS n FROM lab_slots WHERE session_id=? AND allocation_id IS NOT NULL').get(s.session_id).n,1);
   f.setNow(1000000);assert.throws(()=>call('claim',{request_id:'takeover',writer_id:'other'}),/RUN_LOCKED/);assert.throws(()=>f.admin('asset.delete',{request_id:'delete',asset_id:asset.asset_id}),/ASSET_REFERENCED/);
+  const bad=f.wire(permit.scope,'GROUP_RECORD',{record:'not-an-object'},{session_id:s.session_id,writer_id:fence.writer_id,writer_epoch:fence.writer_epoch,version_id:v.version_id,protocol_hash:v.hash});assert.equal(call('ingest',{events:[bad]}).receipts[0].disposition,'QUARANTINED');
+  const manifest={manifest_id:randomUUID(),scope:permit.scope,path:['pictures'],events:[{event_id:bad.event_id,hash:bad.hash}]};
+  assert.equal(call('seal.check',{request_id:randomUUID(),...fence,manifest}).replay_required,false);
   assert.equal(call('terminate',{request_id:'stop',reason:'UNKNOWN_RUN'}).permit.state,'CLOSED_UNKNOWN');assert.throws(()=>call('permit',{...data,request_id:'again'}),/TERMINAL/);
 });

@@ -38,8 +38,20 @@ async function run(){
         await emit((records===1?'':',')+JSON.stringify({...metadata,raw_utf8:decoded.toString('utf8')}));
       }
       await emit('],"embedded_assets":{');let totalAssets=0,index=0;
-      for(const asset of assets){const info=db.prepare("SELECT hash,bytes,format FROM lab_assets WHERE asset_id=? AND state='READY'").get(asset) as {hash:string;bytes:number;format:string}|undefined;
-        if(!info||!['png','jpeg','webp'].includes(info.format))throw new Error('REPLAY_IMAGE_MISSING');totalAssets+=info.bytes;if(totalAssets>64*1024*1024)throw new Error('TRAJECTORY_EXPORT_TOO_LARGE');
+      // Screen snapshots are client-authored. Only embed an image that this
+      // session's frozen plans actually reference and that belongs to its study;
+      // unknown or foreign ids are skipped instead of failing the whole replay.
+      const allowedAssets=new Set<string>();
+      for(const row of db.prepare('SELECT plan FROM lab_permits WHERE session_id=?').iterate(config.session) as Iterable<{plan:string}>){
+        const plan=JSON.parse(row.plan) as {roots?:{asset_id?:string}[]};
+        for(const root of plan.roots??[])if(root.asset_id)allowedAssets.add(root.asset_id);
+      }
+      for(const asset of assets){
+        if(!allowedAssets.has(asset))continue;
+        const info=db.prepare("SELECT a.hash,a.bytes,a.format FROM lab_assets a JOIN lab_sessions s USING(study_id) WHERE s.session_id=? AND a.asset_id=? AND a.state='READY'").get(config.session,asset) as {hash:string;bytes:number;format:string}|undefined;
+        if(!info)continue;
+        if(!['png','jpeg','webp'].includes(info.format))continue;
+        totalAssets+=info.bytes;if(totalAssets>64*1024*1024)throw new Error('TRAJECTORY_EXPORT_TOO_LARGE');
         const packed=await readFile(await assetPath(config.root,asset));if(createHash('sha256').update(packed).digest('hex')!==info.hash)throw new Error('REPLAY_IMAGE_HASH_MISMATCH');
         await emit((index++?',':'')+JSON.stringify(asset)+':'+JSON.stringify({hash:info.hash,data_url:`data:image/${info.format};base64,${packed.toString('base64')}`}));
       }
