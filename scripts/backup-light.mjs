@@ -103,9 +103,12 @@ try{
     const after=latestReady(readDb);if(!after)throw new Error('NO_READY_BACKUP');
     const dir=path.join(backupsRoot,after.job_id),manifest=manifestOf(dir);if(!manifest||manifest.job_id!==after.job_id)throw new Error('NEW_BACKUP_MANIFEST_MISSING');
     if(Date.now()-fs.statSync(path.join(dir,'manifest.json')).mtimeMs>15*60*1000)throw new Error('NEW_BACKUP_NOT_FRESH');
-    const finalFingerprint=JSON.stringify(fingerprint(readDb)),tmp=`${sidecar}.tmp`;
-    fs.writeFileSync(tmp,JSON.stringify({fingerprint:finalFingerprint,at:now(),job_id:after.job_id},null,2)+'\n',{mode:0o600});fs.renameSync(tmp,sidecar);
-    console.log(JSON.stringify({action:'BACKED_UP',job_id:after.job_id,manifest_hash:sha256(path.join(dir,'manifest.json')),fingerprint:finalFingerprint},null,2));
+    // Store the pre-backup fingerprint. Writes after this point are not in
+    // this snapshot, so they must trigger the next backup instead of being
+    // marked as already captured.
+    const tmp=`${sidecar}.tmp`;
+    fs.writeFileSync(tmp,JSON.stringify({fingerprint:currentFingerprint,at:now(),job_id:after.job_id},null,2)+'\n',{mode:0o600});fs.renameSync(tmp,sidecar);
+    console.log(JSON.stringify({action:'BACKED_UP',job_id:after.job_id,manifest_hash:sha256(path.join(dir,'manifest.json')),fingerprint:currentFingerprint},null,2));
   }
   const writeDb=open(false);const archived=[];
   try{
