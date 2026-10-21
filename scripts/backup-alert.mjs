@@ -29,5 +29,8 @@ if(process.env.BACKUP_ALERT_HEALTHCHECK_FAIL_URL){
   delivery.push({target:'healthcheck_fail',ok:r.status===0,detail:(r.stderr||r.stdout||'').trim().slice(0,300)});
 }
 if(delivery.length){alert.delivery=delivery;fs.writeFileSync(file,JSON.stringify(alert,null,2)+'\n',{mode:0o600});}
-console.log(JSON.stringify({file,unit,state,delivery,status:alert.status?.status??null},null,2));
+const latestPath=path.join(alertsDir,'latest.json');
+fs.writeFileSync(latestPath,JSON.stringify({...alert,file,delivery},null,2)+'\n',{mode:0o600});
+fs.chmodSync(latestPath,0o600);
+console.log(JSON.stringify({file,latest:latestPath,unit,state,delivery,status:alert.status?.status??null},null,2));
 if(delivery.some(d=>!d.ok))process.exitCode=1;
