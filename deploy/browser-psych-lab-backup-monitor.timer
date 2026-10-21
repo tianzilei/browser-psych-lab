@@ -1,0 +1,8 @@
+[Unit]
+Description=Browser Psych Lab daily backup freshness monitor
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target
