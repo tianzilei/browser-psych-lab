@@ -1,88 +1,193 @@
 # Browser Psych Lab
 
-自托管的浏览器心理实验问卷平台，面向移动端普通问卷与固定图片选择任务，支持预加载、软件时序记录、可靠采集和有界动态补测。
+A self-hosted platform for browser-based psychology experiments and questionnaires on phones, tablets, and computers. It supports standard questionnaires, image and text stimulus tasks, and photo ratings. Researchers configure content in JSON; the platform handles frozen versions, local saving, background synchronization, result exports, and interaction replay.
 
-当前状态：P0–P6 首版代码及本机软件流程已落实，包含研究管理、有限问卷/分支、图片门控、Canvas、动态补测、可靠采集、CSV、备份恢复和运维入口。正式 gate 默认关闭；已有特定 ECS 图片评分容量记录，真实设备、其他研究负载与独立恢复仍需相应环境验收。
+Updated on October 23, 2026, to reflect the current repository. The P0–P6 workflows are implemented. The default mode is `TEST_ONLY`; formal `COLLECTION` use requires device, capacity, and independent recovery validation before opening the collection gate, as described in the [deployment and recovery guide](docs/部署与恢复手册.md). Timing measurements are browser software records.
 
-## 设计文档
+## Features
 
-- [文档索引](docs/README.md)：现行设计、操作手册与历史证据的阅读入口。
-- [并发设计与容量验收](docs/并发设计与容量验收.md)：任务／准备两级准入、HTTP 与 DB 预算、单写者、失活回收，以及默认 2／1 和 ECS 7／7 的区别。
-- [交互代码审计与修复](docs/gemini交互代码审计/README.md)：2026-10-11 Gemini 多轮审计、问卷/任务交互修复、跨标签写入者恢复及回归记录。
-- [当前项目逻辑与设计优化](docs/当前项目逻辑与设计优化.md)：2026-10-11 全项目 Gemini 讨论后的业务闭环、状态/故障矩阵、现行准入和活动策略；旧 FIFO 文档的运行规则由此覆盖。
-- [浏览器轻量采集与传输设计](docs/浏览器轻量采集与传输设计.md)：环境/输入/生命周期采集范围，原生 gzip、SHA-256、接收预算、兼容与开销测量。
-- [采集性能优化](docs/采集性能优化.md)：范围预算增量计数、批内冻结问卷复用及优化前后的本机测量；`npm run profile:ingestion -- .local/ingestion-profile.json` 可复现当前版本。
-- [存储与传输性能优化](docs/存储与传输性能优化.md)：小事件压缩、封存/对账/问卷 JSON 上传压缩、大 JSON 与流式 CSV 下载压缩，以及字节和 CPU 测量。
-- [P1–P6 实施与验收](docs/P1-P6实施与验收.md)：已落实功能、测试、预算和外部验收边界。
-- [部署与恢复手册](docs/部署与恢复手册.md)：HTTPS/systemd 模板、备份 timer、完整恢复及正式准入。
-- [ECS 并发与空闲中断](docs/ecs-capacity-and-idle.md)：已有代表负载容量记录、任务满额拒绝和 120/300 秒活动策略。
-- [会话排队与小规格部署（历史）](docs/会话排队与小规格部署.md)：旧 FIFO 方案和 1c2g 试运行配置。
-- [阿里云 1Mbps 部署与验证（历史）](docs/阿里云1Mbps部署与验证.md)：旧单流/排队测量、冻结版本兼容和带宽边界。
-- [全阶段进度](docs/实施进度.md)：代码完成与环境验收分开记录。
-- [P0 实施与验收](docs/P0实施与验收.md)：可运行入口、代码与合同、故障测试、实施边界及剩余阶段。
-- [轻量化架构与并发稳定性决策](docs/轻量化架构与并发稳定性决策.md)：13 个模块取舍、当前架构、已实施减负、替换条件及容量验收。
-- [问卷前端轻量化与纯色设计](docs/问卷前端轻量化与纯色设计.md)：固定视口、逐题按钮、李克特坐标轴、所有选项同屏、仅个人信息允许输入、灰色/深色冻结背景、Gemini 三轮讨论及构建体积对比。
-- [界面与交互文案设计](docs/界面与交互文案设计.md)：当前标题去重、操作层级、系统文案、错误状态、输入恢复、评分与年龄交互及小屏布局规则。
-- [完整自托管设计与实施契约](docs/浏览器心理实验问卷平台_完整自托管设计.md)：架构、编辑器、运行器、存储、数据合同及验收；第 18 节为实施契约。
-- [SQLite 实施修订](docs/SQLite实施修订.md)：覆盖原设计的 PostgreSQL 专属实现，规定写事务、导出视图及联合备份路径。
-- [开发环境与依赖](docs/开发环境与依赖.md)：初始化、运行、检查与依赖锁定。
-- [参考代码入口](references/README.md)：本地源码、固定提交与许可证边界。
-- [Gemini 六轮设计收敛记录](docs/设计收敛_多轮审查记录.md)：问题处理、审查取舍、结果追踪及采集准入事项。
-- [Gemini 优化讨论原文](docs/gemini轻量化讨论/README.md)：架构与阿里云优化的完整输入／回复、采用与否决边界和测量原件。
+- **Questionnaires:** Single choice, multiple choice, single- and multi-axis scales, personal information fields, input validation, conditional branches, informed consent, and closing messages. Choose one question per screen or adaptive pagination with automatic storage segmentation.
+- **Experiment tasks:** Image and text stimuli, preloading and decode checks, Canvas presentation, configurable durations and jitter, fixed or pseudorandom ordering, keyboard or button responses, feedback, and bounded additional trials. Photo tasks support multiple ratings, familiarity, and age estimates.
+- **Reliable saving:** Answers are committed to IndexedDB first. Questionnaires and self-paced ratings synchronize continuously in batches. Failed uploads remain available for retry; sessions can resume in the same browser after a reload. The closing page appears after the server confirms completion.
+- **Study management:** Password login, JSON and image ZIP uploads, validation and simulation, renaming, ordering, publishing, hiding, and soft deletion. Content changes create new frozen versions; existing sessions retain their original versions.
+- **Results and replay:** CSV exports by participant, photo, or trial. Expand or collapse response lists showing interaction counts, screen snapshot counts, and response duration. Replay online or download an individual interaction recording and a standalone replay HTML file.
+- **Operations:** Single-instance deployment, storage usage reporting, downloads of existing server backups, full backup restoration, SQLite database snapshots and hybrid restoration, and temporary export cleanup.
 
-## 技术基线
+## Quick start
 
-图片上传前可运行 `npm run images:prepare -- examples/images/mobile-plan.json .local/mobile-images-v1`，生成优化图片、可上传 ZIP 和尺寸/裁切/字节预算报告，详见 [移动端图片处理](docs/移动端图片处理.md)。
-
-TypeScript 单仓库、Node.js 24/Fastify 单应用、SQLite（WAL＋FULL）、三个私有逻辑存储区。数据库由单 worker 处理，HTTP 接收与 RPC 队列均有界；单独的维护 worker 执行重放、导出、备份和派生重建。正式问卷采用固定视口、原生按钮和独立纯色样式，仅个人信息题可使用文字输入，SurveyJS 仅供检查页显式加载；检查页与 P0 可靠问卷分入口，公共构建文件预压缩；原始事件／发件箱／提交意图使用一个 IndexedDB 事务。
-
-服务端生产直接依赖为 Fastify、@fastify/static 和 better-sqlite3；图片包只解包与标头校验，不做图像解码或转码，sharp 用于本地图片预处理与开发测试。SurveyJS/idb 在构建时安装并进入浏览器产物。保留现有库，无需增加 ORM、Redis 或集群。
-
-当前任务会话（`groups` 非空）采用全局并发名额，纯问卷不占这类名额。`SESSION_CONCURRENCY=2`、`PREPARATION_CONCURRENCY=1` 为默认起点；任务和图片准备满额均立即返回 409，建议 30 分钟后重试，不建立 FIFO 等待队列。图片下载/解码保持会话内串行。已有 ECS 代表负载记录采用 7/7，适用场景及测量边界见 [容量记录](docs/ecs-capacity-and-idle.md)，其他研究不能直接沿用该容量结论。
-
-正式业务写请求接收预算为 32 个／20 MiB，gzip 解压最多 4 个并发；DB 请求在途＋等待预算为 32 个／2 MiB，预留 4 个请求容量给控制操作，一次只向数据库 worker 投递一个请求。每份答卷由 Web Locks 和服务端 writer epoch 保证单写者；维护作业一次一个。业务容量 409 与临时背压 503 分别处理，完整规则见 [并发设计](docs/并发设计与容量验收.md)。
-
-新冻结运行器统一使用 `idle120-offline300-v1`：120 秒无操作中断，每 60 秒发送一次小型 activity 请求，300 秒失联中断；服务端每 30 秒扫描。固定刺激和评分任务均使用此监督，刺激循环不等待准备下载或封存，不能概括为组内零 HTTP。旧冻结版本继续按原合同执行，共享策略和恢复规则见 [当前设计](docs/当前项目逻辑与设计优化.md)。
-
-## 实施入口
+The repository pins Node.js 24.22.1 and npm 11.19.1. With nvm installed, run these commands from the project directory:
 
 ```sh
 nvm install
 nvm use
+npm ci
+npm run setup
 npm run auth:setup
 npm run dev
 ```
 
-当前安全基线为 Node.js 24.22.1、npm 11.19.1；切换 Node 后按锁文件执行 `npm ci`。2026-10-22 的 CVE 检查与修补记录见 [安全检查报告](docs/CVE安全检查-20261022.md)。
+`setup` creates `.env`, the local database, and private storage directories without overwriting existing configuration. `auth:setup` prompts for an administrator password of 12–256 characters and writes only `ADMIN_PASSWORD_HASH` to `.env`. Administrator login requires a password only. See [development environment and dependencies](docs/开发环境与依赖.md) for noninteractive configuration.
 
-管理端仅输入密码登录，不区分研究者／维护者；`auth:setup` 只配置 `ADMIN_PASSWORD_HASH`。本地模拟管理端的固定密码见下方预览说明。
+| Entry point | Default URL |
+| --- | --- |
+| Administration | <http://127.0.0.1:5173/admin.html> |
+| Public questionnaire list | <http://127.0.0.1:5173/> |
+| Development diagnostics (login required) | <http://127.0.0.1:5173/diagnostics.html> |
+| P0 persistence test | <http://127.0.0.1:5173/p0.html> |
+| Backend readiness check | <http://127.0.0.1:3000/api/health/ready> |
 
-管理主页：`http://127.0.0.1:5173/`；开发检查页：`http://127.0.0.1:5173/diagnostics.html`（登录后访问）；可靠保存测试：`http://127.0.0.1:5173/p0.html`。首次在其他机器使用时，按[开发环境说明](docs/开发环境与依赖.md)安装与初始化。`npm run doctor` 检查环境与源码，`npm run check` 执行类型、构建、数据库、单元／故障及浏览器验证。
+During development, Vite proxies API requests to Fastify. To serve the built frontend and API from one origin:
 
-早期单例/双例 FIFO 混合测量保留在[双例历史报告](docs/混合采集本机测量.json)与[单例历史报告](docs/单例排队本机测量.json)。当前 `npm run profile:mixed -- 报告路径.json` 生成 v3 报告，分别记录 1/5/10/20 个集中到达请求的完成与容量拒绝，并额外执行确定会被准入的中断/对账探针。部署、独立恢复和真实手机仍按运维手册验收。
+```sh
+npm run build
+NODE_ENV=production npm start
+```
 
-`npm run profile:bandwidth -- 报告路径.json` 生成 v3 报告：20 个集中到达请求分别记录准备成功与容量拒绝，下载成功后 TEST_ONLY 终止释放名额；累计响应正文限速 125000 B/s。它验证当前无等待队列的准入和原图摘要，不包含 TLS、实际 ECS 网络与真实设备。原 [1Mbps FIFO 测量](docs/1Mbps排队本机测量.json)保留历史场景，不能直接与 v3 完成数量比较。
+The questionnaire list is at <http://127.0.0.1:3000/> and administration is at <http://127.0.0.1:3000/admin.html>. Use the participant links generated by the administration page, including their `version` parameter, to open individual questionnaires. For server deployment, use [production.env.example](deploy/production.env.example) and the [systemd and HTTPS instructions](docs/部署与恢复手册.md).
 
-首版仅报告软件时序；正式采集前须完成设备、容量和独立备份恢复验收。
+## Create and publish a questionnaire
 
-## 本地模拟问卷
+The current interface and most linked guides are in Chinese. The actions below use descriptive English names.
+
+1. Download a JSON template from administration, or adapt the [standard questionnaire](examples/questionnaires/questionnaire.json), [multi-axis scale](examples/questionnaires/multi-axis.json), [image task](examples/questionnaires/with-images.json), or [pseudorandom stimulus](examples/questionnaires/randomized-stimuli.json) example.
+2. Select the JSON file in administration, check syntax and content validation, and generate a simulation. Administration simulations do not create participant sessions or save responses.
+3. Select image ZIP files alongside the JSON if needed. Reference each image by ZIP filename and internal path. A successful upload creates a frozen version that is hidden by default.
+4. Publish the questionnaire and share its participant link. To revise content, replace the JSON and generate a new version. Hiding a questionnaire stops new admissions while allowing existing sessions to continue.
+
+Common settings:
+
+| Field | Purpose |
+| --- | --- |
+| `questionnaire_layout` | `single` shows one question at a time (default); `adaptive` fits multiple questions to the available space and segments storage automatically |
+| `orientation` | `portrait` or `landscape`; adaptive questionnaires without task groups may also use `auto` |
+| `background` | Solid background color, such as `#e5e5e5` or `#202020` |
+| `consent` | Informed consent `title` and `text`; explicit acceptance precedes session creation and environment data collection |
+| `ending` | Closing `title` and `text`, displayed after the server confirms completion |
+| `record_interactions` | Boolean; `true` or omission enables interaction recording, while `false` disables general interaction traces and screen snapshots |
+
+Every scale tick requires a label; the midpoint is not selected by default. Text input is restricted to personal information fields. Disabling interaction recording still preserves answers, sealing records, device covariates, and task presentation, rating, and reaction-time data. Settings are frozen with each published version. See [JSON questionnaires and image packages](docs/JSON问卷与图片包.md) for fields, limits, and compatibility rules, and [adaptive questionnaires and background saving](docs/自适应问卷与后台自动保存.md) for long questionnaires.
+
+Resize images, normalize orientation, and remove metadata locally before uploading. The preprocessing tool generates images, a ZIP package, and a report covering dimensions and byte budgets:
+
+```sh
+npm run images:prepare -- examples/images/mobile-plan.json .local/mobile-images-v1
+```
+
+See [mobile image preparation](docs/移动端图片处理.md) for configuration, and [stimulus task design](docs/刺激任务设计.md) for durations, jitter, responses, and feedback.
+
+## Result exports and interaction replay
+
+Each questionnaire has a result export action in administration. Exports use the lightweight result format and produce a consistent snapshot with a `manifest.json` description. An unconfirmed job can be reused after a connection failure; a subsequent export creates a fresh snapshot.
+
+| File | Contents |
+| --- | --- |
+| `answers.csv` | One row per response session; also contains participant information for photo rating studies |
+| `ratings.csv` | One row per participant and photo, including ratings and associated photo information |
+| `trials.csv` | One row per trial for fixed-timing image/text tasks, preserving responses, reaction times, and trial outcomes |
+| `preparations.csv` | Device and preparation information where corresponding records exist |
+
+Administration does not generate the full raw-evidence `data.csv`. Results retain unanswered, skipped, unconfirmed, and not-reached states. With the [result export cleanup timer](deploy/browser-psych-lab-export-cleanup.timer) enabled, READY or FAILED lightweight exports last updated more than 24 hours ago are cleaned up hourly. Expired exports can be regenerated; source responses, interaction recordings, images, and backups are retained.
+
+When interaction recording is enabled and valid screen snapshots exist, administration provides a response and replay list. Expanding it preserves loaded responses and pagination. You can play, pause, seek, inspect individual actions, and download a session recording as `JSON.gz` or an offline replay `HTML` file with embedded images. The displayed response duration is the interval between the first and last recorded interactions.
+
+Online and offline replay use the same player and follow recorded elapsed time. New snapshots preserve text line positions, controls, and clipping information; older snapshots remain compatible. Replay reconstructs the interface from software records. Unrecorded system interfaces and physical display latency are outside those records. See [interaction recording and replay](docs/interaction-recording.md) and [individual recordings and offline replay](docs/单份轨迹与离线回放-20261016.md).
+
+## Local preview and phone testing
 
 ```sh
 npm run build
 npm run preview:questionnaire
 ```
 
-打开 `http://127.0.0.1:3081/questionnaire-preview.html` 选择灰色或深色背景。两份 TEST_ONLY 问卷包含知情同意、预设两端文字的单／多李克特坐标轴、单选、多选、可选个人信息分支、结束语，以及可选择继续查看的长说明、8 个同屏选项和完整选项换行。
+Open <http://127.0.0.1:3081/questionnaire-preview.html> and select a gray or dark TEST_ONLY questionnaire to try consent, scales, single and multiple choice, personal information branches, and closing messages. Local administration is at <http://127.0.0.1:3081/admin.html>, with the fixed test password `TEST_ONLY-local-preview`.
 
-本地管理主页：`http://127.0.0.1:3081/`，密码 `TEST_ONLY-local-preview`，无需选择角色。
+The preview listens on loopback by default and stores its database and files separately in `.local/questionnaire-preview`, without changing the project's `.env`. Each start creates new versions and writes links and the process ID to `links.json` in that directory. Press Ctrl+C to stop. The preview replaces the built homepage with a simulation menu; run `npm run build` again to restore the regular homepage.
 
-预览只监听本机，数据库及存储独立保存在 `.local/questionnaire-preview`，不使用既有研究数据或修改 `.env`。每次启动创建新的问卷版本，可重新体验；链接和进程号写入该目录的 `links.json`。Ctrl+C 停止，端口可用 `QUESTIONNAIRE_PREVIEW_PORT` 指定。
+For HTTPS testing on a phone connected to the same Wi-Fi network as the computer:
 
-管理端已改为 JSON 文件上传／替换、校验、模拟、开放／隐藏及软删除。量表每个刻度对应预设文本；方向通过后进入，图片用 ZIP 名称和内部路径引用，首屏环境协变量独立持久保存。模板、图片样例、元数据字段及兼容规则见 [JSON 问卷与图片包](docs/JSON问卷与图片包.md)。
+```sh
+npm run preview:questionnaire -- --lan
+```
 
+The terminal displays the LAN address. On first use, open `http://<LAN-IP>:3081/phone-setup`, install and trust the local test CA, then visit `https://<LAN-IP>:3082/questionnaire-preview.html`. On iOS, also enable full trust under Settings → General → About → Certificate Trust Settings. On Android, choose a CA certificate in the system certificate installation settings. LAN mode requires OpenSSL and stores certificates in `.local/questionnaire-preview/tls`; it does not change system trust automatically.
 
-手机局域网测试使用 `npm run preview:questionnaire -- --lan`。HTTP 默认在 `0.0.0.0:3081`，HTTPS 在 `0.0.0.0:3082`；终端及 `.local/questionnaire-preview/links.json` 显示当前局域网地址。手机与电脑须连接同一 Wi-Fi。首次打开 `http://<局域网IP>:3081/phone-setup`，下载并信任本机测试 CA，然后进入 `https://<局域网IP>:3082/questionnaire-preview.html`。其他 HTTP 路径自动跳转 HTTPS，保留问卷路径与 version。HTTPS 主页 `/` 仍是管理登录，受试者只收到问卷链接。
+Use `QUESTIONNAIRE_PREVIEW_PORT`, `QUESTIONNAIRE_PREVIEW_TLS_PORT`, and `QUESTIONNAIRE_PREVIEW_IP` to select ports and a local network interface address. The browser uses its real Web Crypto, UUID, and Web Locks APIs.
 
-LAN 模式使用 OpenSSL 生成独立的本地 CA 与含 LAN IP/localhost/127.0.0.1 的服务证书，保存在 `.local/questionnaire-preview/tls`；私钥不会公开，不自动改变系统信任设置。根证书沿用，服务证书每次启动重新签发。iOS 安装描述文件后还需在“通用 → 关于本机 → 证书信任设置”开启完全信任；Android 在系统“安装证书”中选择 CA 证书。浏览器仍使用真实 Web Crypto、UUID 与 Web Locks，不以测试模式替换这些接口。可用 `QUESTIONNAIRE_PREVIEW_IP` 指定本机局域网接口地址，`QUESTIONNAIRE_PREVIEW_TLS_PORT` 指定 HTTPS 端口。
+## Architecture and deployment
 
-JSON 顶层 `consent: {"title":"知情同意书","text":"研究者编写的完整说明"}` 配置同意页；模板仅包含模拟测试说明。方向符合后显示，长文优先保留整段并用按钮翻段，最后一段才启用同意。拒绝不创建作答会话、不采集设备协变量；同意后保存文档哈希与服务器接受时间，下载数据包含 `consents` 表。已有冻结版本保持原文与哈希；修改同意书须上传 JSON 生成新版本。
+A TypeScript monorepo runs as a single Node.js 24/Fastify application with SQLite in WAL mode and `synchronous=FULL`. One database worker serializes writes, with bounded HTTP and database queues. A separate maintenance worker handles exports, backups, and derived-data rebuilding. Browser events, the outbox, and submission intents are saved in one IndexedDB transaction. Web Locks and server writer epochs enforce one writer per response session.
+
+Direct production dependencies are Fastify, `@fastify/static`, and `better-sqlite3`. Participant questionnaires use native controls and solid-color styles; SurveyJS loads on demand in diagnostics only. `idb` ships in browser bundles, while `sharp` supports local image preparation and development tests. Build with the full dependency set, then run `npm ci --omit=dev` in the release directory using the same lockfile.
+
+Main configuration options are documented in [.env.example](.env.example) and the [production environment example](deploy/production.env.example):
+
+| Setting | Default or purpose |
+| --- | --- |
+| `HOST` / `PORT` | `127.0.0.1` / `3000` |
+| `WEB_PORT` | Development frontend port, `5173` |
+| `DATABASE_PATH` | `./var/database/browser-psych-lab.sqlite` |
+| `STORAGE_ROOT` | `./var`, containing private study assets, exports, and backups |
+| `ADMIN_PASSWORD_HASH` | Generated by `npm run auth:setup` |
+| `PUBLIC_ORIGIN` | External HTTPS origin for deployment |
+| `SESSION_CONCURRENCY` | Default `2`; limits sessions containing task groups, while questionnaires without task groups do not consume these slots |
+| `PREPARATION_CONCURRENCY` | Default `1`; limits concurrent image preparation |
+| `BACKUP_ROOT` / `BACKUP_LOCAL_ONLY` | Independent backup destination, or explicit local-only backup mode |
+
+Full task or preparation capacity produces an immediate 409 response with a suggested retry after 30 minutes. There is no waiting queue. Image downloads and decoding are sequential within each session. Newly frozen tasks terminate after 120 seconds of inactivity or 300 seconds without contact. The default limits of 2/1 are starting points; the existing ECS 7/7 measurements apply only to their tested workload. See [concurrency design and capacity validation](docs/并发设计与容量验收.md) for the full rules and measurement procedure.
+
+The server backup download action serves existing full archives. Configure backup creation, independent destinations, monitoring, alerts, and restoration separately using the [operations guide](docs/部署与恢复手册.md). Local-only backups are marked `independent:false`. SQLite snapshots depend on the assets and frozen runners in a base bundle; retain both for hybrid restoration. See [SQLite snapshots and hybrid restoration](docs/SQLite快照与混合恢复-20261021.md).
+
+## Development and validation
+
+Before running source checks and browser tests for the first time:
+
+```sh
+npm run references:fetch
+npx playwright install chromium
+npm run doctor
+npm run check
+```
+
+`doctor` checks the environment, database, directories, and pinned reference sources. `check` runs type checking, the production build, the SQLite smoke test, unit and failure tests, browser tests, standalone runner tests, and integration regressions. Individual commands include `npm run typecheck`, `npm run test:unit`, `npm run test:browser`, and `npm run test:runner`.
+
+Performance probes use isolated TEST_ONLY data and accept an output report path:
+
+```sh
+npm run profile:mixed -- .local/mixed-v3.json
+npm run profile:bandwidth -- .local/bandwidth-v3.json
+npm run profile:ingestion -- .local/ingestion-profile.json
+npm run profile:transfer-storage -- .local/transfer-storage-profile.json
+```
+
+The mixed and bandwidth v3 reports distinguish successful admission from capacity rejection. The bandwidth probe limits aggregate response bodies to 125000 B/s. See [concurrency design](docs/并发设计与容量验收.md) and [storage and transfer optimization](docs/存储与传输性能优化.md) for measurement scope. Validate devices and collection capacity in the target environment.
+
+## Project layout and documentation
+
+```text
+src/server/      HTTP, authentication, database, ingestion, exports, backups, restoration
+src/shared/      Protocols, validation, scheduling, randomization, data contracts
+src/web/         Administration, questionnaires, task runners, replay player
+examples/        Questionnaire JSON, image preparation settings, export examples
+scripts/         Setup, builds, test helpers, performance probes, maintenance
+tests/           Unit, browser, runner, and integration regressions
+deploy/          HTTPS, systemd services, maintenance timer templates
+docs/            Design, operating guides, changes, historical validation records
+references/      Pinned reference sources, licenses, PRNG golden vectors
+var/             Local database and private study data (not committed)
+.local/          Local previews, measurements, validation outputs (not committed)
+```
+
+Start with the [documentation index](docs/README.md). Common references:
+
+| Guide | Contents |
+| --- | --- |
+| [JSON questionnaires and image packages](docs/JSON问卷与图片包.md) | Question types, configuration, versions, image references, export rules |
+| [Adaptive questionnaires and background saving](docs/自适应问卷与后台自动保存.md) | Pagination, storage segments, recovery, saving budgets |
+| [Questionnaire control style guide](docs/问卷输入控件StyleGuide.md) | Style tokens, control specifications, rating layouts; includes [interactive examples](docs/style-guide/index.html) |
+| [Current application logic and design](docs/当前项目逻辑与设计优化.md) | Workflows, states, failure handling |
+| [Deployment and recovery](docs/部署与恢复手册.md) | HTTPS, services, backups, cleanup, restoration, collection admission |
+| [Development environment and dependencies](docs/开发环境与依赖.md) | Environment setup, dependencies, validation |
+| [Full self-hosted design](docs/浏览器心理实验问卷平台_完整自托管设计.md) / [SQLite implementation revision](docs/SQLite实施修订.md) | Architecture, protocols, storage contracts |
+| [Deployment record: October 23, 2026](docs/完整改动上线-20261023.md) | Validation and data preservation for that release |
+
+Interpret historical measurements and deployment records in the context of their dates, source revisions, and workloads. Current behavior follows the implementation and deployed configuration.
