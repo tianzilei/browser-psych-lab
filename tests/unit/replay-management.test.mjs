@@ -10,7 +10,13 @@ import {digest} from '../../src/server/collection-store.ts';
 import {RecordingDownloads} from '../../src/server/recording-downloads.ts';
 import {cleanRecordingDownloads} from '../../src/server/clean-recording-downloads.ts';
 const screen={type:'screen',at:1,context:{page_id:'welcome'},width:390,height:844,dpr:3,scroll_x:0,scroll_y:0,visual_viewport:null,background:'#fff',nodes:[{tag:'div',x:10,y:20,width:200,height:80,text:'中文😀 </script><script>alert(1)</script>',style:{color:'#000','font-size':'16px'}}]};
-function record(f,samples,scope='d-ui-test'){const event=f.wire(scope,'INPUT_DIAGNOSTIC',{interaction:{schema:'interaction-v1',time_origin:1700000000000.125,samples}},{sequence:0,previous:null});f.ingest([event]);return event;}
+function record(f,samples,scope='d-ui-test',timeOrigin=1700000000000.125){const event=f.wire(scope,'INPUT_DIAGNOSTIC',{interaction:{schema:'interaction-v1',time_origin:timeOrigin,samples}},{sequence:0,previous:null});f.ingest([event]);return event;}
+test('session duration uses recorded time across page clocks and stays fixed after delayed uploads and idle time',t=>{
+ const f=fixture(t),list=()=>f.admin('session.list',{study_id:f.study.study_id}).sessions[0];assert.equal(list().answering_seconds,null);
+ record(f,[{...screen,at:100}],'d-ui-first',1700000000000);assert.equal(list().answering_seconds,0);
+ const event=record(f,[{...screen,at:100},{type:'pointerup',at:2100,context:{},x:0,y:0}],'d-ui-reloaded',1700000005000);assert.equal(list().answering_seconds,7);
+ f.setNow(2000000);f.ingest([event]);assert.equal(list().answering_seconds,7);assert.equal(list().recording_samples,3);
+});
 test('replay listing requires a valid screen; input-only and invalid histories remain retained, filtered paging and restart stay consistent',t=>{
  const f=fixture(t);assert.equal(f.admin('study.list').studies[0].replayable_sessions,0);record(f,[{type:'input',at:1,context:{},value:'old'}]);
  assert.equal(f.admin('session.recording',{session_id:f.created.session_id}).replayable,false);assert.equal(f.admin('session.list',{study_id:f.study.study_id,replayable:true}).sessions.length,0);

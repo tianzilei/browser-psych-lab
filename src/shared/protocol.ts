@@ -22,7 +22,7 @@ export interface TimingSpec {base: number; jitter: number}
 export interface TimingDefaults {stimulus_ms?: TimingSpec; isi_ms?: TimingSpec; feedback_ms?: TimingSpec}
 export interface Ordering {mode: 'fixed' | 'shuffle' | 'category' | 'balanced'; max_run?: number}
 export interface Feedback {correct: string; incorrect: string; miss: string; neutral: string}
-export interface Familiarity {prompt:string;labels:string[];position?:'before-age'}
+export interface Familiarity {prompt:string;labels:string[];position?:'before-age';control?:'single'}
 export interface Rating {prompt:string;labels:string[];items?:string[];age_prompt?:string;age_min?:number;age_max?:number;familiarity?:Familiarity}
 export interface Trial { root_id: string; asset_id?: string; text?: string; category?: string; image_ms: number; isi_ms: number; correct: string | null;
   timing?: TimingDefaults; timing_general?: (keyof TimingDefaults)[]; feedback_ms?: number }
@@ -254,9 +254,9 @@ export function parseProtocol(value: unknown): Protocol {
       if(age_min>age_max||(age_prompt===undefined&&(r.age_min!==undefined||r.age_max!==undefined))||(age_prompt!==undefined&&age_min===age_max))throw new ContractError('INVALID_RATING_AGE');
       if(!prompt.trim()||choices.some((c,i)=>c!==String(i+1))||repeats!==0||defaults||g.ordering!==undefined||g.response_keys!==undefined||g.feedback!==undefined||trials.some(t=>t.correct!==null||!t.asset_id||t.timing||t.feedback_ms||t.image_ms!==1)||new Set(trials.map(t=>t.asset_id)).size!==trials.length)throw new ContractError('INVALID_SELF_PACED_RATING');
       let familiarity:Familiarity|undefined;
-      if(r.familiarity!==undefined){const f=object(r.familiarity);fields(f,['prompt','labels','position']);const fp=text(f.prompt,TEXT_LIMITS.question),fl=strings(f.labels,2,11);
-        if(!fp.trim()||(f.position!==undefined&&f.position!=='before-age'))throw new ContractError('INVALID_RATING_FAMILIARITY');
-        familiarity={prompt:fp,labels:fl,...(f.position==='before-age'?{position:'before-age' as const}:{})};}
+      if(r.familiarity!==undefined){const f=object(r.familiarity);fields(f,['prompt','labels','position','control']);const fp=text(f.prompt,TEXT_LIMITS.question),fl=strings(f.labels,2,11);
+        if(!fp.trim()||(f.position!==undefined&&f.position!=='before-age')||(f.control!==undefined&&f.control!=='single'))throw new ContractError('INVALID_RATING_FAMILIARITY');
+        familiarity={prompt:fp,labels:fl,...(f.position==='before-age'?{position:'before-age' as const}:{}),...(f.control==='single'?{control:'single' as const}:{})};}
       group.rating={prompt,labels,...(items?{items}:{}),...(age_prompt!==undefined?{age_prompt,age_min,age_max}:{}),...(familiarity?{familiarity}:{})};
     }
     if(g.sampling!==undefined){if(!group.rating)throw new ContractError('SAMPLING_REQUIRES_RATING');group.sampling=parseSampling(g.sampling,trials);}

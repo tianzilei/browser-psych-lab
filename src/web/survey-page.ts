@@ -3,7 +3,8 @@ import { el } from './dom.js';
 import { TextPager } from './text-pager.js';
 import { scaleInput } from './scale-input.js';
 import { pageIntroduction } from './participant-ui.js';
-import {numericKeypad,usesNumericKeypad} from './numeric-keypad.js';
+import {usesNumericKeypad} from './numeric-keypad.js';
+import {choiceButton,choiceKeyboard,personalField,questionValidation,type PersonalField} from './questionnaire-controls.js';
 
 type Answers = Record<string, Answer>;
 const copy = copyAnswer;
@@ -17,7 +18,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     element.replaceChildren(el('p', invalid.type === 'scale' ? '此版本未配置量表两端文字，请联系研究者更新问卷。' : '此版本含未标记为个人信息的文字题，请联系研究者更新问卷。'));
     return () => {};
   }
-  const answers: Answers = {}, visible: number[] = [], inputs = new Map<string, HTMLInputElement>();
+  const answers: Answers = {}, visible: number[] = [], inputs = new Map<string, HTMLInputElement>(),fields=new Map<string,PersonalField>(),attempted=new Set<string>();
   for (const q of page.questions) if (values[q.id] !== undefined) answers[q.id] = copy(values[q.id]!);
   const effective = { ...previous };
   function visibility() {
@@ -34,7 +35,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   message.setAttribute('role', 'alert');
   const top = el('div', undefined, 'question-meta'); top.append(progress, message);
   const screen = el('div', undefined, 'question-screen');
-  const reading = el('div', undefined, 'reading-text'); reading.id = 'question-text'; reading.tabIndex = -1;
+  let reading:HTMLElement = el('div', undefined, 'reading-text'); reading.id = 'question-text'; reading.tabIndex = -1;
   const answerArea = el('div', undefined, 'answer-area'); answerArea.setAttribute('role', 'group'); answerArea.setAttribute('aria-labelledby', reading.id);
   screen.append(reading, answerArea);
   const nav = el('div', undefined, 'question-nav'), back = el('button', '上一题'), next = el('button');
@@ -59,6 +60,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
       : answer&&typeof answer==='object'?Object.keys(answer).some(key=>answer[key]!==axisAnswers(old)[key])||Object.keys(answer).length!==Object.keys(axisAnswers(old)).length:answer !== old;
     if (!changed || submitting || disposed) return;
     answers[q.id] = copy(answer); message.textContent = '';
+    answerArea.removeAttribute('aria-invalid');
     revision(q.id, copy(answer), snapshot(answers));
     if (!composing) visibility();
     navigation();
@@ -73,6 +75,9 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   function makePager() {
     const q = question();
+    const tag=q?.type==='text'?'LABEL':'DIV';
+    if(reading.tagName!==tag){const node=tag==='LABEL'?el('label',undefined,'reading-text'):el('div',undefined,'reading-text');node.id=reading.id;node.tabIndex=-1;reading.replaceWith(node);reading=node;}
+    if(reading instanceof HTMLLabelElement)reading.htmlFor=`personal-input-${q!.id}`;
     const text = q ? q.title : intro;
     pager = new TextPager(text, reading);
   }
@@ -89,7 +94,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     }
     node.value = typeof answers[q.id] === 'string' ? answers[q.id] as string : '';
     node.setAttribute('aria-label', q.title); node.autocomplete = 'off'; node.enterKeyHint = 'done';
-    const update = () => save(q, node!.value);
+    const update = () => {save(q,node!.value);if(!composing)fields.get(q.id)?.liveError(attempted.has(q.id));navigation();};
     node.addEventListener('input', update); node.addEventListener('change', update);
     node.addEventListener('compositionstart', () => { composing = true; });
     node.addEventListener('compositionend', () => { composing = false; update(); visibility(); });
@@ -97,7 +102,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     // Keep the input layout until the explicit Done action. Changing geometry
     // on blur can move the button between pointerdown and click.
     node.addEventListener('blur', requestResize);
-    inputs.set(q.id, node); return node;
+    inputs.set(q.id, node);fields.set(q.id,personalField(q,node));return node;
   }
   function navigation() {
     const q = question(), typing = editing;
@@ -108,7 +113,8 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     back.hidden = !pager.back&&(current<0||!intro&&current===visible[0]);
     nav.classList.toggle('single-action',back.hidden);
     back.disabled = submitting || navigating || back.hidden;
-    next.disabled = submitting || navigating || !fits;
+    next.disabled = submitting || navigating || !fits || !!(q?.type==='text'&&usesNumericKeypad(q)&&!pager.more&&questionValidation(q,answers[q.id]));
+    form.setAttribute('aria-busy',String(submitting));
   }
   function controlsFit(nodes: HTMLElement[]) {
     const area = answerArea.getBoundingClientRect();
@@ -122,19 +128,18 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   function renderChoices(q: Question) {
     const buttons = choices(q).map(label => {
-      const button = el('button', undefined, 'choice-button'), span = el('span', label, 'choice-label');
-      button.type = 'button'; button.dataset.choice = label; button.setAttribute('aria-label', label);
-      button.setAttribute('aria-pressed', String(selected(q, label))); button.append(span);
+      const button = choiceButton(q,label,selected(q,label));
       button.addEventListener('click', () => choose(q, label)); return button;
     });
     answerArea.classList.add('choices-grid'); answerArea.append(...buttons);
     const maxColumns = Math.max(1, Math.min(buttons.length, Math.floor(answerArea.clientWidth / 64)));
+    const gap=parseFloat(getComputedStyle(answerArea).rowGap)||8,minimum=parseFloat(getComputedStyle(buttons[0]!).minHeight)||48;
     for (let columns = 1; columns <= maxColumns; columns++) {
       const rows = Math.ceil(buttons.length / columns);
-      if ((answerArea.clientHeight - 6 * (rows - 1)) / rows < 44) continue;
+      if ((answerArea.clientHeight - gap * (rows - 1)) / rows < minimum) continue;
       answerArea.style.setProperty('--choice-columns', String(columns));
       answerArea.style.setProperty('--choice-rows', String(rows));
-      if (controlsFit([...buttons, ...buttons.map(b => b.firstElementChild as HTMLElement)])) return true;
+      if (controlsFit([...buttons, ...buttons.flatMap(b=>Array.from(b.querySelectorAll<HTMLElement>('.choice-label,.choice-marker')))])) return true;
     }
     return false;
   }
@@ -142,6 +147,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     if (disposed) return;
     form.style.setProperty('--survey-top',`${element.getBoundingClientRect().top+scrollY}px`);
     const q = question();
+    form.classList.toggle('has-numeric-keypad',!!q&&usesNumericKeypad(q));
     if (q?.type === 'text' && editing) { navigation(); return; }
     screen.classList.toggle('reading-only', !q);
     screen.classList.toggle('selection-question', q?.type !== 'text' && !!q);
@@ -155,7 +161,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     if(!reuse)answerArea.replaceChildren();answerArea.className = 'answer-area';
     answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
     if (fits && q && !pager.more) {
-      if (q.type === 'text') {const node=input(q);if(!reuse)answerArea.append(usesNumericKeypad(q)?numericKeypad(node,q.max_length!,'手机号数字键盘'):node);}
+      if (q.type === 'text') {input(q);message.removeAttribute('role');if(!reuse)answerArea.append(fields.get(q.id)!.element);}
       else if (q.type === 'scale') {
         const axis = reuse?answerArea.firstElementChild as HTMLElement:scaleInput(q, answers[q.id], value => save(q, value));if(!reuse)answerArea.append(axis);
         fits = controlsFit([axis, ...axis.querySelectorAll<HTMLElement>('.axis-ends span,input,output,button')]);
@@ -171,7 +177,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
       } else fits = renderChoices(q);
     }
     if (!fits) {
-      layoutProblem = true; message.textContent = '当前屏幕无法完整显示本题。';
+      layoutProblem = true;message.setAttribute('role','alert');message.textContent = '当前屏幕无法完整显示本题。';
       answerArea.replaceChildren(el('p', '请调整设备尺寸；若仍无法作答，请联系研究者。'));
       answerArea.className = 'answer-area';
       answerArea.style.removeProperty('--choice-columns'); answerArea.style.removeProperty('--choice-rows');
@@ -183,18 +189,16 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
     if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
     editing=false;document.body.classList.remove('typing');
     current = index; layoutProblem = false; message.textContent = '';
+    message.setAttribute('role','alert');answerArea.removeAttribute('aria-invalid');
     sessionStorage.setItem(options.key, page.questions[index]?.id ?? ''); makePager(); render(true);
   }
   function validate(index: number) {
     const q = page.questions[index];
-    if (q?.required && answerMissing(q,answers[q.id])) { message.textContent = q.type==='scales'?'请完成每项评分后继续。':q.type === 'scale' ? '请选择评分后继续。' : q.type === 'text' ? '请填写答案后继续。' : '请选择答案后继续。'; return false; }
-    if (q?.type === 'text' && typeof answers[q.id] === 'string' && (answers[q.id] as string).length > q.max_length!) {
-      message.textContent = `最多 ${q.max_length} 个字符。`; return false;
-    }
-    if (q?.type === 'text' && typeof answers[q.id] === 'string' && !answerMissing(q,answers[q.id]) && q.input_match && !inputMatchRegex(q.input_match).test(answers[q.id] as string)) {
-      message.textContent = inputMatchMessage(q.input_match); return false;
-    }
-    return true;
+    if(!q)return true;
+    attempted.add(q.id);const error=questionValidation(q,answers[q.id]);
+    if(q.type==='text'){input(q);fields.get(q.id)!.showError(error);message.textContent='';message.removeAttribute('role');}
+    else{message.setAttribute('role','alert');message.textContent=error;answerArea.setAttribute('aria-invalid',String(!!error));}
+    return !error;
   }
   function forward() {
     if (composing || (!fits && !editing)) return;
@@ -226,15 +230,7 @@ export function mountPage(element: HTMLDivElement, page: Page, previous: Answers
   }
   next.addEventListener('click', () => navigate(forward)); back.addEventListener('click', () => navigate(backward));
   form.addEventListener('submit', event => { event.preventDefault(); navigate(forward); });
-  answerArea.addEventListener('keydown', event => {
-    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const buttons = [...answerArea.querySelectorAll<HTMLButtonElement>('.choice-button')];
-    if (!buttons.length) return;
-    event.preventDefault(); const old = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const index = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-      : (old + (event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length;
-    buttons[index]!.focus({ preventScroll: true });
-  });
+  answerArea.addEventListener('keydown',event=>choiceKeyboard(event,answerArea));
   function requestResize() {
     if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; render(); });
   }

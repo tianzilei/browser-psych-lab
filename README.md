@@ -47,10 +47,13 @@ TypeScript 单仓库、Node.js 24/Fastify 单应用、SQLite（WAL＋FULL）、�
 ## 实施入口
 
 ```sh
+nvm install
 nvm use
 npm run auth:setup
 npm run dev
 ```
+
+当前安全基线为 Node.js 24.22.1、npm 11.19.1；切换 Node 后按锁文件执行 `npm ci`。2026-10-22 的 CVE 检查与修补记录见 [安全检查报告](docs/CVE安全检查-20261022.md)。
 
 管理端仅输入密码登录，不区分研究者／维护者；`auth:setup` 只配置 `ADMIN_PASSWORD_HASH`。本地模拟管理端的固定密码见下方预览说明。
 

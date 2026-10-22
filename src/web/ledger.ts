@@ -18,6 +18,10 @@ export interface SessionMeta {version_id:string;request_id:string;credential:str
 interface LedgerSchema extends DBSchema {events:{key:string;value:EventRow;indexes:{session:string;scope:string}};
  outbox:{key:string;value:EventRow;indexes:{session:string}};meta:{key:string;value:SessionMeta}}
 export class Ledger {
+  private listeners=new Set<()=>void>();
+  private pendingCount=0;
+  get hasPendingEvents(){return this.pendingCount>0||this.queued>0;}
+  onAppend(listener:()=>void){this.listeners.add(listener);return()=>{this.listeners.delete(listener);};}
   private chain:Promise<unknown>=Promise.resolve();
   private queued=0;
   private failure:unknown=null;
@@ -30,7 +34,9 @@ export class Ledger {
     // Only resume an identity after acquiring this version's native Web Lock.
     // A new tab must not advance the epoch of still-pending original events.
     const prior=resumeWriter?await db.get('meta',version):undefined;
-    return new Ledger(db,version,prior?.writer_id??prior?.session?.writer_id??writer);
+    const ledger=new Ledger(db,version,prior?.writer_id??prior?.session?.writer_id??writer);
+    if(prior?.session)ledger.pendingCount=await db.countFromIndex('outbox','session',prior.session.session_id);
+    return ledger;
   }
   async state(){
     let m=await this.db.get('meta',this.version);
@@ -98,6 +104,7 @@ export class Ledger {
       if(pageValues)current.page_values[scope]=pageValues;
       if(pendingPath){const old=await tx.objectStore('events').index('scope').getAll(scope);current.pending[scope]={request_id:crypto.randomUUID(),manifest:{manifest_id:crypto.randomUUID(),scope,path:pendingPath,events:old.filter(v=>v.session_id===s.session_id).sort((a,b)=>a.sequence-b.sequence).map(({event_id,hash})=>({event_id,hash}))},seal:null};}
       await tx.objectStore('meta').put(current,this.version);await tx.done;
+      this.pendingCount++;for(const listener of this.listeners){try{listener();}catch{/* Scheduling cannot invalidate a committed event. */}}
       if(nextDiagnosticScope!==undefined){this.diagnosticScope=nextDiagnosticScope;this.diagnosticCount=0;this.diagnosticBytes=0;}
       return row;
     }catch(error){try{tx.abort();}catch{}await tx.done.catch(()=>{});throw error;}
@@ -106,18 +113,19 @@ export class Ledger {
     const m=await this.state();if(m.pending[scope])return m.pending[scope]!;const rows=await this.db.getAllFromIndex('events','scope',scope);const pending:PendingSeal={request_id:crypto.randomUUID(),manifest:{manifest_id:crypto.randomUUID(),scope,path,events:rows.filter(e=>e.session_id===m.session!.session_id).sort((a,b)=>a.sequence-b.sequence).map(({event_id,hash})=>({event_id,hash}))},seal:null};
     const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const current=(await tx.store.get(this.version))!;current.pending[scope]=pending;await tx.store.put(current,this.version);await tx.done;return pending;
   });}
-  async batch(scope?:string){const m=await this.state();const tx=this.db.transaction('outbox');let cursor=await tx.store.index('session').openCursor(m.session!.session_id);const batch:EventRow[]=[];let size=0;
+  async pendingIds(){const m=await this.state();return new Set(await this.db.getAllKeysFromIndex('outbox','session',m.session!.session_id));}
+  async batch(scope?:string,ids?:ReadonlySet<string>){const m=await this.state();const tx=this.db.transaction('outbox');let cursor=await tx.store.index('session').openCursor(m.session!.session_id);const batch:EventRow[]=[];let size=0;
     while(cursor&&batch.length<16){const row=cursor.value;
       // Never upload a future questionnaire scope before its predecessor seals.
-      if(scope!==undefined&&row.scope!==scope&&!row.scope.startsWith('d-ui-')){cursor=await cursor.continue();continue;}
+      if((ids&&!ids.has(row.event_id))||(scope!==undefined&&row.scope!==scope&&!row.scope.startsWith('d-ui-'))){cursor=await cursor.continue();continue;}
       const bytes=row.byte_length??encoder.encode(row.raw).length;if(size+bytes>256*1024&&batch.length)break;batch.push(row);size+=bytes;cursor=await cursor.continue();}await tx.done;return batch;}
-  acknowledge(receipts:Receipt[]){return this.serialized(async()=>{const tx=this.db.transaction(['events','outbox'],'readwrite',{durability:'strict'});try{for(const r of receipts){const e=await tx.objectStore('events').get(r.event_id);if(!e||e.hash!==r.hash||e.scope!==r.scope||r.custody!=='PERSISTED'||!r.receipt_id||!['ACCEPTED','RECEIVED_PENDING','QUARANTINED'].includes(r.disposition))throw new Error('CUSTODY_MISMATCH');e.receipt=r;await tx.objectStore('events').put(e);await tx.objectStore('outbox').delete(e.event_id);}await tx.done;}catch(error){try{tx.abort();}catch{}await tx.done.catch(()=>{});throw error;}});}
+  acknowledge(receipts:Receipt[]){return this.serialized(async()=>{const tx=this.db.transaction(['events','outbox'],'readwrite',{durability:'strict'});let removed=0;try{for(const r of receipts){const e=await tx.objectStore('events').get(r.event_id);if(!e||e.hash!==r.hash||e.scope!==r.scope||r.custody!=='PERSISTED'||!r.receipt_id||!['ACCEPTED','RECEIVED_PENDING','QUARANTINED'].includes(r.disposition))throw new Error('CUSTODY_MISMATCH');e.receipt=r;await tx.objectStore('events').put(e);if(await tx.objectStore('outbox').get(e.event_id))removed++;await tx.objectStore('outbox').delete(e.event_id);}await tx.done;this.pendingCount=Math.max(0,this.pendingCount-removed);}catch(error){try{tx.abort();}catch{}await tx.done.catch(()=>{});throw error;}});}
   requeue(scope:string,refs:EventRef[]){return this.serialized(async()=>{
     const m=await this.state(),tx=this.db.transaction(['events','outbox'],'readwrite',{durability:'strict'});
     try{for(const ref of refs){const row=await tx.objectStore('events').get(ref.event_id);
       if(!row||row.session_id!==m.session!.session_id||row.scope!==scope||row.hash!==ref.hash)throw new Error('LOCAL_EVIDENCE_MISSING');
       await tx.objectStore('outbox').put(row);
-    }await tx.done;}catch(error){try{tx.abort();}catch{}await tx.done.catch(()=>{});throw error;}
+    }await tx.done;this.pendingCount=await this.db.countFromIndex('outbox','session',m.session!.session_id);}catch(error){try{tx.abort();}catch{}await tx.done.catch(()=>{});throw error;}
   });}
   seal(scope:string,seal:Seal){return this.serialized(async()=>{const m=await this.state();const p=m.pending[scope];if(!p||seal.status!=='SEALED'||seal.algorithm!=='exact-set-and-chain-v1'||manifestText(seal.manifest)!==manifestText(p.manifest)||seal.manifest_hash!==await sha256(manifestText(p.manifest)))throw new Error('SEAL_MISMATCH');
     const tx=this.db.transaction('meta','readwrite',{durability:'strict'});const latest=(await tx.store.get(this.version))!;latest.pending[scope]!.seal=seal;await tx.store.put(latest,this.version);await tx.done;});}

@@ -25,6 +25,55 @@ async function setup(context:BrowserContext,images=false,cap=0,configure?:(p:Pro
   await post(`/api/lab/studies/${study.study_id}/save`,{request_id:crypto.randomUUID(),revision:1,protocol:p});const version=await post(`/api/lab/studies/${study.study_id}/publish`,{request_id:crypto.randomUUID(),revision:2});await post(`/api/lab/studies/${study.study_id}/admission`,{request_id:crypto.randomUUID(),paused:false});return {study,version,p,post};
 }
 async function begin(page:Page){await page.locator('.questionnaire').waitFor();const start=page.getByRole('button',{name:'开始作答',exact:true});if(await start.count())await start.click();}
+for(const layout of ['single','adaptive'] as const)test(`${layout} style guide controls keep explicit choices, accessible labels and live correction`,async({page,context})=>{
+  await page.setViewportSize({width:390,height:844});
+  const {version,study}=await setup(context,false,0,p=>{
+    p.questionnaire_layout=layout;p.layout.background=layout==='single'?'#e5e5e5':'#202020';p.pages[0]!.title='';p.pages[0]!.instruction='';
+    p.pages[0]!.questions=[
+      {id:'devices',type:'multi',title:'设备',required:false,choices:['手机','平板']},
+      {id:'optional',type:'single',title:'可选单选',required:false,choices:['其他','不选择']},
+      {id:'code',type:'text',title:'参与编号',required:true,input_purpose:'personal',max_length:6,input_match:{kind:'regex',pattern:'[0-9]{6}',message:'编号须为 6 位数字。'}},
+    ];
+  });
+  await page.goto(`/participate.html?version=${version.version_id}`);
+  const choices=page.locator('.choice-button[data-choice-type=multi]');await expect(choices).toHaveCount(2);
+  await expect(choices.first()).toHaveAttribute('aria-pressed','false');
+  expect(await choices.first().locator('.choice-marker').evaluate(node=>({width:node.getBoundingClientRect().width,radius:getComputedStyle(node).borderRadius}))).toEqual({width:18,radius:'3px'});
+  await choices.first().focus();await choices.first().press('ArrowRight');await expect(choices.last()).toBeFocused();await expect(choices.last()).toHaveAttribute('aria-pressed','false');
+  await choices.last().press('Space');await choices.first().click();
+  const input=page.getByRole('textbox',{name:'参与编号',exact:true});
+  for(let i=0;i<4&&!await input.count();i++){
+    await page.getByRole('button',{name:/^(下一题|下一页)$/}).click();
+    await expect(page.locator('form')).toHaveAttribute('aria-busy','false');
+  }
+  await expect(input).toBeVisible();await expect(input).not.toHaveAttribute('aria-invalid','true');
+  await expect(page.locator('label[for="personal-input-code"]')).toHaveText('参与编号');
+  const style=await input.evaluate(node=>({height:node.getBoundingClientRect().height,radius:getComputedStyle(node).borderRadius,font:getComputedStyle(node).fontSize,help:node.getAttribute('aria-describedby')}));
+  expect(style.height).toBe(48);expect(style.radius).toBe('10px');expect(style.font).toBe('16px');expect(style.help).toContain('input-error-code');
+  await input.fill('12');if(layout==='single')await page.getByRole('button',{name:'完成输入',exact:true}).click();
+  const submit=page.getByRole('button',{name:layout==='single'?'提交本页':'完成问卷',exact:true});await submit.click();
+  await expect(input).toHaveAttribute('aria-invalid','true');await expect(page.getByRole('alert')).toHaveText('编号须为 6 位数字。');
+  await input.fill('123456');await expect(input).toHaveAttribute('aria-invalid','false');await expect(page.locator('#input-error-code')).toBeHidden();
+  await input.evaluate(node=>node.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true})));await page.locator('form').evaluate(form=>(form as HTMLFormElement).requestSubmit());await expect(input).toBeVisible();
+  await input.evaluate(node=>node.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true})));
+  if(layout==='single')await page.getByRole('button',{name:'完成输入',exact:true}).click();await submit.click();
+  await expect(page.locator('#status')).toContainText('研究已完成');
+  const sessions=(await(await context.request.get(`/api/lab/studies/${study.study_id}/sessions`)).json()).sessions;
+  const detail=await(await context.request.get(`/api/lab/sessions/${sessions[0].session_id}`)).json();
+  expect(detail.answers).toMatchObject({devices:['手机','平板'],optional:null,code:'123456'});
+});
+test('a long phone question can finish reading before phone validity gates submission',async({page,context})=>{
+  await page.setViewportSize({width:320,height:480});const title='请使用模拟手机号码检查补偿联系方式。'.repeat(12);
+  const {version}=await setup(context,false,0,p=>{p.pages[0]!.title='';p.pages[0]!.instruction='';p.pages[0]!.questions=[{id:'phone',type:'text',title,required:true,input_purpose:'personal',max_length:11,input_match:{kind:'preset',preset:'phone_cn'}}];});
+  await page.goto(`/participate.html?version=${version.version_id}`);let read='';
+  for(let i=0;i<50;i++){
+    read+=await page.locator('.reading-text').textContent();const next=page.getByRole('button',{name:'阅读下一段',exact:true});if(!await next.count())break;
+    await expect(next).toBeEnabled();await next.click();
+  }
+  expect(read).toBe(title);await expect(page.getByRole('group',{name:'手机号数字键盘',exact:true})).toBeVisible();
+  const submit=page.getByRole('button',{name:'提交本页',exact:true});await expect(submit).toBeDisabled();
+  await page.getByRole('textbox',{name:title,exact:true}).pressSequentially('13800000000');await submit.click();await expect(page.locator('#status')).toContainText('研究已完成');
+});
 for(const layout of ['single','adaptive'] as const)for(const viewport of [{width:320,height:480},{width:390,height:660},{width:704,height:755}])test(`${layout} phone keypad fills the screen, stays inline and submits directly at ${viewport.width}x${viewport.height}`,async({page,context})=>{
   await page.setViewportSize(viewport);const title='输入与支付宝/微信绑定的手机号以便后续发放受试者补偿费';
   const {version,study}=await setup(context,false,0,p=>{p.questionnaire_layout=layout;p.pages[0]!.title='';p.pages[0]!.instruction='';p.pages[0]!.questions=[{id:'phone',type:'text',title,input_purpose:'personal',max_length:11,required:true,input_match:{kind:'regex',pattern:'1[0-9]{10}',message:'请输入以 1 开头的 11 位手机号。'}}];});
@@ -85,11 +134,23 @@ test('admin storage updates independently, retains stale readings and stops afte
   await file.setInputFiles({name:'pending.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(questionnaireTemplate()))});
   await name.focus();const before=requests;await page.clock.fastForward(60001);await expect.poll(()=>requests).toBe(before+1);
   await expect(name).toHaveValue('尚未保存的名称');await expect(name).toBeFocused();expect(await file.evaluate((input:HTMLInputElement)=>input.files?.[0]?.name)).toBe('pending.json');
-  fail=true;await page.getByRole('button',{name:'刷新存储',exact:true}).click();await expect(card.locator('.storage-update')).toContainText('更新失败，显示');
+  await expect(page.getByRole('button',{name:'刷新存储',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'下载服务器备份',exact:true})).toBeVisible();
+  fail=true;await page.clock.fastForward(60001);await expect(card.locator('.storage-update')).toContainText('更新失败，显示');
   await expect(card.locator('.storage-percent')).toHaveText('25.0%');await expect(name).toHaveValue('尚未保存的名称');expect(await file.evaluate((input:HTMLInputElement)=>input.files?.[0]?.name)).toBe('pending.json');
   await page.getByRole('button',{name:'退出登录',exact:true}).click();await expect(page.getByLabel('密码',{exact:true})).toBeVisible();await expect(card).toHaveCount(0);
   auth.delete('admin');
   const stopped=requests;await page.clock.fastForward(120001);expect(requests).toBe(stopped);
+});
+test('storage offers selected existing backup links by GET without starting backup generation',async({page,context})=>{
+  expect((await context.request.get('/api/lab/backups')).status()).toBe(401);await setup(context);
+  expect(Array.isArray((await (await context.request.get('/api/lab/backups')).json()).backups)).toBe(true);
+  const first=crypto.randomUUID(),second=crypto.randomUUID();let entries=[{job_id:first,created_at:2000,bytes:12,sha256:'a'.repeat(64),filename:first+'.tar.zst',url:'/api/lab/backups/'+first},{job_id:second,created_at:1000,bytes:12,sha256:'b'.repeat(64),filename:second+'.tar.zst',url:'/api/lab/backups/'+second}],posts=0;
+  page.on('request',r=>{if(r.method()!=='GET')posts++;});
+  await page.route('**/api/lab/backups',r=>r.fulfill({json:{backups:entries}}));
+  await page.setViewportSize({width:320,height:640});await page.goto('/admin.html');const card=page.locator('.storage-card');await card.getByRole('button',{name:'下载服务器备份',exact:true}).click();
+  const choices=card.getByLabel('选择已生成的服务器备份');await expect(choices.locator('option')).toHaveCount(2);await choices.selectOption('/api/lab/backups/'+second);
+  await expect(card.getByRole('link',{name:'下载所选备份',exact:true})).toHaveAttribute('href','/api/lab/backups/'+second);await expect(card.getByRole('link',{name:'下载所选备份',exact:true})).toHaveAttribute('download','');expect(posts).toBe(0);
+  entries=[];await card.getByRole('button',{name:'下载服务器备份',exact:true}).click();await expect(card).toContainText('暂无已生成的完整备份文件');await expect(card.getByRole('link',{name:'下载所选备份',exact:true})).toBeHidden();expect(posts).toBe(0);
 });
 test('management renames, reorders and toggles public listings persistently at mobile sizes',async({page,context})=>{
   const first=await setup(context),second=await setup(context),ids=(await (await context.request.get('/api/lab/studies')).json()).studies.map((s:{study_id:string})=>s.study_id);
@@ -114,22 +175,29 @@ test('management preserves unsaved names on conflict and refuses stale order',as
   const ids=(await (await context.request.get('/api/lab/studies')).json()).studies.map((s:{study_id:string})=>s.study_id),reversed=[...ids].reverse();await post('/api/lab/studies/reorder',{request_id:crypto.randomUUID(),expected_order:ids,order:reversed});
   await card.getByRole('button',{name:'上移',exact:true}).click();await expect(card.locator('.card-feedback')).toContainText('列表顺序或问卷数量已变化');expect((await (await context.request.get('/api/lab/studies')).json()).studies.map((s:{study_id:string})=>s.study_id)).toEqual(reversed);
 });
-test('management downloads answers and full data, closes trajectory URLs and resumes ambiguous exports',async({page,context})=>{
+test('management offers results only, ignores legacy full exports and resumes ambiguous result exports',async({page,context})=>{
   const {study,version,post}=await setup(context,false,0,p=>{p.title='下载命名检查';});await page.goto(`/participate.html?version=${version.version_id}`);await begin(page);await page.getByRole('button',{name:'是',exact:true}).click();await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('#status')).toContainText('研究已完成');
-  await page.goto('/admin.html');const card=page.locator(`[data-study-id="${study.study_id}"]`);let download=page.waitForEvent('download');
-  let resumeExport!:()=>void,requests=0;const pausedExport=new Promise<void>(resolve=>resumeExport=resolve);await page.route('**/api/lab/jobs/export',async route=>{requests++;await pausedExport;await route.continue();});
-  const started=page.waitForRequest('**/api/lab/jobs/export');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();await started;await expect(card.getByRole('button',{name:'导出轨迹',exact:true})).toHaveCount(0);await expect(card.getByRole('button',{name:'下载数据',exact:true})).toBeDisabled();await card.getByRole('button',{name:'下载数据',exact:true}).evaluate(node=>(node as HTMLButtonElement).click());expect(requests).toBe(1);
-  resumeExport();const result=await download;expectDownloadName(result.suggestedFilename(),'下载命名检查','csv');expect(await readFile((await result.path())!,'utf8')).toContain('ANSWERED');await expect(card.getByRole('button',{name:'下载数据',exact:true})).toBeEnabled();await page.unroute('**/api/lab/jobs/export');
+  await page.goto('/admin.html');const card=page.locator(`[data-study-id="${study.study_id}"]`);await expect(card).toBeVisible();let download=page.waitForEvent('download');
+  const legacyJob=crypto.randomUUID();await page.evaluate(({id,job})=>sessionStorage.setItem(`lab-export-${id}`,JSON.stringify({study_id:id,request_id:job,job_id:job,format:'all'})),{id:study.study_id,job:legacyJob});let legacyReads=0;page.on('request',r=>{if(r.url().endsWith('/'+legacyJob))legacyReads++;});
+  expect(await page.getByRole('button',{name:'导出问卷结果',exact:true}).count()).toBe(await page.locator('.study-card').count());
+  let resumeExport!:()=>void,requests=0;const pausedExport=new Promise<void>(resolve=>resumeExport=resolve);await page.route('**/api/lab/jobs/export',async route=>{requests++;expect(route.request().postDataJSON().format).toBe('answers');expect(route.request().postDataJSON().job_id).not.toBe(legacyJob);await pausedExport;await route.continue();});
+  const started=page.waitForRequest('**/api/lab/jobs/export');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();await started;await expect(card.getByRole('button',{name:'导出轨迹',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'下载数据',exact:true})).toHaveCount(0);await expect(card.getByRole('button',{name:'导出问卷结果',exact:true})).toBeDisabled();await card.getByRole('button',{name:'导出问卷结果',exact:true}).evaluate(node=>(node as HTMLButtonElement).click());expect(requests).toBe(1);
+  resumeExport();const result=await download;expect(legacyReads).toBe(0);expectDownloadName(result.suggestedFilename(),'下载命名检查','csv');expect(await readFile((await result.path())!,'utf8')).toContain('ANSWERED');await expect(card.getByRole('button',{name:'导出问卷结果',exact:true})).toBeEnabled();await page.unroute('**/api/lab/jobs/export');
   await expect(card.getByRole('link',{name:'下载完整数据 CSV',exact:true})).toHaveCount(0);await expect(card.getByRole('link',{name:'下载轨迹 CSV',exact:true})).toHaveCount(0);
   const lightManifest=await (await context.request.get((await card.getByRole('link',{name:'下载导出说明'}).getAttribute('href'))!)).json();expect(lightManifest.format).toBe('answers');expect(Object.keys(lightManifest.files)).toEqual(['answers.csv','preparations.csv']);expect(lightManifest.answers_layout).toBe('one-session-per-row-v1');expect(lightManifest.files['answers.csv'].rows).toBe(1);expect(lightManifest.answers_time_zone).toBe('Asia/Shanghai');expect(await readFile((await result.path())!,'utf8')).toMatch(/"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}"/);
   const exportPrefix=(await card.getByRole('link',{name:'下载问卷结果 CSV'}).getAttribute('href'))!.replace(/answers\.csv$/,'');expect((await context.request.get(exportPrefix+'data.csv')).status()).toBe(404);expect((await context.request.get(exportPrefix+'trajectories.csv')).status()).toBe(410);
   await post(`/api/lab/studies/${study.study_id}/rename`,{request_id:crypto.randomUUID(),revision:2,title:'复核/问卷:最新版'});
   download=page.waitForEvent('download');await card.getByRole('link',{name:'下载问卷结果 CSV',exact:true}).click();const renamed=await download;expectDownloadName(renamed.suggestedFilename(),'复核_问卷_最新版','csv');expect(await readFile((await renamed.path())!,'utf8')).toBe(await readFile((await result.path())!,'utf8'));
   download=page.waitForEvent('download');await card.getByRole('link',{name:'下载导出说明',exact:true}).click();expectDownloadName((await download).suggestedFilename(),'复核_问卷_最新版','json');
-  let exportPosts=0;await page.route('**/api/lab/jobs/export',async route=>{exportPosts++;await route.fetch();await route.abort();});await card.getByRole('button',{name:'下载数据',exact:true}).click();await expect(page.locator('#message')).toContainText('无法连接服务器');
-  const pending=await page.evaluate(id=>sessionStorage.getItem(`lab-export-${id}`),study.study_id),jobId=JSON.parse(pending!).job_id;await page.reload();download=page.waitForEvent('download');await card.getByRole('button',{name:'下载数据',exact:true}).click();const full=await download;expectDownloadName(full.suggestedFilename(),'复核_问卷_最新版','csv');expect(await readFile((await full.path())!,'utf8')).toContain('INPUT_DIAGNOSTIC');expect(exportPosts).toBe(1);
+  let exportPosts=0;await page.route('**/api/lab/jobs/export',async route=>{exportPosts++;await route.fetch();await route.abort();});await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();await expect(page.locator('#message')).toContainText('无法连接服务器');
+  const pending=await page.evaluate(id=>sessionStorage.getItem(`lab-export-${id}`),study.study_id),jobId=JSON.parse(pending!).job_id;await page.reload();download=page.waitForEvent('download');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();const resumed=await download;expectDownloadName(resumed.suggestedFilename(),'复核_问卷_最新版','csv');expect(await readFile((await resumed.path())!,'utf8')).toContain('ANSWERED');expect(exportPosts).toBe(1);
   await expect(card.getByRole('link',{name:'下载轨迹 CSV',exact:true})).toHaveCount(0);const blocked=await context.request.get(`/api/lab/jobs/${jobId}/trajectories.csv`);expect(blocked.status()).toBe(410);expect((await blocked.json()).code).toBe('TRAJECTORY_DOWNLOAD_DISABLED');
   for(const file of ['answers.csv','trajectories.csv']){const guest=await context.browser()!.newContext();try{expect((await guest.request.get(`${origin}/api/lab/jobs/${jobId}/${file}`)).status()).toBe(401);}finally{await guest.close();}}
+  await page.unroute('**/api/lab/jobs/export');
+  const expired=crypto.randomUUID();await page.route(`**/api/lab/jobs/${expired}`,route=>route.fulfill({json:{kind:'EXPORT',study_id:study.study_id,state:'PURGED'}}));
+  await page.evaluate(({id,job})=>sessionStorage.setItem(`lab-export-${id}`,JSON.stringify({study_id:id,request_id:job,job_id:job,format:'answers'})),{id:study.study_id,job:expired});
+  await page.route('**/api/lab/jobs/export',async route=>{expect(route.request().postDataJSON().job_id).not.toBe(expired);await route.continue();});
+  download=page.waitForEvent('download');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();expect(await readFile((await (await download).path())!,'utf8')).toContain('ANSWERED');
 });
 test('management uploads new JSON, downloads templates and sources, simulates and lists answers',async({page,context})=>{
   await setup(context);await page.setViewportSize({width:390,height:844});await page.goto('/admin.html');
@@ -160,9 +228,10 @@ test('empty metadata skips the intro and returning online preserves focused inpu
   const {version}=await setup(context,false,0,p=>{p.pages[0]!.title=p.title;p.pages[0]!.instruction='';p.pages[0]!.questions=[{id:'name',type:'text',input_purpose:'personal',title:'个人信息',required:true,max_length:30}];});
   await page.goto(`/participate.html?version=${version.version_id}`);const input=page.getByRole('textbox',{name:'个人信息'});await expect(input).toBeVisible();await expect(page.getByRole('button',{name:'开始作答'})).toHaveCount(0);
   await input.fill('未完成的答案');await input.evaluate(node=>{node.setAttribute('data-retained','yes');node.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));});
-  let requests=0;page.on('request',r=>{if(r.url().includes('/api/participate/'))requests++;});
+  const requests:string[]=[];page.on('request',r=>{if(r.url().includes('/api/participate/'))requests.push(new URL(r.url()).pathname);});
   await context.setOffline(true);await context.setOffline(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
-  await expect(input).toBeFocused();await expect(input).toHaveValue('未完成的答案');await expect(input).toHaveAttribute('data-retained','yes');expect(requests).toBe(0);
+  // Online may flush the existing custody queue; it must not reenter or remount the active form.
+  await expect(input).toBeFocused();await expect(input).toHaveValue('未完成的答案');await expect(input).toHaveAttribute('data-retained','yes');expect(requests.filter(path=>!path.endsWith('/ingest'))).toEqual([]);
   await input.evaluate(node=>node.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true})));await page.getByRole('button',{name:'完成输入'}).click();await fit(page);await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('#status')).toContainText('研究已完成');
 });
 test('list offers a real retry and has a single page heading',async({page})=>{
@@ -380,21 +449,21 @@ test('multiple axes stay together, restore independent drafts, confirm endings a
   const sid=(await (await context.request.get(`/api/lab/studies/${study.study_id}/sessions`)).json()).sessions[0].session_id;
   const detail=await (await context.request.get(`/api/lab/sessions/${sid}`)).json();expect(detail.state).toBe('COMPLETED');expect(detail.answers.feel).toEqual({ease:0,clear:2,comfort:0});expect(detail.answers.optional).toEqual({left:0,right:null});
   await page.goto('/admin.html');const card=page.locator('section').filter({has:page.getByRole('heading',{name:p.title,exact:true})});
-  const firstDownload=page.waitForEvent('download');await card.getByRole('button',{name:'下载数据',exact:true}).click();const downloaded=await firstDownload;
-  const csv=await readFile((await downloaded.path())!,'utf8');expect(csv).toContain('axis_answers');expect(csv).toContain('covariates');expect(csv).toContain('UNANSWERED');expect(csv).toContain('""value"":null');expect(csv).toContain('""value"":0');
+  const firstDownload=page.waitForEvent('download');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();const downloaded=await firstDownload;
+  const csv=await readFile((await downloaded.path())!,'utf8');expect(csv).toContain('answer:feel:ease');expect(csv).toContain('answer:optional:right');expect(csv).toContain('UNANSWERED');expect(csv).toContain('"0"');expect(csv).not.toContain('INPUT_DIAGNOSTIC');
   await expect(card.getByRole('link',{name:'下载导出说明',exact:true})).toBeVisible();
-  const manifest=await (await context.request.get((await card.getByRole('link',{name:'下载导出说明'}).getAttribute('href'))!)).json();expect(manifest.tables.axis_answers).toBe(5);
+  const manifest=await (await context.request.get((await card.getByRole('link',{name:'下载导出说明'}).getAttribute('href'))!)).json();expect(manifest.format).toBe('answers');expect(manifest.answer_columns).toHaveLength(5);
   const before=(await (await context.request.get('/api/lab/jobs')).json()).jobs.filter((job:{kind:string})=>job.kind==='EXPORT').length;
-  const nextDownload=page.waitForEvent('download');await card.getByRole('button',{name:'下载数据',exact:true}).click();await nextDownload;
+  const nextDownload=page.waitForEvent('download');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();await nextDownload;
   expect((await (await context.request.get('/api/lab/jobs')).json()).jobs.filter((job:{kind:string})=>job.kind==='EXPORT')).toHaveLength(before+1);
   let exportPosts=0;
   await page.route('**/api/lab/jobs/export',async route=>{exportPosts++;await route.fetch();await route.abort();});
-  await card.getByRole('button',{name:'下载数据',exact:true}).click();await expect(page.locator('#message')).toContainText('无法连接服务器');
+  await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();await expect(page.locator('#message')).toContainText('无法连接服务器');
   const pending=await page.evaluate(id=>sessionStorage.getItem(`lab-export-${id}`),study.study_id);expect(pending).toBeTruthy();
-  const savedJob=JSON.parse(pending!).job_id;await page.reload();const retry=page.waitForEvent('download');await card.getByRole('button',{name:'下载数据',exact:true}).click();await retry;
-  expect(exportPosts).toBe(1);expect((await context.request.get(`/api/lab/jobs/${savedJob}/data.csv`)).ok()).toBe(true);
+  const savedJob=JSON.parse(pending!).job_id;await page.reload();const retry=page.waitForEvent('download');await card.getByRole('button',{name:'导出问卷结果',exact:true}).click();await retry;
+  expect(exportPosts).toBe(1);expect((await context.request.get(`/api/lab/jobs/${savedJob}/answers.csv`)).ok()).toBe(true);
   expect((await (await context.request.get('/api/lab/jobs')).json()).jobs.filter((job:{kind:string})=>job.kind==='EXPORT')).toHaveLength(before+2);
-  const guest=await context.browser()!.newContext();try{expect((await guest.request.get(`${origin}/api/lab/jobs/${savedJob}/data.csv`)).status()).toBe(401);}finally{await guest.close();}
+  const guest=await context.browser()!.newContext();try{expect((await guest.request.get(`${origin}/api/lab/jobs/${savedJob}/answers.csv`)).status()).toBe(401);}finally{await guest.close();}
 });
 test('six axes use a wide grid and block undersized screens without paging or scrolling',async({page,context})=>{
   const {version}=await setup(context,false,0,p=>{p.pages[0]!.questions=[{id:'six',type:'scales',title:'六个维度',required:true,axes:Array.from({length:6},(_,index)=>({id:`a${index}`,title:`维度 ${index+1}`,min:0,max:2,min_label:'低',max_label:'高',labels:['低','中','高']}))}];});
@@ -551,7 +620,7 @@ test('rating axes keep stable image geometry, age stays separate, RT actions rep
   await page.goto(`/replay.html?session=${sid}`);await expect(page.locator('#status')).toContainText('动作');await page.getByRole('button',{name:'下一个动作'}).click();await expect(page.locator('#details')).toContainText('context');
   let pendingDownload=page.waitForEvent('download');await page.getByRole('link',{name:'下载本份轨迹 JSON.gz'}).click();const trajectory=JSON.parse(gunzipSync(await readFile((await (await pendingDownload).path())!)).toString('utf8'));expect(trajectory.session_id).toBe(sid);expect(trajectory.events.length).toBeGreaterThan(0);for(const event of trajectory.events)expect(createHash('sha256').update(event.raw_utf8).digest('hex')).toBe(event.hash);
   pendingDownload=page.waitForEvent('download');await page.getByRole('link',{name:'下载离线回放 HTML'}).click();const htmlFile=await pendingDownload;expect(htmlFile.suggestedFilename()).toMatch(/\.html$/);const htmlPath=(await htmlFile.path())!+'.html';await writeFile(htmlPath,await readFile((await htmlFile.path())!));const offlineContext=await context.browser()!.newContext(),offline=await offlineContext.newPage(),external:string[]=[];offline.on('request',r=>{if(/^https?:/.test(r.url()))external.push(r.url());});try{await offline.goto(pathToFileURL(htmlPath).href);await expect(offline.locator('#status')).toContainText('动作',{timeout:10000});await offline.getByRole('button',{name:'下一个动作'}).click();await expect(offline.locator('#details')).toContainText('context');expect(external).toEqual([]);}finally{await offlineContext.close();}
-  await page.goto('/admin.html');const replayCard=page.locator(`[data-study-id="${study.study_id}"]`);await replayCard.getByRole('button',{name:/查看答卷与回放/}).click();await expect(replayCard.locator('.recording-row')).toHaveCount(1);await expect(replayCard.getByRole('link',{name:'下载离线回放 HTML'})).toBeVisible();
+  await page.goto('/admin.html');const replayCard=page.locator(`[data-study-id="${study.study_id}"]`),listedResponse=page.waitForResponse(r=>r.url().includes(`/api/lab/studies/${study.study_id}/sessions?replayable=true`));await replayCard.getByRole('button',{name:/查看答卷与回放/}).click();const listed=(await (await listedResponse).json()).sessions[0];expect(listed.answering_seconds).toBeGreaterThan(0);await expect(replayCard.locator('.recording-row')).toHaveCount(1);await expect(replayCard.locator('.recording-row > p')).toHaveText(`${listed.recording_samples.toLocaleString()} 条记录 · ${listed.recording_screens.toLocaleString()} 个界面快照 · ${listed.answering_seconds.toLocaleString('zh-CN',{maximumFractionDigits:1})} 秒作答时长`);await expect(replayCard.getByRole('link',{name:'下载离线回放 HTML'})).toBeVisible();
   const guest=await context.browser()!.newContext();try{for(const file of ['recording','trajectory.json.gz','replay.html'])expect((await guest.request.get(`${origin}/api/lab/sessions/${sid}/${file}`)).status()).toBe(401);}finally{await guest.close();}
   const exported=await post('/api/lab/jobs/export',{request_id:crypto.randomUUID(),job_id:crypto.randomUUID(),study_id:study.study_id});expect(await (await context.request.get(`/api/lab/jobs/${exported.job_id}/data.csv`)).text()).toContain('interaction_actions');
 });
@@ -634,9 +703,10 @@ test('historical pending interactions stay intact and do not block a different q
     try{return await new Promise<any[]>(resolve=>{const r=db.transaction('outbox').objectStore('outbox').getAll();r.onsuccess=()=>resolve(r.result);});}finally{db.close();}
   });
   await expect.poll(async()=>{const rows=await pending();return rows.filter(row=>row.scope.startsWith('d-ui-')).length;}).toBeGreaterThan(0);
-  const before=await pending(),oldSid=before[0].session_id;let oldUploads=0;
-  await page.route(`**/api/participate/sessions/${oldSid}/ingest`,route=>{oldUploads++;return route.fulfill({status:413,json:{code:'SCOPE_BUDGET_EXCEEDED'}});});
-  await context.setOffline(false);await page.goto(`/participate.html?version=${next.version.version_id}`);await begin(page);await page.getByRole('button',{name:'是',exact:true}).click();await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('#status')).toContainText('研究已完成');
+  const before=await pending(),oldSid=before[0].session_id;let oldUploads=0,newPageActive=false;
+  // The old page may flush on reconnect before navigation. Only uploads owned by the new page are forbidden.
+  await page.route(`**/api/participate/sessions/${oldSid}/ingest`,route=>{if(newPageActive)oldUploads++;return route.fulfill({status:413,json:{code:'SCOPE_BUDGET_EXCEEDED'}});});
+  await context.setOffline(false);await page.goto(`/participate.html?version=${next.version.version_id}`);await begin(page);newPageActive=true;await page.getByRole('button',{name:'是',exact:true}).click();await page.getByRole('button',{name:'提交本页'}).click();await expect(page.locator('#status')).toContainText('研究已完成');
   const nextSid=(await (await context.request.get(`/api/lab/studies/${next.study.study_id}/sessions`)).json()).sessions[0].session_id;
   expect(oldUploads).toBe(0);const after=await pending();expect(after.filter(row=>row.session_id===nextSid)).toEqual([]);
   for(const row of before)expect(after.find(item=>item.event_id===row.event_id)).toMatchObject({raw:row.raw,hash:row.hash,session_id:oldSid});

@@ -1,0 +1,45 @@
+/* Showcase tokens. Production geometry lives in src/web/ui-tokens.css. */
+.q-surface {
+  --q-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  --q-text-body: 16px;
+  --q-text-question: 18px;
+  --q-text-help: 14px;
+  --q-text-meta: 13px;
+  --q-line-height: 1.45;
+  --q-touch: 48px;
+  --q-radius: 10px;
+  --q-gap: 8px;
+  --q-padding: 12px;
+  --q-focus-width: 2px;
+  --q-focus-offset: 3px;
+  --q-track: 3px;
+  --q-thumb: 22px;
+  --q-space-1: 4px;
+  --q-space-2: 8px;
+  --q-space-3: 12px;
+  --q-space-4: 16px;
+  --q-space-6: 24px;
+  --q-space-8: 32px;
+}
+[data-q-theme="gray"] .q-surface {
+  --q-bg: #e5e5e5;
+  --q-fg: #000000;
+  --q-muted: #535353;
+  --q-border: #787878;
+  --q-divider: #b4b4b4;
+  --q-error: #9d2424;
+  --q-hover: #d9d9d9;
+  --q-disabled: #777777;
+  color-scheme: light;
+}
+[data-q-theme="dark"] .q-surface {
+  --q-bg: #202020;
+  --q-fg: #ffffff;
+  --q-muted: #c2c2c2;
+  --q-border: #8c8c8c;
+  --q-divider: #606060;
+  --q-error: #ffb4ab;
+  --q-hover: #303030;
+  --q-disabled: #a0a0a0;
+  color-scheme: dark;
+}

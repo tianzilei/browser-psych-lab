@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import Database from 'better-sqlite3';
 import {fixture} from '../helpers/lab-fixture.mjs';
 import {businessFingerprint,bundleStructure,baseCovers,fileSha256,verifyBundle} from '../../scripts/lib/backup-integrity.mjs';
-import {archiveBackup} from '../../scripts/lib/backup-archive.mjs';
+import {archiveBackup,prepareBackupDownload} from '../../scripts/lib/backup-archive.mjs';
 
 const toolsAvailable=spawnSync('zstd',['--version']).status===0&&spawnSync('tar',['--version']).status===0;
 const archiveTest={skip:toolsAvailable?false:'zstd and tar are required for archive integration tests'};
@@ -128,6 +128,15 @@ test('tar failure preserves the READY source and removes the temporary archive e
   assert.equal(f.db.prepare('SELECT state FROM lab_jobs WHERE job_id=?').get(b.job).state,'READY');
   assert.equal(verifyBundle(b.dir).manifestHash,b.manifestHash);
   assert.deepEqual(fs.readdirSync(path.join(b.backupsRoot,'archives')),[]);
+});
+test('a READY base backup is prepacked once without creating a backup job, moving the base or changing its state',archiveTest,async t=>{
+  const f=fixture(t),b=await bundle(f);f.db.prepare('UPDATE lab_jobs SET result=? WHERE job_id=?').run(JSON.stringify({manifest_hash:b.manifestHash}),b.job);
+  fs.writeFileSync(path.join(b.dir,'.keep'),'');const before=businessFingerprint(f.db),jobs=f.db.prepare('SELECT count(*) n FROM lab_jobs').get().n;
+  assert.equal(archiveBackup(f.db,b.dir,{backupsRoot:b.backupsRoot,latest:b.job}),null);
+  const archive=path.join(b.backupsRoot,'downloads',b.job+'.tar.zst'),metadata=JSON.parse(fs.readFileSync(path.join(b.backupsRoot,'downloads',b.job+'.json')));
+  assert.equal(metadata.sha256,fileSha256(archive));assert.equal(metadata.manifest_hash,b.manifestHash);assert.equal(fs.existsSync(path.join(b.dir,'.keep')),true);
+  fs.utimesSync(archive,1000,1000);const reused=prepareBackupDownload(f.db,b.dir,{backupsRoot:b.backupsRoot});assert.equal(reused.sha256,metadata.sha256);assert.equal(fs.statSync(archive).mtimeMs,1000000);
+  assert.equal(f.db.prepare('SELECT state FROM lab_jobs WHERE job_id=?').get(b.job).state,'READY');assert.equal(f.db.prepare('SELECT count(*) n FROM lab_jobs').get().n,jobs);assert.equal(businessFingerprint(f.db),before);
 });
 
 test('successful archive replaces a preexisting incomplete stream before deleting the source',archiveTest,async t=>{

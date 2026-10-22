@@ -31,7 +31,7 @@ export async function recoverExportPurges(db,storageRoot,studyIds,{apply=false}=
   return recovered;
 }
 
-export async function purgeExportSnapshots(db,storageRoot,plan,stamp,io={rename,rm}){
+export async function purgeExportSnapshots(db,storageRoot,plan,stamp,io={rename,rm},options={}){
   const moved=[],purged=[];
   try{
     for(const job of plan){
@@ -41,11 +41,11 @@ export async function purgeExportSnapshots(db,storageRoot,plan,stamp,io={rename,
     }
     db.transaction(()=>{
       for(const job of plan){
-        const detail={reason:'OPERATOR_EXPORT_SNAPSHOT_PURGE',study_id:job.study_id,state:job.state,files:job.files.length,bytes:job.bytes,missing:job.missing,answer_evidence:'retained-in-live-database',inventory:'inventory-before.json'};
+        const detail={reason:options.reason??'OPERATOR_EXPORT_SNAPSHOT_PURGE',study_id:job.study_id,state:job.state,files:job.files.length,bytes:job.bytes,missing:job.missing,answer_evidence:'retained-in-live-database',...(options.reason?{}:{inventory:'inventory-before.json'})};
         const result=JSON.stringify(detail);
         const changed=db.prepare("UPDATE lab_jobs SET state='PURGED',phase='PURGED',result=?,error=NULL,updated_at=? WHERE job_id=? AND state IN ('READY','FAILED')").run(result,Date.now(),job.job_id);
         if(changed.changes!==1)throw new Error(`JOB_STATE_CHANGED:${job.job_id}`);
-        db.prepare('INSERT INTO lab_audit VALUES (?,?,?,?,?,?)').run(randomUUID(),'OPERATOR','export.snapshot.purge',job.job_id,result,Date.now());
+        db.prepare('INSERT INTO lab_audit VALUES (?,?,?,?,?,?)').run(randomUUID(),options.actor??'OPERATOR','export.snapshot.purge',job.job_id,result,Date.now());
         purged.push({job_id:job.job_id,study_id:job.study_id,state:job.state,files:job.files.length,bytes:job.bytes,missing:job.missing});
       }
     }).immediate();

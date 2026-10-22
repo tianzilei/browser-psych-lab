@@ -127,8 +127,19 @@ test('final save shows confirmed progress and automatic retry without claiming c
   await expect(page.locator('.adaptive-save')).toContainText('自动重试');
   await expect(page.locator('.adaptive-save')).toContainText('完成状态尚未确认');
   await expect(page.locator('.ending-page')).toHaveCount(0);
+  expect(await page.evaluate(()=>{const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;})).toBe(true);
   await page.unroute('**/finalize');await page.getByRole('button',{name:'重试保存',exact:true}).click();
+  await expect(page.locator('.ending-page')).toBeVisible();
+  expect(await page.evaluate(()=>{const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;})).toBe(false);
   await expect(page.locator('.ending-page')).toBeVisible();expect(await local(page,'outbox')).toEqual([]);
+});
+test('a lost finalization response recovers the completed page and clears the close warning',async({page,context})=>{
+  const {version}=await setup(context,2);await page.goto(`/participate.html?version=${version}`);
+  await page.getByRole('textbox').fill('20991231001TEST');await nextScreen(page);
+  await page.route('**/finalize',async route=>{const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();});
+  await answerScreen(page);await nextScreen(page);await expect(page.locator('.adaptive-save')).toContainText('自动重试');
+  await page.unroute('**/finalize');await page.getByRole('button',{name:'重试保存',exact:true}).click();await expect(page.locator('.ending-page')).toBeVisible();
+  expect(await page.evaluate(()=>{const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;})).toBe(false);
 });
 test('long questions scroll with navigation visible, IME cannot advance, and hidden branches seal as null',async({page,context})=>{
   const {study,version}=await setup(context,3,source=>{
@@ -141,7 +152,8 @@ test('long questions scroll with navigation visible, IME cannot advance, and hid
   await page.getByRole('button',{name:'下一页',exact:true}).click();await expect(input).toBeVisible();
   await input.evaluate(node=>node.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true})));
   await nextScreen(page);
-  await expect(page.locator('.adaptive-title')).toHaveText('2. '+'这是一道需要完整阅读的长题。'.repeat(40));
+  await expect(page.locator('.adaptive-title')).toHaveText('这是一道需要完整阅读的长题。'.repeat(40));
+  await expect(page.locator('.adaptive-item-meta')).toHaveText('第 2 题 · 必答');
   const next=page.getByRole('button',{name:'完成问卷',exact:true}),bounds=await next.boundingBox();
   expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(480);expect(bounds!.height).toBeGreaterThanOrEqual(44);
   await page.getByRole('slider').press('End');await nextScreen(page);await expect(page.locator('.ending-page')).toBeVisible();

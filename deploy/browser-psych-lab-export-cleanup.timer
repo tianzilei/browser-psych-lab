@@ -1,0 +1,8 @@
+[Unit]
+Description=Hourly lightweight result export cleanup
+[Timer]
+OnCalendar=*-*-* *:15:00 Asia/Shanghai
+Persistent=true
+Unit=browser-psych-lab-export-cleanup.service
+[Install]
+WantedBy=timers.target

@@ -27,8 +27,15 @@ test('invalid sampling, non-neutral answers, repeated ratings and wrong choices 
   }
 });
 const makePlan=()=>{const p=protocol(),g=p.groups[0],seed=[1,2,3,4],selected=sampleTrials(g.trials,g.sampling,seed);return {group_id:g.id,scope:'group',seed,...selected,rating:g.rating,choices:g.choices,repeats:0,start:1000,frame_ms:10,layout:'portrait',budget:p.budget};};
+test('single-choice familiarity survives import while legacy protocols retain their original shape',()=>{
+  const raw=input();raw.groups[0].rating.familiarity={prompt:'在参加本研究之前，您和照片中这位医生是否认识？',labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age',control:'single'};
+  const compile=()=>{let n=0;return compileQuestionnaire(raw,()=>`asset-test-${n++}`);};
+  const p=compile();assert.equal(p.groups[0].rating.familiarity.control,'single');assert.deepEqual(parseProtocol(p),p);
+  for(const invalid of ['slider','multi',true,null,1]){raw.groups[0].rating.familiarity.control=invalid;assert.throws(compile,/INVALID_RATING_FAMILIARITY/);}
+  delete raw.groups[0].rating.familiarity.control;assert.equal(Object.hasOwn(compile().groups[0].rating.familiarity,'control'),false);
+});
 test('supplementary familiarity follows all impressions and is required before the final age submission',()=>{
-  const p=makePlan();p.rating.familiarity={prompt:'补充熟悉度',labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age'};
+  const p=makePlan();p.rating.familiarity={prompt:'补充熟悉度',labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age',control:'single'};
   const r=new RunReplay(p),id=onset(r);
   assert.throws(()=>r.apply({type:'RATING_FAMILIARITY_CHANGE',at:1010,instance_id:id,value:2}),/FAMILIARITY/);
   for(let item=0;item<6;item++)r.apply({type:'RATING_CHANGE',at:1100+item,instance_id:id,item,value:item+1});

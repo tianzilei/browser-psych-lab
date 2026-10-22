@@ -1,5 +1,6 @@
-export function drawTextStimulus(ctx:CanvasRenderingContext2D,canvas:HTMLCanvasElement,text:string,background:string){
-  const rgb=background.slice(1).match(/../g)!.map(n=>parseInt(n,16));
+export function drawTextStimulus(ctx:CanvasRenderingContext2D,canvas:{width:number;height:number;dataset?:DOMStringMap},text:string,background:string){
+  if(canvas.dataset)canvas.dataset.replayText=text;
+  const rgb=background.startsWith('#')?background.slice(1).match(/../g)!.map(n=>parseInt(n,16)):background.match(/[\d.]+/g)!.slice(0,3).map(Number);
   ctx.fillStyle=.2126*rgb[0]!+.7152*rgb[1]!+.0722*rgb[2]!<128?'#ffffff':'#000000';
   ctx.textAlign='center';ctx.textBaseline='middle';
   // Plain text only. Wrap by Unicode character, fitting both width and height.

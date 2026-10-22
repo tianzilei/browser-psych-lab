@@ -138,7 +138,7 @@ test('preparation limit preserves the first 100 reports and permits answer sync,
  f.call('terminate',{request_id:randomUUID(),reason:'UNKNOWN_RUN'});
  await page.evaluate(async session=>{const {Ledger}=await import('/ledger.ts'),{ParticipantAPI}=await import('/participant-api.ts');const ledger=await Ledger.open(session.frozen.version_id,'writer-a');await ledger.session(session);await new ParticipantAPI(ledger,session).reconcile();await ledger.drain();ledger.db.close();},f.call('view'));
  await page.route('**/run.html?version=*',route=>route.fulfill({contentType:'text/html',body:'<p>Navigation reached</p>'}));
- await Promise.all([page.waitForURL('**/run.html?version=*'),page.evaluate(async session=>{const {Ledger}=await import('/ledger.ts'),{loadRunner}=await import('/runner-loading.ts');const ledger=await Ledger.open(session.frozen.version_id,'writer-a');await loadRunner({ledger,session,syncPreparations:async()=>{}},document.querySelector('#status'),document.querySelector('#content'));},f.call('view'))]);
+ await Promise.all([page.waitForURL('**/run.html?version=*'),page.evaluate(async session=>{const {Ledger}=await import('/ledger.ts'),{loadRunner}=await import('/runner-loading.ts');const ledger=await Ledger.open(session.frozen.version_id,'writer-a');await loadRunner({ledger,session,syncPreparations:async()=>{},sync:async()=>{}},document.querySelector('#status'),document.querySelector('#content'));},f.call('view'))]);
  assert.match(await page.locator('p').textContent(),/Navigation reached/);
  }finally{await browser.close();}
 });

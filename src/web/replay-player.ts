@@ -1,47 +1,104 @@
 import {el} from './dom.js';
-import type {InteractionBatch,InteractionSample} from '../shared/interaction.js';
+import type {InteractionBatch,InteractionSample,InteractionScreen} from '../shared/interaction.js';
 import {resolvePhoto,type PhotoIdentity} from '../shared/photo-identity.js';
 import {isReplayScreen} from '../shared/replay-recording.js';
+import {renderReplayScreen} from './replay-renderer.js';
 export type ReplayItem={time:number;sample:InteractionBatch['samples'][number]};
 const actionLabels:Record<string,string>={screen:'页面快照',pointerdown:'按下指针',pointerup:'松开指针',pointermove:'移动指针',pointercancel:'取消指针',keydown:'按下按键',keyup:'松开按键',input:'输入',change:'更改',beforeinput:'输入前',compositionstart:'开始组字',compositionend:'完成组字',focus:'获得焦点',blur:'离开焦点',scroll:'滚动',state:'浏览器状态'};
+function upperBound(values:number[],value:number){let low=0,high=values.length;while(low<high){const middle=(low+high)>>>1;if(values[middle]!<=value)low=middle+1;else high=middle;}return low;}
+const contextKey=(sample:ReplayItem['sample'])=>JSON.stringify([sample.context.page_id,sample.context.instance_id,sample.context.question_id,sample.context.phase]);
+
 export function mountReplayPlayer(options:{photos?:PhotoIdentity[]|undefined;items:ReplayItem[];canvas:HTMLCanvasElement;controls:HTMLElement;status:HTMLElement;details:HTMLElement;assetURL:(id:string)=>string}){
-  const {items,canvas,controls,status,details,assetURL}=options,ctx=canvas.getContext('2d')!,images=new Map<string,HTMLImageElement>(),screenAt:number[]=[];
-  let current=0,playing=false,last=0,clock=0,frame=0,disposed=false,screen=-1;
-  items.sort((a,b)=>a.time-b.time);for(const [i,item]of items.entries()){if(isReplayScreen(item.sample))screen=i;screenAt.push(screen);}
-  const play=el('button','播放'),previous=el('button','上一个动作'),next=el('button','下一个动作'),slider=el('input');slider.type='range';slider.min='0';slider.max=String(Math.max(0,items.length-1));slider.step='1';slider.setAttribute('aria-label','动作时间轴');controls.replaceChildren(previous,play,next,slider);
-  canvas.style.maxWidth='100%';canvas.style.border='1px solid #888';canvas.hidden=screen<0;
+  const {items,canvas,controls,status,details,assetURL}=options,ctx=canvas.getContext('2d')!;
+  const background=document.createElement('canvas'),backgroundContext=background.getContext('2d')!,images=new Map<string,HTMLImageElement>(),decoded=new WeakSet<HTMLImageElement>();
+  const screenAt:number[]=[],pointerIndices:number[]=[],pointerTimes:number[]=[],times:number[]=[];
+  const assets:{index:number;ids:string[]}[]=[],assetTimes:number[]=[];let priorAssets='';
+  let current=0,playing=false,last=0,startedClock=0,clock=0,frame=0,disposed=false,screen=-1,paintedScreen=-2,dirty=true,lastUI=-Infinity,detailsAt=-1,pixelRatio=1;
+  items.sort((a,b)=>a.time-b.time);
+  for(const [index,item]of items.entries()){
+    if(isReplayScreen(item.sample)){
+      screen=index;const ids=[...new Set(item.sample.nodes.flatMap(node=>node.asset_id?[node.asset_id]:[]))],key=ids.join(',');
+      if(ids.length&&key!==priorAssets){assets.push({index,ids});assetTimes.push(index);priorAssets=key;}
+    }screenAt.push(screen);times.push(item.time);
+    if(item.sample.type!=='screen'&&Number.isFinite((item.sample as InteractionSample).x)&&Number.isFinite((item.sample as InteractionSample).y)){pointerIndices.push(index);pointerTimes.push(item.time);}
+  }
+  const first=items[0]?.time??0,duration=Math.max(0,(items.at(-1)?.time??first)-first);
+  const play=el('button','播放'),previous=el('button','上一个动作'),next=el('button','下一个动作'),slider=el('input');
+  slider.type='range';slider.min='0';slider.max=String(duration);slider.step='any';slider.setAttribute('aria-label','动作时间轴');controls.replaceChildren(previous,play,next,slider);
+  play.className='primary';canvas.style.maxWidth='100%';canvas.style.height='auto';canvas.style.border='1px solid var(--control-border,#787878)';canvas.hidden=screen<0;
   function update(){previous.disabled=!items.length||current===0;next.disabled=!items.length||current===items.length-1;play.disabled=slider.disabled=screen<0;}
   function stop(){playing=false;cancelAnimationFrame(frame);play.textContent='播放';}
-  function draw(){
-    if(disposed||!items.length)return;const item=items[current]!,snapshot=items[screenAt[current]??-1]?.sample;
-    const screen=isReplayScreen(snapshot)?snapshot:undefined;ctx.clearRect(0,0,canvas.width,canvas.height);
-    if(screen){
-      if(canvas.width!==screen.width)canvas.width=screen.width;if(canvas.height!==screen.height)canvas.height=screen.height;
-      ctx.fillStyle=screen.background||'#e5e5e5';ctx.fillRect(0,0,canvas.width,canvas.height);
-      for(const n of screen.nodes){
-        const s=n.style;
-        if(n.tag==='canvas'&&n.asset_id){
-          let image=images.get(n.asset_id);if(!image){const url=assetURL(n.asset_id);if(!url)continue;image=new Image();image.onload=()=>draw();image.src=url;images.set(n.asset_id,image);}
-          if(image.complete&&image.naturalWidth){const scale=Math.min(n.width/image.naturalWidth,n.height/image.naturalHeight);ctx.drawImage(image,n.x+(n.width-image.naturalWidth*scale)/2,n.y+(n.height-image.naturalHeight*scale)/2,image.naturalWidth*scale,image.naturalHeight*scale);}continue;
-        }
-        ctx.fillStyle=s['background-color']??'transparent';ctx.fillRect(n.x,n.y,n.width,n.height);
-        if(parseFloat(s['border-top-width']??'0')>0){ctx.strokeStyle=s['border-top-color']??'#000';ctx.strokeRect(n.x,n.y,n.width,n.height);}
-        ctx.fillStyle=s.color??'#000';ctx.font=`${s['font-weight']??'400'} ${s['font-size']??'16px'} ${s['font-family']??'sans-serif'}`;ctx.textBaseline='top';
-        if(n.tag==='range'){
-          ctx.fillRect(n.x,n.y+n.height/2,n.width,2);
-          if(s.answered==='true'){const fraction=(Number(n.value)-Number(s.min))/(Number(s.max)-Number(s.min));ctx.beginPath();ctx.arc(n.x+11+fraction*(n.width-22),n.y+n.height/2,11,0,Math.PI*2);ctx.fill();}
-        }else if(n.text||n.value)ctx.fillText(n.text||n.value||'',n.x,n.y,Math.max(1,n.width));
-      }
-      const path=items.slice(Math.max(0,current-200),current+1).filter(i=>i.time>=item.time-1000&&i.sample.type!=='screen'&&Number.isFinite((i.sample as InteractionSample).x)&&Number.isFinite((i.sample as InteractionSample).y));
-      ctx.strokeStyle='#d23b24';ctx.lineWidth=2;ctx.beginPath();for(const [i,p]of path.entries()){const s=p.sample as InteractionSample;if(i===0)ctx.moveTo(s.x!,s.y!);else ctx.lineTo(s.x!,s.y!);}ctx.stroke();
-      const action=item.sample as InteractionSample;if(Number.isFinite(action.x)&&Number.isFinite(action.y)){ctx.fillStyle='#d23b24';ctx.beginPath();ctx.arc(action.x!,action.y!,8,0,Math.PI*2);ctx.fill();}
+  function snapshot(){const index=screenAt[current]??-1;return index<0?undefined:items[index]!.sample as InteractionScreen;}
+  function image(id:string){
+    const existing=images.get(id);if(existing){images.delete(id);images.set(id,existing);return decoded.has(existing)?existing:undefined;}
+    const url=assetURL(id);if(!url)return;
+    if(images.size>=8){
+      const visible=new Set(snapshot()?.nodes.flatMap(node=>node.asset_id?[node.asset_id]:[])??[]),oldest=[...images.keys()].find(key=>!visible.has(key));
+      if(oldest===undefined)return;images.get(oldest)!.onload=null;images.delete(oldest);
     }
-    slider.value=String(current);const elapsed=((item.time-items[0]!.time)/1000).toFixed(3);slider.setAttribute('aria-valuetext',`动作 ${current+1}/${items.length}，${elapsed} 秒`);
-    const photo=resolvePhoto(options.photos??[],item.sample.context as Record<string,unknown>);status.textContent=`动作 ${current+1}/${items.length} · ${elapsed} 秒 · ${actionLabels[item.sample.type]??item.sample.type}${photo?` · 照片 ${photo.photo_filename??photo.photo_id}（第 ${photo.photo_order} 张）`:''}`;details.textContent=JSON.stringify({...item.sample,...(photo?{photo}: {})},null,2);update();
+    const asset=new Image();asset.decoding='async';images.set(id,asset);
+    asset.onload=()=>{void asset.decode().then(()=>{
+      if(disposed||images.get(id)!==asset)return;decoded.add(asset);
+      if(snapshot()?.nodes.some(node=>node.asset_id===id)){dirty=true;if(!playing)draw(true);}
+    }).catch(()=>{});};
+    asset.src=url;return;
   }
-  function tick(now:number){if(!playing||disposed)return;clock+=now-last;last=now;const before=current;while(current<items.length-1&&items[current+1]!.time-items[0]!.time<=clock)current++;if(before!==current)draw();if(current===items.length-1)stop();else frame=requestAnimationFrame(tick);}
-  play.onclick=()=>{if(playing){stop();return;}if(!items.length||screen<0)return;if(current===items.length-1)current=0;playing=true;play.textContent='暂停';clock=items[current]!.time-items[0]!.time;last=performance.now();draw();frame=requestAnimationFrame(tick);};
-  previous.onclick=()=>{stop();current=Math.max(0,current-1);draw();};next.onclick=()=>{stop();current=Math.min(items.length-1,current+1);draw();};slider.oninput=()=>{stop();current=Number(slider.value);draw();};
-  update();if(screen>=0)draw();else status.textContent='此答卷没有可回放的界面记录。';
-  return ()=>{disposed=true;stop();for(const image of images.values())image.onload=null;};
+  function prefetch(){
+    const keep=new Set<string>(),position=Math.max(0,upperBound(assetTimes,screenAt[current]??-1)-1);
+    for(const entry of assets.slice(position,position+4))for(const id of entry.ids){if(keep.size>=4)break;keep.add(id);image(id);}
+  }
+  function paintBackground(){
+    const sample=snapshot(),index=screenAt[current]??-1;
+    if(index!==paintedScreen){dirty=true;paintedScreen=index;prefetch();}
+    if(!dirty)return;dirty=false;
+    const width=sample?.width??canvas.width,height=sample?.height??canvas.height;
+    pixelRatio=Math.max(.1,Math.min(devicePixelRatio||1,2,Math.sqrt(8000000/Math.max(1,width*height))));
+    const pixelsWide=Math.max(1,Math.round(width*pixelRatio)),pixelsHigh=Math.max(1,Math.round(height*pixelRatio));
+    if(background.width!==pixelsWide||background.height!==pixelsHigh){background.width=canvas.width=pixelsWide;background.height=canvas.height=pixelsHigh;}
+    canvas.style.width=`${width}px`;
+    backgroundContext.setTransform(pixelRatio,0,0,pixelRatio,0,0);backgroundContext.clearRect(0,0,width,height);
+    if(sample)renderReplayScreen(backgroundContext,sample,image);
+  }
+  function pointers(){
+    const end=upperBound(pointerTimes,first+clock),start=Math.max(upperBound(pointerTimes,first+clock-1000),end-2048);
+    const paths=new Map<string,{x:number;y:number;at:number;type:string}>(),key=snapshot()?contextKey(snapshot()!):'';
+    ctx.strokeStyle='#d23b24';ctx.fillStyle='#d23b24';ctx.lineWidth=2;
+    for(let i=start;i<end;i++){
+      const entry=items[pointerIndices[i]!]!,sample=entry.sample as InteractionSample;
+      if(contextKey(sample)!==key)continue;
+      const id=`${sample.pointer_type??'mouse'}:${sample.pointer_id??0}`,prior=paths.get(id),x=sample.x!,y=sample.y!;
+      if(prior&&entry.time-prior.at<200&&sample.type!=='pointerdown'&&!['pointerup','pointercancel'].includes(prior.type)){
+        ctx.globalAlpha=Math.max(.1,1-(first+clock-entry.time)/1000);ctx.beginPath();ctx.moveTo(prior.x,prior.y);ctx.lineTo(x,y);ctx.stroke();
+      }
+      paths.set(id,{x,y,at:entry.time,type:sample.type});
+    }
+    for(const point of paths.values()){
+      ctx.globalAlpha=Math.max(0,1-(first+clock-point.at)/1000);ctx.beginPath();ctx.arc(point.x,point.y,point.type==='pointerdown'?8:5,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  function draw(forceUI=false){
+    if(disposed||!items.length)return;paintBackground();
+    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(background,0,0);ctx.setTransform(pixelRatio,0,0,pixelRatio,0,0);pointers();
+    const now=performance.now();slider.value=String(clock);
+    if(forceUI||now-lastUI>=200){
+      lastUI=now;const item=items[current]!,elapsed=(clock/1000).toFixed(3),photo=resolvePhoto(options.photos??[],item.sample.context as Record<string,unknown>);
+      slider.setAttribute('aria-valuetext',`动作 ${current+1}/${items.length}，${elapsed} 秒`);
+      status.textContent=`动作 ${current+1}/${items.length} · ${elapsed} 秒 · ${actionLabels[item.sample.type]??item.sample.type}${photo?` · 照片 ${photo.photo_filename??photo.photo_id}（第 ${photo.photo_order} 张）`:''}${snapshot()?.nodes_truncated?' · 界面快照已截断':''}`;
+      if(current!==detailsAt){details.textContent=JSON.stringify({...item.sample,...(photo?{photo}:{})},null,2);detailsAt=current;}update();
+    }
+  }
+  function tick(now:number){
+    if(!playing||disposed)return;clock=Math.min(duration,startedClock+now-last);current=Math.max(0,upperBound(times,first+clock)-1);draw();
+    if(clock>=duration){stop();draw(true);}else frame=requestAnimationFrame(tick);
+  }
+  play.onclick=()=>{
+    if(playing){stop();draw(true);return;}if(!items.length||screen<0)return;
+    if(clock>=duration){current=0;clock=0;}playing=true;play.textContent='暂停';last=performance.now();startedClock=clock;draw(true);frame=requestAnimationFrame(tick);
+  };
+  function seek(index:number){stop();current=index;clock=items[current]!.time-first;draw(true);}
+  previous.onclick=()=>seek(Math.max(0,current-1));next.onclick=()=>seek(Math.min(items.length-1,current+1));
+  slider.oninput=()=>{stop();clock=Math.max(0,Math.min(duration,Number(slider.value)));current=Math.max(0,upperBound(times,first+clock)-1);draw(true);};
+  update();if(screen>=0)draw(true);else status.textContent='此答卷没有可回放的界面记录。';
+  return ()=>{disposed=true;stop();for(const asset of images.values())asset.onload=null;images.clear();background.width=background.height=1;};
 }

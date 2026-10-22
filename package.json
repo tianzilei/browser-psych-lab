@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.21.0 <25",
+    "node": ">=24.22.1 <25",
     "npm": ">=11 <12"
   },
-  "packageManager": "npm@11.19.0",
+  "packageManager": "npm@11.19.1",
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "references:fetch": "node scripts/references.mjs",
@@ -41,7 +41,7 @@
   "dependencies": {
     "@fastify/static": "10.1.5",
     "better-sqlite3": "13.0.3",
-    "fastify": "5.12.5"
+    "fastify": "5.12.7"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",

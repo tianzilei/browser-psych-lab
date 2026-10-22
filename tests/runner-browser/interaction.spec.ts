@@ -46,7 +46,7 @@ test('large diagnostic screens fit the event budget and retain native input samp
   const result=await page.evaluate(async()=>{
     const source='/interaction-recorder.ts';const {recordInteractions}=await import(source);
     const root=document.querySelector<HTMLElement>('#content')!;root.replaceChildren();
-    for(let i=0;i<1200;i++){const node=document.createElement('button');node.textContent=`选项 ${i}：${'完整中文内容'.repeat(30)}`;root.append(node);}
+    for(let i=0;i<1200;i++){const node=document.createElement('button');node.style.cssText='position:fixed;top:0;left:0;width:200px;height:48px';node.textContent=`选项 ${i}：${'完整中文内容'.repeat(30)}`;root.append(node);}
     const input=document.createElement('input');input.value='保留完整输入';root.append(input);
     const batches:any[]=[],errors:string[]=[],data='原始输入'.repeat(1000);
     const recorder=recordInteractions(root,()=>({page_id:'large-screen'}),async(batch:unknown)=>{batches.push(batch);},(error:unknown)=>errors.push(String(error)));

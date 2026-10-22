@@ -1,0 +1,18 @@
+[Unit]
+Description=Expire derived questionnaire result exports after 24 hours
+[Service]
+Type=oneshot
+User=psychlab
+Group=psychlab
+WorkingDirectory=/opt/browser-psych-lab/current
+EnvironmentFile=/etc/browser-psych-lab.env
+ExecStart=/usr/bin/flock -n /var/lib/browser-psych-lab/export-cleanup.lock /opt/node/bin/node scripts/clean-light-exports.mjs --apply
+UMask=0077
+Nice=19
+CPUQuota=10%
+MemoryMax=128M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/browser-psych-lab

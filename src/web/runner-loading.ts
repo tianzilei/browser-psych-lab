@@ -22,7 +22,7 @@ export async function loadRunner(api:ParticipantAPI,status:HTMLElement,content:H
         while(next<resources.length){const resource=resources[next++]!,r=await fetch(resource,{signal:controller.signal});if(!r.ok)throw new Error(`试验程序资源加载失败 (${r.status})`);await r.arrayBuffer();done++;message=`正在加载试验程序 ${done}/${resources.length}`;show();}
       }));report.stage('resources');
     }
-    controller.signal.throwIfAborted();message='试验程序已加载，正在进入准备页面';show();await report.finish('READY');finished=true;location.assign(url);
+    controller.signal.throwIfAborted();message='试验程序已加载，正在进入准备页面';show();await report.finish('READY');await api.sync();finished=true;location.assign(url);
   }catch(error){controller.abort(error);await report.finish(error instanceof DOMException&&error.name==='AbortError'?'CANCELED':'FAILED',{error:String(error).slice(0,500)}).catch(()=>{});throw error;}
   finally{clearInterval(timer);clearTimeout(timeout);window.removeEventListener('pagehide',hidden);if(!finished)cancel.disabled=true;}
 }

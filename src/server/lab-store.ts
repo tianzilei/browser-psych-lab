@@ -64,7 +64,7 @@ export class LabStore {
   private admin(c: Command) {
     const token = this.get<{csrf:string;expires_at:number}>('SELECT csrf,expires_at FROM lab_admin_tokens WHERE token_hash=?', c.credential_hash ?? '');
     if (!token || token.expires_at < this.now()) throw new ContractError('LOGIN_REQUIRED',401);
-    if (c.data.csrf !== token.csrf && !['admin.me','study.list','study.get','asset.list','session.list','session.detail','session.actions','session.recording','job.list','job.get','environment.list'].includes(c.operation.slice(4)))
+    if (c.data.csrf !== token.csrf && !['admin.me','study.list','study.get','asset.list','session.list','session.detail','session.actions','session.recording','job.list','job.get','backup.list','environment.list'].includes(c.operation.slice(4)))
       throw new ContractError('CSRF_REJECTED',403);
     return { actor: c.credential_hash!, ...token };
   }
@@ -380,6 +380,7 @@ export class LabStore {
         this.admission.stats();const replayOnly=d.replayable===true||d.replayable==='true';
         return {sessions:this.all(`SELECT s.session_id,s.version_id,s.state,s.writer_epoch,q.status AS admission_status,s.page_index,s.group_index,s.created_at,
           coalesce(i.batches,0) AS recording_batches,coalesce(i.samples,0) AS recording_samples,coalesce(i.screens,0) AS recording_screens,
+          CASE WHEN i.last_at>=i.first_at THEN (i.last_at-i.first_at)/1000.0 ELSE NULL END AS answering_seconds,
           coalesce(i.screens,0)>0 AS replayable,(SELECT count(*) FROM lab_diagnostics d WHERE d.session_id=s.session_id) AS diagnostics,
           (SELECT max(received_at) FROM lab_raw r WHERE r.session_id=s.session_id) AS last_received
           FROM lab_sessions s LEFT JOIN lab_session_queue q USING(session_id) LEFT JOIN lab_replay_index i USING(session_id)
@@ -422,6 +423,7 @@ export class LabStore {
       });
       case 'gate.close':return this.request(actor,op,d,()=>{this.run("UPDATE lab_meta SET value='CLOSED' WHERE key='collection_gate'");this.audit(actor,op,'collection',{});return {status:'CLOSED'};});
       case 'job.list': return {jobs:this.all('SELECT * FROM lab_jobs ORDER BY created_at DESC LIMIT 100')};
+      case 'backup.list': return {backups:this.all("SELECT job_id,state,created_at,result FROM lab_jobs WHERE kind='BACKUP' AND state IN ('READY','ARCHIVED') ORDER BY created_at DESC")};
       case 'job.get': return this.get('SELECT * FROM lab_jobs WHERE job_id=?',id(d.job_id))??{};
       case 'job.begin': return this.request(actor,op,d,()=>{if(d.kind==='REBUILD'){const study=id(d.study_id);if(this.get<{admission:string}>('SELECT admission FROM lab_studies WHERE study_id=?',study)?.admission!=='PAUSED'||this.get("SELECT 1 FROM lab_permits p JOIN lab_sessions s USING(session_id) WHERE s.study_id=? AND p.state='ISSUED'",study))throw new ContractError('REBUILD_REQUIRES_PAUSED_AND_IDLE',409);}return this.beginJob(id(d.job_id),String(d.kind),d.study_id? id(d.study_id):null,object(d.config??{}),actor);});
       case 'job.recover': return this.request(actor,op,d,()=>{

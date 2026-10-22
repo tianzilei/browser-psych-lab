@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-22",
+  "timezone": "Asia/Shanghai",
+  "runner_hash": "eb504f5218b34c2e333af4104d13872c6213d97e7b74ec7cb143b0a6d01a5215",
+  "checks": {
+    "typecheck": "passed",
+    "production_build": "passed",
+    "database_smoke": "passed",
+    "unit": 229,
+    "browser": 81,
+    "runner_browser": 43,
+    "integration": 4,
+    "full_suite_total": 357,
+    "final_focused_regression": 19,
+    "new_long_phone_regression": 1
+  },
+  "verification_order": "Full npm run check passed (357 cases); final choice sizing, field alignment and long-phone reading navigation then passed typecheck, production build and 19 focused browser cases, including one new long-phone regression. The final CSS passed the 144-combination visual matrix.",
+  "visual_matrix": {
+    "combinations": 144,
+    "runtime_errors": [],
+    "overflow_or_small_target_failures": 0,
+    "expected_space_guards": [
+      {
+        "layout": "single",
+        "width": 568,
+        "height": 320,
+        "background": "#e5e5e5",
+        "kind": "scales"
+      },
+      {
+        "layout": "single",
+        "width": 568,
+        "height": 320,
+        "background": "#202020",
+        "kind": "scales"
+      }
+    ]
+  },
+  "limits": [
+    "Chromium and mobile viewport emulation; no new physical-device, screen-reader or physical-timing validation.",
+    "This file records local source/build validation. Remote deployment and preservation checks are recorded separately in deployment-20261022.json."
+  ],
+  "sources": {
+    "src/web/ui-tokens.css": "d5411c2c5d253f416f8d059f6f8385e8aa3fc1fad004dc6d0be1d0f255aa1073",
+    "src/web/participant.css": "5fb1e470081752497e4f3e625304f3130931a8060e36bfd15224c38d9e53f1f1",
+    "src/web/runner.css": "2e240b6be3eff098c85243a44063746a8e4b81d3743f6c56b8a612c65d72bf22",
+    "src/web/questionnaire-list.css": "6f60b2f88dc144114d6c7889c32caeb66c7604be22eddd10996e5fc755c57299",
+    "src/web/style.css": "6d94f9a44a4da0be7bc72c20e6928968934cd2729245bc9ea99032238ae26cb5",
+    "src/web/admin.css": "c2a60ef5f50529001fd3fdbe7fabaa3a69f175da7afc391f2dde08bc9725062f",
+    "src/web/participant-theme.ts": "80159a21d115b4fff772a3a1420e4b6be2d22ba4e81732c186fee073eb9ccfc7",
+    "src/web/questionnaire-controls.ts": "da868f77f103b6fce0d4fbc8dbce9124694ae60507d53394514e244226081718",
+    "src/web/survey-page.ts": "2aec64df3946e3d08a843a9d734a6b17f6f4b2a3673ac4b1ba01e5401ff36f36",
+    "src/web/adaptive-page.ts": "c68ac6bb98d333c6526f707a2626ea494bc37c6c4cc60d3d8c4fb2a58d807a4d",
+    "src/web/rating-questions.ts": "bee25b940c2ec623192893b00b4067eacb7a2f1955353397f99eb1d6d667c3e2",
+    "src/web/admin.ts": "e38f2a800e5edef05ad0c82ce358cd01199dc6edbec396a4960eec708acd6082",
+    "src/web/replay-player.ts": "e294ea00dc6c1fcab4e7a9cad089fde6b524afd5b4594649f009f9cfce4ec556",
+    "src/server/offline-replay-document.ts": "a02890606637f8b25151209ce535c12540229b63123f3ce889e11cd7c8f98776",
+    "scripts/preview-questionnaire.mjs": "53271f56542e9e0df6c71f8c2aa2180650e9a1b3c2563cbd7a6b5bdd467dfa27"
+  },
+  "deployment_record": "deployment-20261022.json"
+}

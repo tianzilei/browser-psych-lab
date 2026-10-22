@@ -77,7 +77,7 @@ async function prepare(){
   const start=button(ui.startGroup,async()=>{let permitIssued=false;try{
     start.disabled=true;start.style.visibility='hidden';
     if(rating)await waitForFirstRating(p,api!.session.answers,api!.session.group_index,status,preparing.signal);
-    api!.admission?.check();status.textContent='正在确认开始，请稍候…';await api!.syncPreparations().catch(()=>{});await api!.stopAdmission();start.style.visibility='hidden';checkReady();
+    api!.admission?.check();status.textContent='正在确认开始，请稍候…';await api!.sync();await api!.stopAdmission();start.style.visibility='hidden';checkReady();
     const next=await reserve(preparing.signal);checkReady();if(next.variant_id!==reservation.variant_id)throw new Error('预留方案已变化，请重新准备。');reservation=next;
     const permit=await request<NonNullable<LabSession['permit']>>(api!.path('permit'),{request_id:uid(),...api!.fence(),reservation_id:reservation.reservation_id,readiness:{activity_policy:TASK_ACTIVITY_POLICY.id,...measured,...storage,download:images.download,layout,geometry:ready,assets:images.hashes,decoded_bytes:images.decoded_bytes,protocol_hash:api!.session.frozen.hash}},undefined,preparing.signal);
     permitIssued=true;checkReady();await api!.refresh();checkReady();
@@ -91,7 +91,7 @@ async function run(plan:GroupPlan,canvas:HTMLCanvasElement,buttons:HTMLButtonEle
   let pending=false,stopped=false,closing=false,lastFrame=0,feedbackCleared=false;active=true;document.body.classList.add('running');
   const record=(r:RunRecord)=>a.ledger.append(plan.scope,'GROUP_RECORD',{record:{...r,clock_origin:origin}});
   const emit=(r:RunRecord)=>{r.clock_origin=origin;replay.apply(r);void record(r).catch(stop);};
-  const clear=()=>{ctx.save();ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle=a.session.frozen.protocol.layout.background;ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();canvas.style.visibility='hidden';};
+  const clear=()=>{delete canvas.dataset.replayText;ctx.save();ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle=a.session.frozen.protocol.layout.background;ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();canvas.style.visibility='hidden';};
   async function stop(reason:unknown){if(stopped)return;stopped=true;active=false;cancelAnimationFrame(frameId);clear();remove();s.interrupt(false);
     const explanation=interruptionMessage(reason);status.textContent=`${explanation}正在保存已有记录…`;await record({type:'ABORT',at:now(),reason:String(reason).slice(0,150)}).catch(()=>{});
     try{await a.terminate('SOFTWARE_RUN_INTERRUPTED',{reason:String(reason).slice(0,150)});await a.sync();status.textContent=`${explanation}已有记录已保存。`;}catch{status.textContent=`${explanation}保存尚未确认，请返回问卷重试保存。`;}

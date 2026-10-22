@@ -16,6 +16,7 @@ import {TASK_ACTIVITY_POLICY} from '../shared/task-policy.js';
 import {jsonReceiveCharge} from './json-transport.js';
 import {downloadName,downloadDisposition} from '../shared/download-name.js';
 import {RecordingDownloads} from './recording-downloads.js';
+import {listBackupDownloads,type BackupJob} from './backup-downloads.js';
 export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,maintenance:Maintenance,root:string){
   const preparation=new PreparationQueue(Number(process.env.PREPARATION_CONCURRENCY??1)),assetPolicy=new RunnerAssetPolicy(root);
   const recordings=new RecordingDownloads(maintenance.path,root);app.addHook('onClose',async()=>recordings.close());
@@ -138,6 +139,16 @@ export async function labRoutes(app:FastifyInstance,writer:DatabaseWriter,mainte
   });
   app.post('/api/lab/sessions/:session/marks',async request=>admin(request,'session.mark',{...object(request.body),session_id:id((request.params as {session:string}).session)}));
   app.get('/api/lab/jobs',async request=>admin(request,'job.list'));
+  const preparedBackups=async(request:FastifyRequest)=>listBackupDownloads(root,(await admin(request,'backup.list') as {backups:BackupJob[]}).backups);
+  app.get('/api/lab/backups',async request=>({backups:(await preparedBackups(request)).map(({path:_path,...backup})=>backup)}));
+  app.get('/api/lab/backups/:backup',async(request,reply)=>{
+    const selected=(request.params as {backup:string}).backup,backup=(await preparedBackups(request)).find(b=>b.job_id===selected);
+    if(!backup)throw new ContractError('BACKUP_DOWNLOAD_NOT_FOUND',404);
+    const file=await openPrivate(backup.path).catch(error=>{if((error as NodeJS.ErrnoException).code==='ENOENT')throw new ContractError('BACKUP_DOWNLOAD_NOT_FOUND',404);throw error;});
+    if((await file.stat()).size!==backup.bytes){await file.close();throw new ContractError('BACKUP_DOWNLOAD_NOT_FOUND',404);}
+    reply.type('application/zstd').header('Content-Length',backup.bytes).header('Content-Disposition',downloadDisposition(backup.filename))
+      .header('X-Content-SHA256',backup.sha256).header('Cache-Control','private, no-store, no-transform');return reply.send(file.createReadStream());
+  });
   app.get('/api/lab/jobs/:job',async request=>{const job=await admin(request,'job.get',{job_id:id((request.params as {job:string}).job)}) as {job_id?:string};if(!job.job_id)throw new ContractError('JOB_NOT_FOUND',404);return job;});
   app.get('/api/lab/operations',async request=>{
     await admin(request,'admin.me');const fs=await statfs(root);

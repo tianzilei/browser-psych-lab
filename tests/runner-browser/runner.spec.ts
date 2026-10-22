@@ -12,7 +12,7 @@ import {stableJSON} from '../../src/shared/protocol.js';
 import sharp from 'sharp';
 import {gunzipSync} from 'node:zlib';
 
-async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<typeof compileQuestionnaire>)=>void,viewport={width:390,height:844}){
+async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<typeof compileQuestionnaire>,addAsset:()=>string)=>void,viewport={width:390,height:844}){
   const root=mkdtempSync(join(tmpdir(),'bpl-runner-')),db=openDatabase(join(root,'db.sqlite')),store=new LabStore(db,digest('runner'));
   const token=digest('admin'),csrf=randomUUID();store.execute({operation:'lab/admin.issue',data:{token_hash:token,csrf}});
   const admin=(operation:string,data:Record<string,unknown>={})=>store.execute({operation:`lab/${operation}`,credential_hash:token,data:{csrf,...data}}) as any;
@@ -26,7 +26,7 @@ async function start(page:Page,rating=false,age=false,configure?:(p:ReturnType<t
     trials:[{root_id:'image',asset_id:asset.asset_id,correct:'Left'},{root_id:'text',text:'HELLO',correct:'Right'}]}]});
   if(rating&&age){p.groups[0]!.rating={...p.groups[0]!.rating!,age_prompt:'你的年龄是？',age_min:18,age_max:65};p.groups[0]!.trials.splice(1);p.variants[0]!.trial_order.ratings=['first'];}
   else if(rating){const second=admin('asset.begin',{request_id:randomUUID(),study_id:study.study_id,name:'second.png'});p.groups[0]!.trials[1]!.asset_id=second.asset_id;store.execute({operation:'lab/internal.asset.ready',data:{asset_id:second.asset_id,info:{hash:digest(png),bytes:png.length,width:1080,height:720,format:'png'}}});}
-  configure?.(p);
+  configure?.(p,()=>{const extra=admin('asset.begin',{request_id:randomUUID(),study_id:study.study_id,name:`extra-${randomUUID()}.png`});store.execute({operation:'lab/internal.asset.ready',data:{asset_id:extra.asset_id,info:{hash:digest(png),bytes:png.length,width:1080,height:720,format:'png'}}});return extra.asset_id;});
   const saved=admin('study.save',{request_id:randomUUID(),revision:1,study_id:study.study_id,protocol:p});
   const version=admin('study.publish',{request_id:randomUUID(),revision:saved.revision,study_id:study.study_id});
   admin('study.admission',{request_id:randomUUID(),study_id:study.study_id,paused:false});
@@ -120,9 +120,11 @@ test('self-paced rating requires selection and submit, clears image, then waits 
     const submit=page.getByRole('button',{name:'提交评分',exact:true});await expect(submit).toBeDisabled();
     // More than the legacy fixed window: no answer still keeps the first picture.
     await page.waitForTimeout(3200);await expect(page.locator('#status')).toContainText('第 1/2 张');await expect(page.locator('#stimulus')).toBeVisible();
+    expect(f.requests()).toBeGreaterThan(0);expect(f.records().some((r:any)=>r.type==='ONSET')).toBe(true);expect(f.interactions().length).toBeGreaterThan(0);
     await chooseRating(2);await expect(submit).toBeEnabled();
     await submit.tap();
-    await expect(page.locator('#stimulus')).toBeHidden();await expect(submit).toBeDisabled();expect(f.requests()).toBe(0);
+    await expect(page.locator('#stimulus')).toBeHidden();await expect(submit).toBeDisabled();
+    await expect.poll(()=>f.records().filter((r:any)=>r.type==='RATING').length).toBe(1);
     await expect(submit).toBeDisabled();
     await expect(page.locator('#status')).toContainText('第 2/2 张',{timeout:5000});
     await chooseRating(4);await submit.tap();await expect(page.locator('#done')).toBeVisible({timeout:12000});
@@ -260,18 +262,49 @@ test('fractional Android WebView slider rectangles pass admission without changi
  }finally{await context.close();f.close();}
 });
 
-for(const viewport of [{width:704,height:755},{width:390,height:660},{width:320,height:480}])test(`five impressions then supplementary familiarity then age save without moving the photo at ${viewport.width}x${viewport.height}`,async({page})=>{
+for(const control of ['slider','single'] as const)for(const viewport of [{width:704,height:755},{width:390,height:660},{width:320,height:480}])test(`five impressions then ${control} supplementary familiarity then age save without moving the photo at ${viewport.width}x${viewport.height}`,async({page})=>{
   const items=['可信度','专业能力','亲切友善','外貌吸引力','就诊意愿'],fam='在参加本研究前，您对这位医生有多熟悉？';
-  const f=await start(page,true,true,p=>{const r=p.groups[0]!.rating!;r.items=items;r.age_min=18;r.age_max=50;r.familiarity={prompt:fam,labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age'};},viewport),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  const f=await start(page,true,true,p=>{const r=p.groups[0]!.rating!;r.items=items;r.age_min=18;r.age_max=50;r.familiarity={prompt:fam,labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age',...(control==='single'?{control}:{})};},viewport),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   try{
     await page.getByRole('button',{name:'开始本组'}).click();await expect(page.getByRole('slider',{name:items[0]!,exact:true})).toBeVisible();const photo=await page.locator('#stimulus').boundingBox(),next=page.getByRole('button',{name:'下一题',exact:true});
-    for(const prompt of [...items,fam]){const range=page.getByRole('slider',{name:prompt,exact:true});await expect(range).toBeVisible();await expect(next).toBeDisabled();await expect(page.locator('#stimulus')).toBeVisible();expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);
-      const axis=await range.locator('xpath=../..').boundingBox(),footer=await next.boundingBox();expect(axis!.y+axis!.height).toBeLessThanOrEqual(footer!.y);expect(footer!.y+footer!.height).toBeLessThanOrEqual(viewport.height+1);await range.press('End');await next.click();}
+    for(const prompt of [...items,fam]){await expect(next).toBeDisabled();await expect(page.locator('#stimulus')).toBeVisible();expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);
+      if(prompt===fam&&control==='single'){const group=page.getByRole('radiogroup',{name:fam,exact:true}),options=group.getByRole('radio');await expect(options).toHaveCount(6);await expect(group.locator('input:checked')).toHaveCount(0);await expect(page.getByRole('slider',{name:fam,exact:true})).toHaveCount(0);
+        const labels=['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'];for(const [i,label]of labels.entries()){const option=group.getByRole('radio',{name:`${i+1} · ${label}`,exact:true});await option.check();await expect(option).toBeChecked();await expect(group.locator('input:checked')).toHaveCount(1);expect(await option.inputValue()).toBe(String(i+1));}
+        const box=await group.boundingBox();expect(box!.y+box!.height).toBeLessThanOrEqual((await next.boundingBox())!.y);expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);
+      }else{const range=page.getByRole('slider',{name:prompt,exact:true});await expect(range).toBeVisible();const axis=await range.locator('xpath=../..').boundingBox(),footer=await next.boundingBox();expect(axis!.y+axis!.height).toBeLessThanOrEqual(footer!.y);expect(footer!.y+footer!.height).toBeLessThanOrEqual(viewport.height+1);await range.press('End');}await next.click();}
     const age=page.getByRole('textbox',{name:'你的年龄是？',exact:true}),submit=page.getByRole('button',{name:'提交评分',exact:true}),keypad=page.getByRole('group',{name:'年龄数字键盘',exact:true});await expect(age).toBeVisible();await expect(submit).toBeDisabled();expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);
     await expect(keypad.getByRole('button')).toHaveCount(12);expect(await keypad.evaluate(node=>({columns:getComputedStyle(node).gridTemplateColumns.split(' ').length,rows:getComputedStyle(node).gridTemplateRows.split(' ').length}))).toEqual({columns:6,rows:2});
     const clear=keypad.getByRole('button',{name:'清空',exact:true});expect(await clear.evaluate(node=>getComputedStyle(node).color)).not.toBe(await keypad.getByRole('button',{name:'1',exact:true}).evaluate(node=>getComputedStyle(node).color));
     for(const value of ['17','51','18','50']){await clear.click();for(const digit of value)await age.press(digit);if(value==='17'||value==='51')await expect(submit).toBeDisabled();else await expect(submit).toBeEnabled();}
     await clear.click();await expect(age).toHaveValue('');await expect(submit).toBeDisabled();await age.press('4');await age.press('1');await keypad.getByRole('button',{name:'删除',exact:true}).click();await expect(age).toHaveValue('4');await age.press('0');await expect(submit).toBeEnabled();expect(await page.locator('#stimulus').boundingBox()).toEqual(photo);await submit.click();await expect(page.locator('#done')).toBeVisible({timeout:10000});
-    const records=f.records(),familiarity=records.find((r:any)=>r.type==='RATING_FAMILIARITY');expect(familiarity.value).toBe(6);expect(familiarity.at).toBeGreaterThanOrEqual(Math.max(...records.filter((r:any)=>r.type==='RATING_CHANGE').map((r:any)=>r.at)));expect(records.find((r:any)=>r.type==='RATING').values).toEqual([9,9,9,9,9,40]);expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(errors).toEqual([]);
+    const records=f.records(),familiarity=records.find((r:any)=>r.type==='RATING_FAMILIARITY');expect(familiarity.value).toBe(6);if(control==='single')expect(records.filter((r:any)=>r.type==='RATING_FAMILIARITY_CHANGE').map((r:any)=>r.value)).toEqual([1,2,3,4,5,6]);expect(familiarity.at).toBeGreaterThanOrEqual(Math.max(...records.filter((r:any)=>r.type==='RATING_CHANGE').map((r:any)=>r.at)));expect(records.find((r:any)=>r.type==='RATING').values).toEqual([9,9,9,9,9,40]);expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(errors).toEqual([]);
   }finally{f.close();}
+});
+
+test('twenty photos stream complete answers and replay during the task, recover a lost upload, and leave no final backlog',async({page,context})=>{
+  test.setTimeout(150000);
+  const items=['可信度','专业能力','亲切友善','外貌吸引力','就诊意愿'],fam='在参加本研究之前，您和照片中这位医生是否认识？';
+  const f=await start(page,true,false,(p,addAsset)=>{
+    const group=p.groups[0]!,base=[...group.trials];
+    group.rating={...group.rating!,items,age_prompt:'请估计医生年龄',age_min:18,age_max:90,familiarity:{prompt:fam,labels:['从未见过','见过','多次见过','有过接触','多次接触','非常熟悉'],position:'before-age',control:'single'}};
+    group.trials=Array.from({length:20},(_,i)=>({...base[i%2]!,asset_id:i<2?base[i]!.asset_id!:addAsset(),root_id:`photo-${i+1}`}));p.variants[0]!.trial_order.ratings=group.trials.map(t=>t.root_id);
+  });
+  let lost=false;await page.route('**/ingest',async route=>{if(!lost){lost=true;await route.abort();}else{await new Promise(resolve=>setTimeout(resolve,150));await route.fallback();}});
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  try{
+    await page.getByRole('button',{name:'开始本组'}).click();
+    for(let i=0;i<20;i++){
+      await expect(page.locator('#status')).toHaveText(`第 ${i+1}/20 张`,{timeout:7000});
+      if(i===1){expect(lost).toBe(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));}
+      for(const item of items){await page.getByRole('slider',{name:item,exact:true}).press('End');await page.getByRole('button',{name:'下一题',exact:true}).click();}
+      await page.getByRole('radio',{name:'1 · 从未见过',exact:true}).check();await page.getByRole('button',{name:'下一题',exact:true}).click();
+      const age=page.getByRole('textbox',{name:'请估计医生年龄',exact:true});await age.press('4');await age.press('0');await page.getByRole('button',{name:'提交评分',exact:true}).click();
+      if(i===2){await expect.poll(()=>f.records().filter((r:any)=>r.type==='RATING').length,{timeout:5000}).toBeGreaterThanOrEqual(2);expect(f.interactions().length).toBeGreaterThan(0);expect(f.view().permit.state).toBe('ISSUED');}
+    }
+    const submitted=Date.now();await expect(page.locator('#done')).toBeVisible({timeout:10000});
+    expect(Date.now()-submitted).toBeLessThan(6000);expect(f.view().permit.state).toBe('CLOSED_NORMAL');expect(f.view().diagnostics).toEqual([]);
+    const records=f.records();expect(records.filter((r:any)=>r.type==='RATING').map((r:any)=>r.values)).toEqual(Array.from({length:20},()=>[9,9,9,9,9,40]));
+    expect(records.filter((r:any)=>r.type==='RATING_FAMILIARITY').map((r:any)=>r.value)).toEqual(Array(20).fill(1));expect(errors).toEqual([]);
+    const pending=await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('browser-psych-lab-v1');r.onsuccess=()=>resolve(r.result);});try{return await new Promise<number>(resolve=>{const r=db.transaction('outbox').objectStore('outbox').count();r.onsuccess=()=>resolve(r.result);});}finally{db.close();}});expect(pending).toBe(0);
+  }finally{await context.close();f.close();}
 });

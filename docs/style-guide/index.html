@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN" data-q-theme="gray">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>问卷输入控件 · Browser Psych Lab</title>
+  <link rel="stylesheet" href="questionnaire-tokens.css">
+  <link rel="stylesheet" href="guide.css">
+  <script src="guide.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到内容</a>
+  <aside class="sidebar" aria-label="规范目录">
+    <a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true">b<span>p</span></span><span>Browser<br>Psych Lab</span></a>
+    <div class="sidebar-label">INTERFACE GUIDELINES</div>
+    <nav>
+      <a href="#overview" aria-current="location"><span>00</span>设计基线</a>
+      <a href="#choices"><span>01</span>选择控件</a>
+      <a href="#scales"><span>02</span>离散量表</a>
+      <a href="#personal"><span>03</span>个人信息输入</a>
+      <a href="#states"><span>04</span>交互与校验</a>
+      <a href="#implementation"><span>05</span>实施映射</a>
+    </nav>
+    <div class="sidebar-foot"><span class="version-dot" aria-hidden="true"></span>界面规范 v1.2<br><span>已应用到源代码 · 2026.10.22</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <span>设计系统 <span class="breadcrumb-separator">/</span> 问卷控件</span>
+      <div class="theme-toolbar"><span>样张背景</span><div class="segmented" role="group" aria-label="样张背景"><button type="button" data-theme="gray" aria-pressed="true">灰色</button><button type="button" data-theme="dark" aria-pressed="false">深色</button></div></div>
+    </header>
+    <main id="main">
+      <section id="overview" class="overview section-anchor">
+        <div class="eyebrow">QUESTIONNAIRE / INPUT COMPONENTS</div>
+        <div class="hero-row"><div><h1>问卷输入控件</h1><p class="hero-subtitle">清楚地阅读，确定地选择。</p></div><div class="edition">STYLE GUIDE<span>v1.2 / 2026</span></div></div>
+        <p class="intro">延续现有问卷的纯色、原生控件和黑白选中态。将选择、评分和输入放进同一套尺寸与状态规则，让注意力留在题目上。</p>
+        <div class="hero-links"><a href="#choices">查看交互样张 <span aria-hidden="true">↓</span></a><a href="../问卷输入控件StyleGuide.md">开发规范与验收清单 <span aria-hidden="true">↗</span></a><span class="proposal-label">样张可操作 · 规范已应用到当前源代码</span></div>
+        <div class="principles"><div><span>01 / NEUTRAL</span><strong>纯色，低干扰</strong><p>沿用冻结背景，无渐变、阴影或动画。</p></div><div><span>02 / EXPLICIT</span><strong>先操作，再有答案</strong><p>无默认选择；选中与焦点分别表达。</p></div><div><span>03 / READABLE</span><strong>内容完整，触控明确</strong><p>16px 控件文字，48px 常规触控高度。</p></div></div>
+        <div class="foundation-grid">
+          <article class="foundation"><h2>颜色 <span>Color</span></h2><div class="palette q-surface"><div><span class="swatch swatch-bg"></span><strong>背景</strong><code data-token="bg">#E5E5E5</code></div><div><span class="swatch swatch-fg"></span><strong>文字 / 选中</strong><code data-token="fg">#000000</code></div><div><span class="swatch swatch-border"></span><strong>控件边框</strong><code data-token="border">#787878</code></div><div><span class="swatch swatch-error"></span><strong>错误</strong><code data-token="error">#9D2424</code></div></div><p class="foundation-note">结构分隔线与可操作控件边框分开设色。</p></article>
+          <article class="foundation"><h2>文字与尺寸 <span>Type &amp; space</span></h2><div class="type-scale"><div><span class="type-question">题干文字</span><code>18 / 1.45</code></div><div><span class="type-body">选项与输入内容</span><code>16 / 1.45</code></div><div><span class="type-help">帮助文字</span><code>14 / 1.5</code></div><div><span class="type-meta">进度 · 必答 · 可多选</span><code>13 / 1.4</code></div></div><div class="dimension-row"><span><b>48</b> px 触控高度</span><span><b>10</b> px 圆角</span><span><b>8</b> px 间距</span></div></article>
+        </div>
+      </section>
+
+      <section id="choices" class="section-anchor component-section">
+        <div class="section-heading"><div><span class="section-index">01 / CHOICE</span><h2>每个选项，都有明确的选择状态。</h2></div><span class="component-tag">single · multi</span></div>
+        <div class="specimen-grid">
+          <article class="specimen"><header><h3>单选</h3><code>圆形标记 · 互斥选择</code></header><div class="q-surface demo-pad"><p class="q-meta">第 1 / 6 题 · 必答 · 单选</p><h4 class="q-title" id="single-title">您目前的职业状态是？</h4><div class="q-options" role="group" aria-labelledby="single-title" data-choice-group="single"><button class="q-choice" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>医疗行业</span></button><button class="q-choice" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>科研或教育</span></button><button class="q-choice" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>其他</span></button></div><p class="q-feedback" data-choice-feedback="single" role="status">尚未作答</p></div><footer>整行可点击。选择后停留当前题，使用导航继续。</footer></article>
+          <article class="specimen"><header><h3>多选</h3><code>方形标记 · 独立切换</code></header><div class="q-surface demo-pad"><p class="q-meta">第 2 / 6 题 · 可选 · 可多选</p><h4 class="q-title" id="multi-title">您通常通过哪些设备填写问卷？</h4><div class="q-options q-options-two" role="group" aria-labelledby="multi-title" data-choice-group="multi"><button class="q-choice q-choice-multi" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>手机</span></button><button class="q-choice q-choice-multi" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>平板电脑</span></button><button class="q-choice q-choice-multi" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>笔记本电脑</span></button><button class="q-choice q-choice-multi" type="button" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>台式电脑</span></button></div><p class="q-feedback" data-choice-feedback="multi" role="status">已选择 0 项</p></div><footer>再次点击取消。多选不使用圆形标记，允许全部取消。</footer></article>
+        </div>
+        <div class="inline-spec"><span class="rule-label">共同规则</span><p>边框 1px，内边距 12px，间距 8px；选中时反转前景和背景。长选项完整换行，同行按最高项对齐。</p></div>
+        <article class="native-specimen"><div><h3>熟悉度单选</h3><p>沿用评分任务中的原生 radio，视觉与通用单选一致。</p></div><fieldset class="q-surface native-choices"><legend>示例：您对这张面孔的熟悉程度</legend><label class="q-choice"><input type="radio" name="familiarity" value="1"><span>完全不熟悉</span></label><label class="q-choice"><input type="radio" name="familiarity" value="2"><span>有些熟悉</span></label><label class="q-choice"><input type="radio" name="familiarity" value="3"><span>非常熟悉</span></label></fieldset></article>
+      </section>
+
+      <section id="scales" class="section-anchor component-section">
+        <div class="section-heading"><div><span class="section-index">02 / DISCRETE SCALE</span><h2>量表的中点，不等于默认答案。</h2></div><span class="component-tag">scale · scales</span></div>
+        <div class="scale-layout"><article class="specimen"><header><h3>离散量表</h3><code>整数刻度 · 无初始选择</code></header><div class="q-surface demo-pad"><p class="q-meta">第 3 / 6 题 · 可选</p><h4 class="q-title" id="scale-title">您对本次体验的整体感受如何？</h4><div class="q-axis" data-scale><div class="q-axis-ends"><span>非常不满意</span><span>非常满意</span></div><div class="q-track"><input class="q-range" type="range" min="1" max="5" step="1" value="3" data-answered="false" aria-labelledby="scale-title" aria-describedby="scale-value" aria-valuetext="尚未作答"><div class="q-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div></div><div class="q-axis-feedback"><output id="scale-value" aria-live="off">点击或拖动滑块选择评分</output><button class="q-clear" type="button" data-scale-clear>清除选择</button></div></div></div><footer>可用方向键、Home / End 调整；Space / Enter 确认当前刻度。</footer></article><aside class="spec-notes"><div><span>01</span><strong>初始隐藏滑块</strong><p>显示完整刻度与提示，实际答案为 null。</p></div><div><span>02</span><strong>反馈靠近控件</strong><p>明确显示分值与对应标签，拖动时不改全局状态区。</p></div><div><span>03</span><strong>保留量表语义</strong><p>两端同等强调，无红绿优劣色。多轴各有题名与反馈。</p></div></aside></div>
+        <article class="specimen multi-axis-specimen"><header><h3>多轴量表</h3><code>逐轴作答 · 各自独立</code></header><div class="q-surface demo-pad"><p class="q-meta">多轴题示例 · 必答</p><h4 class="q-title">请分别评价以下两个维度。</h4><div class="multi-axis-grid"><div class="q-axis" data-scale data-labels="非常不清楚|不清楚|一般|清楚|非常清楚"><h5 id="clarity-title" class="q-axis-title">说明的清晰程度</h5><div class="q-axis-ends"><span>非常不清楚</span><span>非常清楚</span></div><div class="q-track"><input class="q-range" type="range" min="1" max="5" step="1" value="3" data-answered="false" aria-labelledby="clarity-title" aria-describedby="clarity-value" aria-valuetext="尚未作答"><div class="q-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div></div><div class="q-axis-feedback"><output id="clarity-value" aria-live="off">点击或拖动滑块选择评分</output></div></div><div class="q-axis" data-scale data-labels="非常不方便|不方便|一般|方便|非常方便"><h5 id="ease-title" class="q-axis-title">操作的方便程度</h5><div class="q-axis-ends"><span>非常不方便</span><span>非常方便</span></div><div class="q-track"><input class="q-range" type="range" min="1" max="5" step="1" value="3" data-answered="false" aria-labelledby="ease-title" aria-describedby="ease-value" aria-valuetext="尚未作答"><div class="q-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div></div><div class="q-axis-feedback"><output id="ease-value" aria-live="off">点击或拖动滑块选择评分</output></div></div></div></div><footer>每轴有独立的标题与未答状态。窄屏纵向排列，必答轴不提供清除。</footer></article>
+      </section>
+
+      <section id="personal" class="section-anchor component-section">
+        <div class="section-heading"><div><span class="section-index">03 / PERSONAL INPUT</span><h2>文字输入只用于个人信息。</h2></div><span class="component-tag">text · numeric keypad</span></div>
+        <div class="specimen-grid personal-grid">
+          <article class="specimen"><header><h3>个人信息</h3><code>可见标签 · 内联校验</code></header><form class="q-surface demo-pad" id="personal-form" novalidate><p class="q-meta">第 4 / 6 题 · 必答</p><label class="q-title q-label" for="participant-code">您的参与编号</label><p class="q-help" id="code-help">请输入研究者提供的 6 位数字编号。</p><input class="q-field" type="text" inputmode="numeric" maxlength="6" autocomplete="off" id="participant-code" aria-describedby="code-help code-error" placeholder="例如 123456"><p class="q-error" id="code-error" role="alert" hidden></p><div class="q-nav"><button class="q-button q-primary" type="submit">下一题</button></div><p class="q-feedback" id="code-status" role="status">仅演示格式校验</p></form><footer>标签始终可见。空值提示、示例和格式说明各有位置。</footer></article>
+          <article class="specimen"><header><h3>数字键盘</h3><div class="mini-switch" role="group" aria-label="数字键盘示例"><button type="button" data-keypad-mode="phone" aria-pressed="true">手机号</button><button type="button" data-keypad-mode="age" aria-pressed="false">年龄</button></div></header><div class="q-surface demo-pad"><p class="q-meta">第 5 / 6 题 · 必答</p><label class="q-title q-label" for="keypad-value" id="keypad-label">您的手机号码</label><p class="q-help" id="keypad-help">11 位中国大陆手机号码</p><input class="q-field q-numeric-field" id="keypad-value" type="text" inputmode="none" readonly aria-describedby="keypad-help keypad-error" placeholder="使用下方数字键盘"><p class="q-error" id="keypad-error" role="alert" hidden></p><div class="q-keypad" id="keypad" role="group" aria-label="手机号数字键盘"><button class="q-button" type="button" data-key="1">1</button><button class="q-button" type="button" data-key="2">2</button><button class="q-button" type="button" data-key="3">3</button><button class="q-button" type="button" data-key="4">4</button><button class="q-button" type="button" data-key="5">5</button><button class="q-button" type="button" data-key="6">6</button><button class="q-button" type="button" data-key="7">7</button><button class="q-button" type="button" data-key="8">8</button><button class="q-button" type="button" data-key="9">9</button><button class="q-button" type="button" data-key="0">0</button><button class="q-button q-key-action" type="button" data-key="delete">删除</button><button class="q-button q-key-action q-key-clear" type="button" data-key="clear">清空</button></div><div class="q-nav"><button class="q-button q-primary" type="button" id="keypad-next" disabled>下一题</button></div><p class="q-feedback" id="keypad-status" role="status">仅演示输入，不保存个人信息</p></div><footer>数字输入不唤起系统键盘；保留物理数字键和 Backspace。</footer></article>
+        </div>
+      </section>
+
+      <section id="states" class="section-anchor component-section">
+        <div class="section-heading"><div><span class="section-index">04 / STATE &amp; VALIDATION</span><h2>焦点说明位置，选中说明答案。</h2></div><span class="component-tag">state contract</span></div>
+        <div class="state-matrix q-surface" aria-label="控件状态样张"><div><span class="state-name">默认</span><button type="button" class="q-choice" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>未选择</span></button><small>背景透明，1px 边框</small></div><div><span class="state-name">键盘焦点示意</span><button type="button" class="q-choice q-focus-example" aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>焦点在此</span></button><small>2px 外轮廓，偏移 3px</small></div><div><span class="state-name">选中</span><button type="button" class="q-choice" aria-pressed="true"><span class="q-marker" aria-hidden="true"></span><span>已选择</span></button><small>反色填充 + 标记</small></div><div><span class="state-name">不可用</span><button type="button" class="q-choice" disabled aria-pressed="false"><span class="q-marker" aria-hidden="true"></span><span>暂不可选</span></button><small>原生 disabled，无悬停反馈</small></div></div>
+        <div class="specimen-grid validation-grid"><article class="specimen"><header><h3>错误状态</h3><code>文字说明 + 错误边界</code></header><div class="q-surface demo-pad"><label class="q-label" for="invalid-example">参与编号</label><input class="q-field" id="invalid-example" type="text" value="123" aria-invalid="true" aria-describedby="invalid-hint" readonly><p class="q-error" id="invalid-hint">请输入完整的 6 位数字编号。</p></div></article><article class="specimen"><header><h3>导航层级</h3><code>一个主操作</code></header><div class="q-surface demo-pad"><div class="q-nav q-nav-two"><button class="q-button" type="button" disabled>上一题</button><button class="q-button q-primary" type="button" data-nav-demo>下一题</button></div><p class="q-feedback" id="nav-status" role="status">逐题：下一题 / 自适应：下一页</p></div></article></div>
+        <div class="behavior-rules"><div><strong>悬停与按下</strong><p>仅精细指针显示轻微底色；按下加深边框，无缩放、位移或动画。</p></div><div><strong>校验时机</strong><p>普通信息在尝试继续后校验；手机号即时提示，年龄检查冻结范围。</p></div><div><strong>保存反馈</strong><p>选择反馈不代表已保存。常规同步提示隐藏，异常和最终确认可见。</p></div></div>
+      </section>
+
+      <section id="implementation" class="section-anchor component-section implementation">
+        <div class="section-heading"><div><span class="section-index">05 / IMPLEMENTATION</span><h2>从现有控件，逐步收敛。</h2></div><span class="component-tag">repository map</span></div>
+        <div class="mapping-table"><table><caption class="sr-only">现有代码与设计建议的对应关系</caption><thead><tr><th>控件 / 范围</th><th>当前入口</th><th>本版建议</th></tr></thead><tbody><tr><td>通用单选 / 多选</td><td><code>survey-page.ts<br>adaptive-page.ts</code></td><td>多选改方形标记；统一间距与内边距</td></tr><tr><td>单轴 / 多轴</td><td><code>scale-input.ts</code></td><td>保留无默认值，统一轨道与焦点边界</td></tr><tr><td>个人信息 / 手机号</td><td><code>numeric-keypad.ts</code></td><td>输入框使用 10px 圆角，常规触控升到 48px</td></tr><tr><td>评分 / 熟悉度 / 年龄</td><td><code>rating-questions.ts<br>runner.css</code></td><td>对齐文字层级；几何变更重新测量</td></tr><tr><td>主题与状态</td><td><code>participant.css<br>participant-theme.ts</code></td><td>区分边框与分隔线，补深色错误色</td></tr></tbody></table></div>
+        <div class="implementation-note"><strong>规范与落地状态分开查阅</strong><p>当前代码已接入共享令牌与控件行为。正式评分使用已声明的 44px 紧凑变体，沿用几何测量；本页保留常规组件示例，完整文档提供 CSS／DOM 速查、兼容规则与验收清单。</p><a href="../问卷输入控件样式落地-20261022.md">阅读实施与验证记录 <span aria-hidden="true">↗</span></a></div>
+      </section>
+      <footer class="page-footer"><span>Browser Psych Lab</span><span>Questionnaire inputs / v1.2</span><a href="#overview">回到顶部 ↑</a></footer>
+    </main>
+  </div>
+</body>
+</html>
