@@ -6,6 +6,11 @@ export async function loadRunner(api:ParticipantAPI,status:HTMLElement,content:H
   const base=import.meta.env.DEV?'/':`/runners/${api.session.frozen.runner_hash}/`,url=`${base}run.html?version=${encodeURIComponent(api.ledger.version)}`;
   const report=preparationAttempt(api,'runner-loading'),controller=new AbortController(),start=performance.now();
   let message='正在加载试验程序',finished=false;
+  const untilAborted=<T>(promise:Promise<T>)=>new Promise<T>((resolve,reject)=>{
+    const abort=()=>reject(controller.signal.reason);if(controller.signal.aborted)return abort();
+    controller.signal.addEventListener('abort',abort,{once:true});
+    promise.then(value=>{controller.signal.removeEventListener('abort',abort);resolve(value);},error=>{controller.signal.removeEventListener('abort',abort);reject(error);});
+  });
   const show=()=>status.textContent=`${message} · 已等待 ${Math.floor((performance.now()-start)/1000)} 秒${performance.now()-start>=10000?'。网络较慢，请保持页面打开。':'…'}`;
   const cancel=button('取消准备',()=>controller.abort(new DOMException('已取消准备','AbortError')));
   content.replaceChildren(el('p','正在准备试验，加载完成后会自动进入图片下载。','support-text'),cancel);show();
@@ -22,7 +27,7 @@ export async function loadRunner(api:ParticipantAPI,status:HTMLElement,content:H
         while(next<resources.length){const resource=resources[next++]!,r=await fetch(resource,{signal:controller.signal});if(!r.ok)throw new Error(`试验程序资源加载失败 (${r.status})`);await r.arrayBuffer();done++;message=`正在加载试验程序 ${done}/${resources.length}`;show();}
       }));report.stage('resources');
     }
-    controller.signal.throwIfAborted();message='试验程序已加载，正在进入准备页面';show();await report.finish('READY');await api.sync();finished=true;location.assign(url);
+    controller.signal.throwIfAborted();message='试验程序已加载，正在进入准备页面';show();await untilAborted(api.sync(undefined,controller.signal));controller.signal.throwIfAborted();await report.finish('READY');finished=true;location.assign(url);
   }catch(error){controller.abort(error);await report.finish(error instanceof DOMException&&error.name==='AbortError'?'CANCELED':'FAILED',{error:String(error).slice(0,500)}).catch(()=>{});throw error;}
   finally{clearInterval(timer);clearTimeout(timeout);window.removeEventListener('pagehide',hidden);if(!finished)cancel.disabled=true;}
 }

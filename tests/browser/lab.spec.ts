@@ -70,7 +70,7 @@ test('a long phone question can finish reading before phone validity gates submi
     read+=await page.locator('.reading-text').textContent();const next=page.getByRole('button',{name:'阅读下一段',exact:true});if(!await next.count())break;
     await expect(next).toBeEnabled();await next.click();
   }
-  expect(read).toBe(title);await expect(page.getByRole('group',{name:'手机号数字键盘',exact:true})).toBeVisible();
+  expect(read).toBe(title);await expect(page.getByRole('group',{name:'手机号数字键盘',exact:true})).toBeVisible();await expect(page.getByText('请输入 11 位手机号。',{exact:true})).toBeVisible();
   const submit=page.getByRole('button',{name:'提交本页',exact:true});await expect(submit).toBeDisabled();
   await page.getByRole('textbox',{name:title,exact:true}).pressSequentially('13800000000');await submit.click();await expect(page.locator('#status')).toContainText('研究已完成');
 });

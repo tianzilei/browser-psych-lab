@@ -43,3 +43,11 @@ test('a mismatched custody response cannot acknowledge or discard local records'
   await assert.rejects(f.api.sync(),/CUSTODY_RECEIPT_MISMATCH/);
   assert.equal(f.acks.length,0);assert.equal(f.rows.size,1);
 });
+
+test('an aborted foreground sync stops before any request and keeps local records',async t=>{
+  const f=fixture(t);f.add('answer');let calls=0;
+  globalThis.fetch=async()=>{calls++;return Response.json({receipts:[]});};
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(f.api.sync('current',controller.signal),error=>error.name==='AbortError');
+  assert.equal(calls,0);assert.equal(f.rows.has('answer'),true);assert.equal(f.acks.length,0);
+});

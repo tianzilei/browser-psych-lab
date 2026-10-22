@@ -20,6 +20,7 @@ test('backup options contain only published complete files and listing creates n
   const rows=f.admin('backup.list').backups,before=f.db.prepare('SELECT * FROM lab_jobs ORDER BY rowid').all(),listing=()=>listBackupDownloads(f.root,rows);
   const result=await listing();assert.deepEqual(result.map(x=>x.job_id),[prepared,archived]);assert.equal(result[0].url,`/api/lab/backups/${prepared}`);assert.equal(result[0].bytes,12);assert.deepEqual(f.db.prepare('SELECT * FROM lab_jobs ORDER BY rowid').all(),before);
   await fs.writeFile(sidecar,'null');assert.deepEqual((await listing()).map(x=>x.job_id),[archived]);
+  await fs.writeFile(sidecar,'x'.repeat(20000));assert.deepEqual((await listing()).map(x=>x.job_id),[archived]);
   await fs.unlink(join(root,'archives',archived+'.tar.zst'));await fs.symlink(join(root,'downloads',prepared+'.tar.zst'),join(root,'archives',archived+'.tar.zst'));assert.deepEqual(await listing(),[]);
   assert.throws(()=>f.store.execute({operation:'lab/backup.list',data:{}}),/LOGIN_REQUIRED/);
 });

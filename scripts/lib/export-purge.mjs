@@ -55,6 +55,13 @@ export async function purgeExportSnapshots(db,storageRoot,plan,stamp,io={rename,
     if(failures.length)throw new AggregateError([error,...failures],'EXPORT_PURGE_ROLLBACK_FAILED',{cause:error});
     throw error;
   }
-  for(const {to} of moved)await io.rm(to,{recursive:true,force:false});
+  for(const {from,to} of moved){
+    // A concurrent recovery can rename the .purging directory back to the
+    // canonical path after the commit; remove either location so a PURGED job
+    // never leaves the original export data behind.
+    try{await io.rm(to,{recursive:true,force:false});}catch(error){if(error.code!=='ENOENT')throw error;}
+    const canonical=await lstat(from).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+    if(canonical)await io.rm(from,{recursive:true,force:false});
+  }
   return purged;
 }

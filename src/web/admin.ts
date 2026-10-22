@@ -17,9 +17,9 @@ const sessionStates:Record<string,string>={CREATED:'尚未作答',ACTIVE:'作答
 function describe(error:unknown){const text=error instanceof Error?error.message:String(error),code=text.split('：')[0]!;if(code==='INVALID_LOGIN')return errors[code]!;if(error instanceof TypeError&&/fetch|network|load/i.test(text))return '暂时无法连接服务器，请检查网络后重试。';if(error instanceof Error&&error.name==='TimeoutError')return '服务器响应超时，请重试。';if(error instanceof RequestError&&error.status===401)return '登录已过期，请重新登录。';if(errors[code])return `${errors[code]} ${text}`;return error instanceof RequestError?`请求未完成，请检查配置或重试。错误详情：${text}`:text;}
 async function action(fn:()=>Promise<void>,success='',feedback?:HTMLElement){if(busy)return;busy=true;app.setAttribute('aria-busy','true');const buttons=Array.from(app.querySelectorAll('button')).map(node=>({node,disabled:node.disabled}));for(const {node}of buttons)node.disabled=true;message.textContent='正在处理…';if(feedback)feedback.textContent='正在处理…';try{await fn();message.textContent=success;if(feedback)feedback.textContent=success;}catch(error){message.textContent=describe(error);if(feedback)feedback.textContent=describe(error);}finally{busy=false;app.removeAttribute('aria-busy');for(const {node,disabled}of buttons)node.disabled=disabled;}}
 function download(title:string,content:unknown){const url=URL.createObjectURL(new Blob([typeof content==='string'?content:JSON.stringify(content,null,2)],{type:'application/json'})),link=el('a');link.href=url;link.download=downloadName(title,'json');link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-type ExportFile='answers.csv'|'ratings.csv'|'preparations.csv';
+type ExportFile='answers.csv'|'ratings.csv'|'preparations.csv'|'trials.csv';
 interface ExportJob {state:string;kind?:string;study_id?:string;result?:string}
-interface ExportManifest {format?:string;files?:Partial<Record<ExportFile,unknown>>;answers_layout?:string;preparations_layout?:string;ratings_layout?:string;result_export_revision?:string}
+interface ExportManifest {format?:string;files?:Partial<Record<ExportFile,unknown>>;answers_layout?:string;preparations_layout?:string;ratings_layout?:string;trials_layout?:string;result_export_revision?:string}
 async function exportResults(study:Study,downloads:HTMLElement){
   const key=`lab-export-${study.study_id}`;let pending:{request_id:string;job_id:string;study_id:string;format?:'all'|'answers'}|undefined;
   try{pending=JSON.parse(sessionStorage.getItem(key)??'null')??undefined;}catch{sessionStorage.removeItem(key);}
@@ -28,18 +28,18 @@ async function exportResults(study:Study,downloads:HTMLElement){
   if(job.kind&&(job.kind!=='EXPORT'||job.study_id!==study.study_id))throw new Error('导出作业与当前问卷不匹配，请刷新后重试。');
   if(['FAILED','PURGED','UNKNOWN'].includes(job.state))pending=undefined;
   if(job.state==='RECOVERY_REQUIRED')throw new Error('导出未完成，请通过维护流程核查作业后重新下载。');
-  const hasFile=(manifest:ExportManifest,name:ExportFile)=>(name==='ratings.csv'?manifest.ratings_layout==='one-photo-per-row-v2':manifest.answers_layout==='one-session-per-row-v1')&&!!manifest.files?.[name];
-  if(job.state==='READY'){const result=JSON.parse(job.result??'{}') as ExportManifest;if(result.format!=='answers'||!hasFile(result,'answers.csv')||result.result_export_revision!=='photo-identity-v2')pending=undefined;}
+  const hasFile=(manifest:ExportManifest,name:ExportFile)=>(name==='ratings.csv'?manifest.ratings_layout==='one-photo-per-row-v2':name==='trials.csv'?manifest.trials_layout==='one-trial-per-row-v1':manifest.answers_layout==='one-session-per-row-v1')&&!!manifest.files?.[name];
+  if(job.state==='READY'){const result=JSON.parse(job.result??'{}') as ExportManifest;if(result.format!=='answers'||!hasFile(result,'answers.csv')||result.result_export_revision!=='photo-identity-v3')pending=undefined;}
   const ready=job.state==='READY'&&pending!==undefined;
   const fresh=()=>({request_id:uid(),job_id:uid(),study_id:study.study_id,format:'answers' as const});
   pending??=fresh();sessionStorage.setItem(key,JSON.stringify(pending));
   let result=ready?JSON.parse(job.result??'{}') as ExportManifest:(await api<{result:ExportManifest}>('/api/lab/jobs/export',pending)).result;
   if(result.format!=='answers'||!hasFile(result,'answers.csv')){pending=fresh();sessionStorage.setItem(key,JSON.stringify(pending));result=(await api<{result:ExportManifest}>('/api/lab/jobs/export',pending)).result;}
   sessionStorage.removeItem(key);downloads.replaceChildren();
-  const labels:Record<ExportFile,string>={'answers.csv':hasFile(result,'ratings.csv')?'下载受试者信息 CSV':'下载问卷结果 CSV','ratings.csv':'下载问卷结果 CSV（每张照片一行）','preparations.csv':'下载设备与准备记录 CSV'};
+  const labels:Record<ExportFile,string>={'answers.csv':hasFile(result,'ratings.csv')?'下载受试者信息 CSV':'下载问卷结果 CSV','ratings.csv':'下载问卷结果 CSV（每张照片一行）','trials.csv':'下载试验结果 CSV','preparations.csv':'下载设备与准备记录 CSV'};
   const links=new Map<ExportFile,HTMLAnchorElement>();
   for(const name of Object.keys(labels) as ExportFile[]){if(!hasFile(result,name))continue;const link=el('a',labels[name]);link.href=`/api/lab/jobs/${pending.job_id}/${name}`;link.download='';links.set(name,link);downloads.append(link);}
-  const manifest=el('a','下载导出说明');manifest.href=`/api/lab/jobs/${pending.job_id}/manifest.json`;manifest.download='';downloads.append(manifest);links.get(links.has('ratings.csv')?'ratings.csv':'answers.csv')!.click();
+  const manifest=el('a','下载导出说明');manifest.href=`/api/lab/jobs/${pending.job_id}/manifest.json`;manifest.download='';downloads.append(manifest);links.get(links.has('ratings.csv')?'ratings.csv':links.has('trials.csv')?'trials.csv':'answers.csv')!.click();
 }
 function simulate(protocol:Protocol){const overlay=el('div',undefined,'simulation-overlay'),frame=el('iframe');frame.title='模拟问卷';frame.src='/simulate.html';frame.onload=()=>frame.contentWindow?.postMessage({type:'lab-simulation',protocol},location.origin);overlay.append(button('关闭模拟',()=>overlay.remove(),'primary'),frame);document.body.append(overlay);}
 function login(){

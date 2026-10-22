@@ -35,7 +35,7 @@ export async function listBackupDownloads(root:string,jobs:BackupJob[]):Promise<
       const path=join(folder,filename),st=await lstat(path);
       if(!st.isFile()||st.isSymbolicLink()||st.size!==bytes)continue;
       backups.push({job_id:job.job_id,created_at:job.created_at,bytes,sha256,filename,url:`/api/lab/backups/${job.job_id}`,path});
-    }catch(error){if(!['ENOENT','ELOOP'].includes((error as NodeJS.ErrnoException).code??'')&&!(error instanceof SyntaxError))throw error;}
+    }catch(error){if(error instanceof Error&&error.message==='BACKUP_METADATA_TOO_LARGE')continue;if(!['ENOENT','ELOOP'].includes((error as NodeJS.ErrnoException).code??'')&&!(error instanceof SyntaxError))throw error;}
   }
   return backups.sort((a,b)=>b.created_at-a.created_at||a.job_id.localeCompare(b.job_id));
 }

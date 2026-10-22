@@ -10,6 +10,7 @@ import {Maintenance} from '../../src/server/maintenance.ts';
 import {digest} from '../../src/server/collection-store.ts';
 import {fileHash,safeDownload} from '../../src/server/private-files.ts';
 import {exportDateTime} from '../../src/server/export-csv.ts';
+import {RunReplay} from '../../src/shared/run-replay.ts';
 
 // Parse quoted multiline CSV to verify actual cells rather than substring approximations.
 function csvRows(text){
@@ -155,5 +156,40 @@ test('evidence exports over 100 MiB retain all raw rows and verified CSV hashes'
     assert.ok(light.result.files['answers.csv'].bytes<64*1024);
     assert.deepEqual(Object.keys(light.result.files),['answers.csv','preparations.csv']);
     assert.deepEqual((await readdir(join(f.root,'research-exports',light.job_id))).sort(),['answers.csv','manifest.json','preparations.csv']);
+  }finally{await maintenance.close();await writer.close();}
+});
+
+test('light result export carries fixed/text task trial outcomes',async t=>{
+  const protocol=compileQuestionnaire({schema:'questionnaire-v1',title:'固定任务结果',orientation:'portrait',pages:[],groups:[{id:'task',title:'任务',choices:['left','right'],repeats:0,response_keys:{left:'KeyF',right:'KeyJ'},trials:[{root_id:'root',text:'X',image_ms:200,isi_ms:300,correct:'left'}]}]});
+  const f=fixture(t,protocol),credential=digest('trial-participant');f.setNow(Date.now());
+  const session=f.store.execute({operation:'lab/participant.create',data:{...f.admission,request_id:randomUUID(),credential_hash:credential}});
+  const call=(op,data={})=>f.store.execute({operation:`lab/participant.${op}`,session_id:session.session_id,credential_hash:credential,data});
+  const claimed=call('claim',{request_id:randomUUID(),writer_id:'trial-writer'}),fence={writer_id:'trial-writer',writer_epoch:claimed.writer_epoch};
+  const reservation=call('reserve',{request_id:randomUUID(),...fence});
+  const readiness={frame_ms:10,commit_ms:5,protocol_hash:f.version.hash,layout:'portrait',assets:{},geometry:{viewport:{width:800,height:800,dpr:1},canvas:{x:0,y:0,width:600,height:400},buttons:[{choice:'left',x:0,y:500,width:100,height:60},{choice:'right',x:110,y:500,width:100,height:60}]}};
+  const permit=call('permit',{request_id:randomUUID(),...fence,reservation_id:reservation.reservation_id,readiness});
+  const replay=new RunReplay(permit.plan),events=[];let serial=0;
+  const changes={session_id:session.session_id,version_id:f.version.version_id,protocol_hash:f.version.hash,writer_id:fence.writer_id,writer_epoch:fence.writer_epoch};
+  const wire=record=>f.wire(permit.scope,'GROUP_RECORD',{record},changes);
+  const emit=record=>{replay.apply(record);events.push(wire(record));};
+  const stage=at=>{const op=replay.scheduler.stage(`intent-${serial++}`,at,'test');events.push(wire({type:'OP',at,operation:op}));emit({type:'COMMIT',at:at+1,op_id:op.op_id});};
+  stage(0);
+  while(replay.scheduler.queue.length){
+    const entry=replay.scheduler.queue[0],id=entry.candidate.instance_id,onset=entry.target;
+    emit({type:'ONSET',at:onset,instance_id:id,draw_time:onset});
+    emit({type:'INPUT',at:onset+10,input_time:onset+10,raw_timestamp:onset+10,time_origin:123000,pointer_id:-1,pointer_type:'keyboard',key_code:'KeyF',x:0,y:0,action:'down',choice:'left',valid:true});
+    emit({type:'WINDOW',at:onset+entry.candidate.image_ms,draw_time:onset+entry.candidate.image_ms,instance_id:id,processed_watermark:replay.inputAudit.length,answer:'left'});
+    emit({type:'END',at:onset+entry.candidate.image_ms+entry.candidate.isi_ms,instance_id:id});
+  }
+  emit({type:'CLOSING',at:20000,unresolved:false});
+  assert.ok(call('ingest',{events}).receipts.every(receipt=>receipt.disposition==='ACCEPTED'));
+  const writer=new DatabaseWriter(f.path);await writer.start();const maintenance=new Maintenance(writer,f.path,f.root);
+  try{
+    const exported=await maintenance.run('EXPORT',{study_id:f.study.study_id,format:'answers'});
+    assert.equal(exported.result.trials_layout,'one-trial-per-row-v1');
+    assert.equal(exported.result.files['trials.csv'].rows,1);
+    const rows=csvRows(await readFile(join(f.root,'research-exports',exported.job_id,'trials.csv'),'utf8'));
+    assert.equal(rows[0].root_id,'root');assert.equal(rows[0].answer,'left');assert.equal(rows[0].correct,'true');assert.equal(rows[0].permit_state,'ISSUED');
+    const opened=await safeDownload(f.root,exported.job_id,'trials.csv','research-exports');await opened.close();
   }finally{await maintenance.close();await writer.close();}
 });

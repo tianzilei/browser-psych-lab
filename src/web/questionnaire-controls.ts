@@ -28,8 +28,14 @@ export function questionValidation(q:Question,answer:Answer|undefined){
   return '';
 }
 
+const presetHelp:Record<string,string>={digits:'请输入数字。',integer:'请输入整数。',decimal:'请输入数字（可含小数）。',letters:'请输入字母。',alphanumeric:'请输入字母或数字。',chinese:'请输入中文。',phone_cn:'请输入 11 位手机号。',email:'请输入邮箱地址。'};
+function fieldHelp(q:Question){
+  const match=q.input_match;if(!match)return `最多 ${q.max_length} 个字符。`;
+  if(match.message)return match.message;
+  return match.kind==='preset'?presetHelp[match.preset]??`最多 ${q.max_length} 个字符。`:`最多 ${q.max_length} 个字符。`;
+}
 export function personalField(q:Question,input:HTMLInputElement){
-  const element=el('div',undefined,'personal-field'),help=el('p',q.input_match?inputMatchMessage(q.input_match):`最多 ${q.max_length} 个字符。`,'input-help'),error=el('p',undefined,'input-error');
+  const element=el('div',undefined,'personal-field'),help=el('p',fieldHelp(q),'input-help'),error=el('p',undefined,'input-error');
   input.id=`personal-input-${q.id}`;input.setAttribute('aria-label',q.title);
   help.id=`input-help-${q.id}`;error.id=`input-error-${q.id}`;error.setAttribute('role','alert');error.hidden=true;
   input.setAttribute('aria-describedby',`${help.id} ${error.id}`);
